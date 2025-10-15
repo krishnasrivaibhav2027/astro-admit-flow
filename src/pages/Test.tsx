@@ -61,14 +61,31 @@ const Test = () => {
       
       setQuestions(data.questions);
       
-      // Create result entry
+      // Fetch previous results to get current attempt counts
+      const { data: previousResults } = await supabase
+        .from("results")
+        .select("*")
+        .eq("student_id", studentId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      const previousAttempts = previousResults?.[0] || {
+        attempts_easy: 0,
+        attempts_medium: 0,
+        attempts_hard: 0
+      };
+
+      // Create result entry with current attempt counts
       const { data: result, error: resultError } = await supabase
         .from("results")
         .insert([{
           student_id: studentId,
           level,
           result: "pending",
-          score: null
+          score: null,
+          attempts_easy: previousAttempts.attempts_easy || 0,
+          attempts_medium: previousAttempts.attempts_medium || 0,
+          attempts_hard: previousAttempts.attempts_hard || 0
         }])
         .select()
         .single();
@@ -151,25 +168,24 @@ const Test = () => {
 
       if (evalError) throw evalError;
 
-      // Update attempts count
-      const attemptsField = `attempts_${level}`;
-      const { data: latestResult } = await supabase
+      // Get current result to update attempts
+      const { data: currentResult } = await supabase
         .from("results")
         .select("*")
-        .eq("student_id", studentId)
-        .order("created_at", { ascending: false })
-        .limit(1)
+        .eq("id", resultId)
         .single();
 
-      const currentAttempts = latestResult ? (latestResult[attemptsField] || 0) : 0;
+      if (!currentResult) throw new Error("Result not found");
 
-      // Update result with score
+      const attemptsField = `attempts_${level}`;
+      
+      // Update result with score and incremented attempts
       await supabase
         .from("results")
         .update({
           score: evaluationData.averageScore,
           result: evaluationData.averageScore >= 5 ? "pass" : "fail",
-          [attemptsField]: currentAttempts + 1
+          [attemptsField]: (currentResult[attemptsField] || 0) + 1
         })
         .eq("id", resultId);
 
