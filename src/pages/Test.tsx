@@ -179,21 +179,54 @@ const Test = () => {
 
       const attemptsField = `attempts_${level}`;
       
+      const newAttemptCount = (currentResult[attemptsField] || 0) + 1;
+      const testResult = evaluationData.averageScore >= 5 ? "pass" : "fail";
+
       // Update result with score and incremented attempts
       await supabase
         .from("results")
         .update({
           score: evaluationData.averageScore,
-          result: evaluationData.averageScore >= 5 ? "pass" : "fail",
-          [attemptsField]: (currentResult[attemptsField] || 0) + 1
+          result: testResult,
+          [attemptsField]: newAttemptCount
         })
         .eq("id", resultId);
+
+      // Check if max attempts reached or test passed, send email notification
+      const maxAttempts = level === "easy" ? 1 : 2;
+      if (testResult === "pass" || newAttemptCount >= maxAttempts) {
+        try {
+          // Get student data for email
+          const { data: studentData } = await supabase
+            .from("students")
+            .select("*")
+            .eq("id", studentId)
+            .single();
+
+          if (studentData) {
+            // Send email notification
+            await supabase.functions.invoke("send-notification-email", {
+              body: {
+                studentEmail: studentData.email,
+                studentName: `${studentData.first_name} ${studentData.last_name}`,
+                level,
+                result: testResult,
+                score: evaluationData.averageScore,
+                attempts: newAttemptCount
+              }
+            });
+          }
+        } catch (emailError) {
+          console.error("Error sending email notification:", emailError);
+          // Don't fail the test submission if email fails
+        }
+      }
 
       navigate("/results", {
         state: {
           studentId,
           score: evaluationData.averageScore,
-          result: evaluationData.averageScore >= 5 ? "pass" : "fail",
+          result: testResult,
           level,
           detailedScores: evaluationData.scores
         }
