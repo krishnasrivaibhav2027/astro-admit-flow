@@ -75,19 +75,33 @@ const Levels = () => {
       const latestResult = data[0];
       const newLevels = [...levels];
       
-      // Update status based on results
-      if (latestResult.level === "easy" && latestResult.result === "pass") {
-        newLevels[0].status = "completed";
-        newLevels[1].status = "current";
-      } else if (latestResult.level === "medium" && latestResult.result === "pass") {
-        newLevels[0].status = "completed";
-        newLevels[1].status = "completed";
-        newLevels[2].status = "current";
-      }
-      
+      // Update attempts from latest result
       newLevels[0].attempts = latestResult.attempts_easy || 0;
       newLevels[1].attempts = latestResult.attempts_medium || 0;
       newLevels[2].attempts = latestResult.attempts_hard || 0;
+      
+      // Determine current level based on progress and attempts
+      const easyPassed = latestResult.attempts_easy > 0 && 
+        data.some(r => r.level === "easy" && r.result === "pass");
+      const mediumPassed = latestResult.attempts_medium > 0 && 
+        data.some(r => r.level === "medium" && r.result === "pass");
+      
+      if (mediumPassed) {
+        // Both easy and medium passed, unlock hard
+        newLevels[0].status = "completed";
+        newLevels[1].status = "completed";
+        newLevels[2].status = "current";
+      } else if (easyPassed) {
+        // Easy passed, medium is current
+        newLevels[0].status = "completed";
+        newLevels[1].status = "current";
+        newLevels[2].status = "locked";
+      } else {
+        // Easy is current
+        newLevels[0].status = "current";
+        newLevels[1].status = "locked";
+        newLevels[2].status = "locked";
+      }
       
       setLevels(newLevels);
     }
