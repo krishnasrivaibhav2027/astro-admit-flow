@@ -186,10 +186,10 @@ const Results = () => {
               size="lg"
               variant="outline"
               className="flex-1"
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/levels", { state: { studentId } })}
             >
               <Home className="w-5 h-5 mr-2" />
-              Return Home
+              Back to Levels
             </Button>
           </div>
         </div>
