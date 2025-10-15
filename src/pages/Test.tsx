@@ -1,0 +1,323 @@
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { Loader2, Send } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+
+interface Question {
+  question: string;
+  answer: string;
+}
+
+const Test = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { toast } = useToast();
+  const { studentId, level, currentAttempt } = location.state || {};
+  
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [studentAnswer, setStudentAnswer] = useState("");
+  const [studentAnswers, setStudentAnswers] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [showExitDialog, setShowExitDialog] = useState(false);
+  const [resultId, setResultId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!studentId || !level) {
+      navigate("/registration");
+      return;
+    }
+
+    // Prevent accidental navigation
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    generateQuestions();
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [studentId, level]);
+
+  const generateQuestions = async () => {
+    try {
+      const numQuestions = level === "easy" ? 5 : level === "medium" ? 3 : 2;
+      
+      const { data, error } = await supabase.functions.invoke("generate-questions", {
+        body: { level, numQuestions }
+      });
+
+      if (error) throw error;
+      
+      setQuestions(data.questions);
+      
+      // Create result entry
+      const { data: result, error: resultError } = await supabase
+        .from("results")
+        .insert([{
+          student_id: studentId,
+          level,
+          result: "pending",
+          score: null
+        }])
+        .select()
+        .single();
+
+      if (resultError) throw resultError;
+      setResultId(result.id);
+
+      // Save questions
+      const questionsToInsert = data.questions.map((q: Question) => ({
+        result_id: result.id,
+        question_text: q.question,
+        correct_answer: q.answer
+      }));
+
+      await supabase.from("questions").insert(questionsToInsert);
+      
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate questions",
+        variant: "destructive"
+      });
+      navigate("/levels", { state: { studentId } });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNext = () => {
+    if (!studentAnswer.trim()) {
+      toast({
+        title: "Answer Required",
+        description: "Please provide an answer before proceeding",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setStudentAnswers([...studentAnswers, studentAnswer]);
+    
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+      setStudentAnswer("");
+    } else {
+      submitTest([...studentAnswers, studentAnswer]);
+    }
+  };
+
+  const submitTest = async (allAnswers: string[]) => {
+    setSubmitting(true);
+    
+    try {
+      // Save all answers
+      const { data: questionRecords } = await supabase
+        .from("questions")
+        .select("id")
+        .eq("result_id", resultId)
+        .order("created_at");
+
+      if (questionRecords) {
+        const answersToInsert = allAnswers.map((answer, idx) => ({
+          question_id: questionRecords[idx].id,
+          student_answer: answer
+        }));
+
+        await supabase.from("student_answers").insert(answersToInsert);
+      }
+
+      // Evaluate answers
+      const { data: evaluationData, error: evalError } = await supabase.functions.invoke("evaluate-answers", {
+        body: {
+          resultId,
+          questions: questions.map((q, idx) => ({
+            question: q.question,
+            correctAnswer: q.answer,
+            studentAnswer: allAnswers[idx]
+          }))
+        }
+      });
+
+      if (evalError) throw evalError;
+
+      // Update attempts count
+      const attemptsField = `attempts_${level}`;
+      const { data: latestResult } = await supabase
+        .from("results")
+        .select("*")
+        .eq("student_id", studentId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      const currentAttempts = latestResult ? (latestResult[attemptsField] || 0) : 0;
+
+      // Update result with score
+      await supabase
+        .from("results")
+        .update({
+          score: evaluationData.averageScore,
+          result: evaluationData.averageScore >= 5 ? "pass" : "fail",
+          [attemptsField]: currentAttempts + 1
+        })
+        .eq("id", resultId);
+
+      navigate("/results", {
+        state: {
+          studentId,
+          score: evaluationData.averageScore,
+          result: evaluationData.averageScore >= 5 ? "pass" : "fail",
+          level,
+          detailedScores: evaluationData.scores
+        }
+      });
+      
+    } catch (error: any) {
+      toast({
+        title: "Submission Error",
+        description: error.message || "Failed to submit test",
+        variant: "destructive"
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleBackClick = () => {
+    setShowExitDialog(true);
+  };
+
+  const confirmExit = () => {
+    navigate("/levels", { state: { studentId } });
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Loader2 className="w-12 h-12 animate-spin mx-auto text-primary" />
+          <p className="text-lg text-muted-foreground">Generating your questions...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+
+  return (
+    <div className="min-h-screen relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-background via-purple-50 to-blue-50 dark:from-background dark:via-purple-950/20 dark:to-blue-950/20" />
+      <div className="absolute top-20 left-10 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-float" />
+
+      <div className="relative z-10 container mx-auto px-4 py-12">
+        <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" onClick={handleBackClick}>
+              ← Exit Test
+            </Button>
+            <div className="text-sm font-medium">
+              Question {currentQuestionIndex + 1} of {questions.length}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Progress value={progress} className="h-2" />
+            <div className="text-xs text-muted-foreground text-right">
+              {Math.round(progress)}% Complete
+            </div>
+          </div>
+
+          <Card className="border-2 shadow-elevated">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-2xl">
+                  <span className="gradient-text">{level.charAt(0).toUpperCase() + level.slice(1)}</span> Level
+                </CardTitle>
+                <div className="px-4 py-2 rounded-lg bg-primary/10 text-primary font-medium">
+                  Attempt {currentAttempt}
+                </div>
+              </div>
+            </CardHeader>
+            
+            <CardContent className="space-y-6">
+              <div className="p-6 rounded-xl bg-muted/50 border-2 border-muted">
+                <p className="text-lg leading-relaxed">
+                  {questions[currentQuestionIndex]?.question}
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-sm font-medium">Your Answer</label>
+                <Textarea
+                  value={studentAnswer}
+                  onChange={(e) => setStudentAnswer(e.target.value)}
+                  placeholder="Type your detailed answer here..."
+                  className="min-h-[200px] resize-none text-base"
+                  disabled={submitting}
+                />
+                <p className="text-sm text-muted-foreground">
+                  Provide a comprehensive answer. Your response will be evaluated on relevance, clarity, accuracy, and critical thinking.
+                </p>
+              </div>
+
+              <Button
+                onClick={handleNext}
+                size="lg"
+                className="w-full"
+                variant="glow"
+                disabled={submitting || !studentAnswer.trim()}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Evaluating...
+                  </>
+                ) : currentQuestionIndex < questions.length - 1 ? (
+                  <>
+                    Next Question
+                    <Send className="w-5 h-5 ml-2" />
+                  </>
+                ) : (
+                  <>
+                    Submit Test
+                    <Send className="w-5 h-5 ml-2" />
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <AlertDialog open={showExitDialog} onOpenChange={setShowExitDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Exit Test?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to exit? Your progress will be lost and this will count as an attempt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continue Test</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmExit} className="bg-destructive text-destructive-foreground">
+              Exit
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+};
+
+export default Test;
