@@ -1,21 +1,120 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Trophy, XCircle, RotateCcw, Home, CheckCircle2, TrendingUp } from "lucide-react";
+import { Trophy, XCircle, RotateCcw, Home, CheckCircle2, TrendingUp, Mail } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const Results = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { toast } = useToast();
   const { studentId, score, result, level, detailedScores } = location.state || {};
+  const [currentAttempts, setCurrentAttempts] = useState<number>(0);
+  const [maxAttempts, setMaxAttempts] = useState<number>(0);
+  const [emailSent, setEmailSent] = useState<boolean>(false);
+  const [sendingEmail, setSendingEmail] = useState<boolean>(false);
 
   useEffect(() => {
     if (!studentId || score === undefined) {
       navigate("/registration");
+      return;
     }
+    loadAttemptData();
   }, [studentId, score]);
+
+  const loadAttemptData = async () => {
+    try {
+      // Get the latest result to check attempts
+      const { data: latestResult } = await supabase
+        .from("results")
+        .select("*")
+        .eq("student_id", studentId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (latestResult) {
+        const attemptsField = `attempts_${level}` as keyof typeof latestResult;
+        const attempts = latestResult[attemptsField] as number || 0;
+        setCurrentAttempts(attempts);
+        
+        // Set max attempts based on level
+        const maxAttemptsByLevel = {
+          easy: 1,
+          medium: 2,
+          hard: 2
+        };
+        const maxAttempts = maxAttemptsByLevel[level as keyof typeof maxAttemptsByLevel];
+        setMaxAttempts(maxAttempts);
+
+        // Check if max attempts reached and send email if needed
+        if (attempts >= maxAttempts && !isPassed) {
+          await handleMaxAttemptsReached();
+        }
+      }
+    } catch (error) {
+      console.error("Error loading attempt data:", error);
+    }
+  };
+
+  const handleMaxAttemptsReached = async () => {
+    if (emailSent || sendingEmail) return;
+    
+    setSendingEmail(true);
+    try {
+      // Get student data for email
+      const { data: studentData } = await supabase
+        .from("students")
+        .select("*")
+        .eq("id", studentId)
+        .single();
+
+      if (studentData) {
+        // Send email notification
+        const { error } = await supabase.functions.invoke("send-notification-email", {
+          body: {
+            studentEmail: studentData.email,
+            studentName: `${studentData.first_name} ${studentData.last_name}`,
+            level,
+            result: "fail",
+            score,
+            attempts: currentAttempts
+          }
+        });
+
+        if (!error) {
+          setEmailSent(true);
+          toast({
+            title: "Email Sent",
+            description: "A notification email has been sent regarding your test results.",
+          });
+        } else {
+          console.error("Email sending error:", error);
+          // Still mark as sent to avoid retry loops
+          setEmailSent(true);
+        }
+      }
+    } catch (error) {
+      console.error("Error sending email:", error);
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const handleRetryLevel = () => {
+    // Navigate directly to test with incremented attempt
+    navigate("/test", { 
+      state: { 
+        studentId, 
+        level,
+        currentAttempt: currentAttempts + 1
+      } 
+    });
+  };
 
   const isPassed = result === "pass";
   const scorePercentage = (score / 10) * 100;
@@ -155,6 +254,23 @@ const Results = () => {
                   }`
                 )}
               </p>
+              
+              {/* Email Sent Notification */}
+              {currentAttempts >= maxAttempts && !isPassed && (
+                <div className="mt-4 p-4 rounded-lg bg-blue-50 border border-blue-200 dark:bg-blue-950/20 dark:border-blue-800">
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-5 h-5 text-blue-600" />
+                    <span className="font-medium text-blue-800 dark:text-blue-200">
+                      {sendingEmail ? "Sending email notification..." : 
+                       emailSent ? "Email notification sent successfully!" : 
+                       "Processing email notification..."}
+                    </span>
+                  </div>
+                  <p className="text-sm text-blue-600 dark:text-blue-300 mt-1">
+                    You have reached the maximum number of attempts for this level. A notification email has been sent with your results.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -170,15 +286,15 @@ const Results = () => {
                 Continue to Next Level
                 <Trophy className="w-5 h-5 ml-2" />
               </Button>
-            ) : !isPassed && level !== "easy" ? (
+            ) : !isPassed && level !== "easy" && currentAttempts < maxAttempts ? (
               <Button
                 size="lg"
                 variant="glow"
                 className="flex-1"
-                onClick={() => navigate("/levels", { state: { studentId } })}
+                onClick={handleRetryLevel}
               >
                 <RotateCcw className="w-5 h-5 mr-2" />
-                Retry Level
+                Retry Level (Attempt {currentAttempts + 1}/{maxAttempts})
               </Button>
             ) : null}
             
