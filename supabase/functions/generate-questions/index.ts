@@ -18,25 +18,29 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    const systemPrompt = `You are an expert physics exam question generator. Generate challenging, thought-provoking questions appropriate for the ${level} difficulty level. Questions should test conceptual understanding, not just memorization.`;
+    const systemPrompt = `You are an expert physics exam question generator. You MUST return valid JSON only. Generate challenging, thought-provoking questions appropriate for the ${level} difficulty level.`;
     
     const userPrompt = `Generate ${numQuestions} UNIQUE physics questions at ${level} difficulty level. 
-    
-    Requirements:
-    - Questions should cover different physics topics (mechanics, thermodynamics, electromagnetism, optics, modern physics)
-    - Each question should require a detailed explanation, not just a number
-    - Provide comprehensive model answers that demonstrate deep understanding
-    - ${level === 'easy' ? 'Focus on fundamental concepts and basic applications' : ''}
-    - ${level === 'medium' ? 'Include problem-solving and application of concepts' : ''}
-    - ${level === 'hard' ? 'Require advanced reasoning, multiple concepts integration, and critical thinking' : ''}
-    
-    Return ONLY a JSON array in this exact format:
-    [
-      {
-        "question": "detailed question text here",
-        "answer": "comprehensive model answer here"
-      }
-    ]`;
+
+CRITICAL: Return ONLY valid JSON. Ensure all strings are properly escaped.
+
+Requirements:
+- Questions should cover different physics topics (mechanics, thermodynamics, electromagnetism, optics, modern physics)
+- Each question should require a detailed explanation, not just a number
+- Provide comprehensive model answers that demonstrate deep understanding
+- ${level === 'easy' ? 'Focus on fundamental concepts and basic applications' : ''}
+- ${level === 'medium' ? 'Include problem-solving and application of concepts' : ''}
+- ${level === 'hard' ? 'Require advanced reasoning, multiple concepts integration, and critical thinking' : ''}
+
+Return ONLY a valid JSON array with properly escaped strings:
+[
+  {
+    "question": "question text",
+    "answer": "answer text"
+  }
+]
+
+Do not include markdown, code blocks, or any text outside the JSON array.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -73,15 +77,32 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    const content = data.choices[0].message.content;
+    let content = data.choices[0].message.content.trim();
     
-    // Extract JSON from the response
+    console.log("Raw AI response:", content.substring(0, 200));
+    
+    // Remove markdown code blocks if present
+    content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    
+    // Extract JSON array from the response
     const jsonMatch = content.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
+      console.error("No JSON array found in response");
       throw new Error("Failed to parse questions from AI response");
     }
     
-    const questions = JSON.parse(jsonMatch[0]);
+    let questions;
+    try {
+      questions = JSON.parse(jsonMatch[0]);
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError);
+      console.error("Attempted to parse:", jsonMatch[0].substring(0, 500));
+      throw new Error("Invalid JSON format in AI response");
+    }
+    
+    if (!Array.isArray(questions) || questions.length === 0) {
+      throw new Error("AI did not return a valid array of questions");
+    }
 
     return new Response(
       JSON.stringify({ questions }),
