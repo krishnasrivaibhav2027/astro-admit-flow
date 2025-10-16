@@ -127,6 +127,11 @@ const Levels = () => {
       <div className="absolute top-20 left-10 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-float" />
       <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
 
+      {/* Theme Toggle */}
+      <div className="absolute top-4 right-4 z-50">
+        <ModeToggle />
+      </div>
+
       <div className="relative z-10 container mx-auto px-4 py-12">
         <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
           <div className="text-center space-y-4">
