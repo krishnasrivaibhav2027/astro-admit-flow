@@ -282,27 +282,124 @@ Student Answer: {student_answer}
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Email notification endpoint (placeholder - needs full Gmail OAuth implementation)
+# Email notification endpoint - Gmail OAuth implementation
 @api_router.post("/send-notification")
 async def send_notification(request: NotificationEmailRequest):
     try:
-        # TODO: Implement Gmail OAuth email sending
-        # Current implementation logs the notification but doesn't send actual emails
-        # To enable email sending, implement Gmail SMTP with OAuth2 flow
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        import base64
         
-        logging.info(f"📧 Email Notification Request:")
-        logging.info(f"   To: {request.to_email}")
-        logging.info(f"   Student: {request.student_name}")
-        logging.info(f"   Result: {request.result}")
-        logging.info(f"   Score: {request.score}")
+        # Get Gmail OAuth credentials from environment
+        client_id = os.environ.get('GMAIL_CLIENT_ID')
+        client_secret = os.environ.get('GMAIL_CLIENT_SECRET')
+        refresh_token = os.environ.get('GMAIL_REFRESH_TOKEN')
+        from_email = os.environ.get('GMAIL_FROM_EMAIL', 'noreply@admitai.com')
+        
+        if not all([client_id, client_secret, refresh_token]):
+            logging.warning("Gmail credentials not fully configured")
+            return {
+                "success": False,
+                "message": "Gmail credentials not configured"
+            }
+        
+        # Create credentials object
+        creds = Credentials(
+            None,
+            refresh_token=refresh_token,
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id=client_id,
+            client_secret=client_secret
+        )
+        
+        # Refresh the access token
+        creds.refresh(Request())
+        
+        # Create email message
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = f"AdmitAI Test Results - {request.result.upper()}"
+        msg['From'] = from_email
+        msg['To'] = request.to_email
+        
+        # Email body
+        html_body = f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+              <h2 style="color: {'#22c55e' if request.result == 'pass' else '#ef4444'};">
+                AdmitAI Test Results
+              </h2>
+              
+              <p>Dear {request.student_name},</p>
+              
+              <p>Your admission test has been evaluated with the following results:</p>
+              
+              <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 10px 0;"><strong>Result:</strong> <span style="color: {'#22c55e' if request.result == 'pass' else '#ef4444'}; font-weight: bold;">{request.result.upper()}</span></p>
+                <p style="margin: 10px 0;"><strong>Score:</strong> {request.score:.1f} / 100</p>
+              </div>
+              
+              {'<p style="color: #22c55e;">Congratulations! You have passed the test. Our team will review your application and contact you with next steps.</p>' if request.result == 'pass' else '<p style="color: #ef4444;">Unfortunately, you did not pass this attempt. Please review the feedback provided in your test results.</p>'}
+              
+              <p>Thank you for taking the AdmitAI admission test.</p>
+              
+              <p>Best regards,<br>
+              AdmitAI Team</p>
+            </div>
+          </body>
+        </html>
+        """
+        
+        text_body = f"""
+        AdmitAI Test Results
+        
+        Dear {request.student_name},
+        
+        Your admission test has been evaluated with the following results:
+        
+        Result: {request.result.upper()}
+        Score: {request.score:.1f} / 100
+        
+        {'Congratulations! You have passed the test.' if request.result == 'pass' else 'Unfortunately, you did not pass this attempt.'}
+        
+        Thank you for taking the AdmitAI admission test.
+        
+        Best regards,
+        AdmitAI Team
+        """
+        
+        msg.attach(MIMEText(text_body, 'plain'))
+        msg.attach(MIMEText(html_body, 'html'))
+        
+        # Send email using Gmail SMTP with OAuth2
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        
+        # Authenticate using OAuth2
+        auth_string = f"user={from_email}\1auth=Bearer {creds.token}\1\1"
+        server.docmd('AUTH', 'XOAUTH2 ' + base64.b64encode(auth_string.encode()).decode())
+        
+        # Send the email
+        server.send_message(msg)
+        server.quit()
+        
+        logging.info(f"✅ Email sent successfully to {request.to_email}")
         
         return {
             "success": True,
-            "message": "Notification logged (email implementation pending - requires Gmail OAuth setup)"
+            "message": "Email notification sent successfully"
         }
+        
     except Exception as e:
-        logging.error(f"Error processing notification: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"❌ Error sending email: {str(e)}")
+        # Return success anyway to avoid breaking the flow
+        return {
+            "success": False,
+            "message": f"Email sending failed: {str(e)}"
+        }
 
 
 # Include the router in the main app
