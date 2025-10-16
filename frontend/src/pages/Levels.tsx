@@ -198,11 +198,23 @@ const Levels = () => {
                       <Button
                         size="lg"
                         variant={isCurrent ? "glow" : "outline"}
-                        disabled={isLocked || level.attempts >= level.maxAttempts}
+                        disabled={isLocked || isCompleted || level.attempts >= level.maxAttempts}
                         onClick={() => handleStartLevel(level)}
                         className="ml-4"
                       >
-                        {isCompleted ? "Completed" : isLocked ? "Locked" : "Start Test"}
+                        {isCompleted ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 mr-2" />
+                            Completed
+                          </>
+                        ) : isLocked ? (
+                          <>
+                            <Lock className="w-4 h-4 mr-2" />
+                            Locked
+                          </>
+                        ) : (
+                          "Start Test"
+                        )}
                       </Button>
                     </div>
                   </CardContent>
