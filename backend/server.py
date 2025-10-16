@@ -286,18 +286,17 @@ Student Answer: {student_answer}
 @api_router.post("/send-notification")
 async def send_notification(request: NotificationEmailRequest):
     try:
-        import smtplib
         from email.mime.text import MIMEText
         from email.mime.multipart import MIMEMultipart
         from google.oauth2.credentials import Credentials
         from google.auth.transport.requests import Request
+        from googleapiclient.discovery import build
         import base64
         
         # Get Gmail OAuth credentials from environment
         client_id = os.environ.get('GMAIL_CLIENT_ID')
         client_secret = os.environ.get('GMAIL_CLIENT_SECRET')
         refresh_token = os.environ.get('GMAIL_REFRESH_TOKEN')
-        from_email = os.environ.get('GMAIL_FROM_EMAIL', 'noreply@admitai.com')
         
         if not all([client_id, client_secret, refresh_token]):
             logging.warning("Gmail credentials not fully configured")
@@ -312,17 +311,21 @@ async def send_notification(request: NotificationEmailRequest):
             refresh_token=refresh_token,
             token_uri='https://oauth2.googleapis.com/token',
             client_id=client_id,
-            client_secret=client_secret
+            client_secret=client_secret,
+            scopes=['https://www.googleapis.com/auth/gmail.send']
         )
         
         # Refresh the access token
         creds.refresh(Request())
         
+        # Build Gmail API service
+        service = build('gmail', 'v1', credentials=creds)
+        
         # Create email message
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = f"AdmitAI Test Results - {request.result.upper()}"
-        msg['From'] = from_email
-        msg['To'] = request.to_email
+        message = MIMEMultipart('alternative')
+        message['Subject'] = f"AdmitAI Test Results - {request.result.upper()}"
+        message['From'] = 'AdmitAI <noreply@gmail.com>'
+        message['To'] = request.to_email
         
         # Email body
         html_body = f"""
@@ -339,7 +342,7 @@ async def send_notification(request: NotificationEmailRequest):
               
               <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
                 <p style="margin: 10px 0;"><strong>Result:</strong> <span style="color: {'#22c55e' if request.result == 'pass' else '#ef4444'}; font-weight: bold;">{request.result.upper()}</span></p>
-                <p style="margin: 10px 0;"><strong>Score:</strong> {request.score:.1f} / 100</p>
+                <p style="margin: 10px 0;"><strong>Score:</strong> {request.score:.1f}%</p>
               </div>
               
               {'<p style="color: #22c55e;">Congratulations! You have passed the test. Our team will review your application and contact you with next steps.</p>' if request.result == 'pass' else '<p style="color: #ef4444;">Unfortunately, you did not pass this attempt. Please review the feedback provided in your test results.</p>'}
@@ -354,39 +357,36 @@ async def send_notification(request: NotificationEmailRequest):
         """
         
         text_body = f"""
-        AdmitAI Test Results
-        
-        Dear {request.student_name},
-        
-        Your admission test has been evaluated with the following results:
-        
-        Result: {request.result.upper()}
-        Score: {request.score:.1f} / 100
-        
-        {'Congratulations! You have passed the test.' if request.result == 'pass' else 'Unfortunately, you did not pass this attempt.'}
-        
-        Thank you for taking the AdmitAI admission test.
-        
-        Best regards,
-        AdmitAI Team
+AdmitAI Test Results
+
+Dear {request.student_name},
+
+Your admission test has been evaluated with the following results:
+
+Result: {request.result.upper()}
+Score: {request.score:.1f}%
+
+{'Congratulations! You have passed the test.' if request.result == 'pass' else 'Unfortunately, you did not pass this attempt.'}
+
+Thank you for taking the AdmitAI admission test.
+
+Best regards,
+AdmitAI Team
         """
         
-        msg.attach(MIMEText(text_body, 'plain'))
-        msg.attach(MIMEText(html_body, 'html'))
+        message.attach(MIMEText(text_body, 'plain'))
+        message.attach(MIMEText(html_body, 'html'))
         
-        # Send email using Gmail SMTP with OAuth2
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
+        # Encode the message
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
         
-        # Authenticate using OAuth2
-        auth_string = f"user={from_email}\1auth=Bearer {creds.token}\1\1"
-        server.docmd('AUTH', 'XOAUTH2 ' + base64.b64encode(auth_string.encode()).decode())
+        # Send the email using Gmail API
+        send_message = service.users().messages().send(
+            userId='me',
+            body={'raw': raw_message}
+        ).execute()
         
-        # Send the email
-        server.send_message(msg)
-        server.quit()
-        
-        logging.info(f"✅ Email sent successfully to {request.to_email}")
+        logging.info(f"✅ Email sent successfully to {request.to_email} (Message ID: {send_message['id']})")
         
         return {
             "success": True,
@@ -395,7 +395,7 @@ async def send_notification(request: NotificationEmailRequest):
         
     except Exception as e:
         logging.error(f"❌ Error sending email: {str(e)}")
-        # Return success anyway to avoid breaking the flow
+        # Return success anyway to avoid breaking the flow, but log the error
         return {
             "success": False,
             "message": f"Email sending failed: {str(e)}"
