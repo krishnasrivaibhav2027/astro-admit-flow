@@ -164,7 +164,7 @@ const Test = () => {
       }
 
       // Evaluate answers using backend API instead of Supabase Edge Function
-      const backendUrl = import.meta.env.REACT_APP_BACKEND_URL;
+      const backendUrl = import.meta.env.VITE_BACKEND_URL;
       const evalResponse = await fetch(`${backendUrl}/api/evaluate-answers`, {
         method: 'POST',
         headers: {
