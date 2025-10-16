@@ -433,7 +433,12 @@ const Test = () => {
   const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 dark:from-primary/10 dark:via-background dark:to-secondary/10 p-4">
+      {/* Theme Toggle */}
+      <div className="absolute top-4 right-4 z-50">
+        <ModeToggle />
+      </div>
+
       <div className="max-w-4xl mx-auto py-8 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
