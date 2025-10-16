@@ -53,12 +53,21 @@ const Test = () => {
     try {
       const numQuestions = level === "easy" ? 5 : level === "medium" ? 3 : 2;
       
-      const { data, error } = await supabase.functions.invoke("generate-questions", {
-        body: { level, numQuestions }
+      // Use backend API instead of Supabase Edge Function
+      const backendUrl = import.meta.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_BACKEND_URL;
+      const response = await fetch(`${backendUrl}/api/generate-questions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ level, num_questions: numQuestions })
       });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error('Failed to generate questions');
+      }
       
+      const data = await response.json();
       setQuestions(data.questions);
       
       // Fetch previous results to get current attempt counts
