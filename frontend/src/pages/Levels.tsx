@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Target, Zap, Crown, Lock, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { ModeToggle } from "@/components/mode-toggle";
 
 type LevelStatus = "locked" | "current" | "completed";
 
