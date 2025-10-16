@@ -239,6 +239,11 @@ const Results = () => {
                       }}
                     />
                   </div>
+                  {criterion.feedback && (
+                    <p className="text-sm text-muted-foreground mt-1 pl-2 border-l-2 border-primary/30">
+                      {criterion.feedback}
+                    </p>
+                  )}
                 </div>
               ))}
             </CardContent>
