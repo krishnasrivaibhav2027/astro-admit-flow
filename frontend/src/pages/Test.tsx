@@ -163,19 +163,21 @@ const Test = () => {
         await supabase.from("student_answers").insert(answersToInsert);
       }
 
-      // Evaluate answers
-      const { data: evaluationData, error: evalError } = await supabase.functions.invoke("evaluate-answers", {
-        body: {
-          resultId,
-          questions: questions.map((q, idx) => ({
-            question: q.question,
-            correctAnswer: q.answer,
-            studentAnswer: allAnswers[idx]
-          }))
-        }
+      // Evaluate answers using backend API instead of Supabase Edge Function
+      const backendUrl = import.meta.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_BACKEND_URL;
+      const evalResponse = await fetch(`${backendUrl}/api/evaluate-answers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ result_id: resultId })
       });
 
-      if (evalError) throw evalError;
+      if (!evalResponse.ok) {
+        throw new Error('Failed to evaluate answers');
+      }
+
+      const evaluationData = await evalResponse.json();
 
       // Get current result to update attempts
       const { data: currentResult } = await supabase
@@ -189,14 +191,12 @@ const Test = () => {
       const attemptsField = `attempts_${level}`;
       
       const newAttemptCount = (currentResult[attemptsField] || 0) + 1;
-      const testResult = evaluationData.averageScore >= 5 ? "pass" : "fail";
+      const testResult = evaluationData.result; // 'pass' or 'fail' from backend
 
-      // Update result with score and incremented attempts
+      // Update result with incremented attempts
       await supabase
         .from("results")
         .update({
-          score: evaluationData.averageScore,
-          result: testResult,
           [attemptsField]: newAttemptCount
         })
         .eq("id", resultId);
@@ -213,16 +213,18 @@ const Test = () => {
             .single();
 
           if (studentData) {
-            // Send email notification
-            await supabase.functions.invoke("send-notification-email", {
-              body: {
-                studentEmail: studentData.email,
-                studentName: `${studentData.first_name} ${studentData.last_name}`,
-                level,
+            // Send email notification via backend API
+            await fetch(`${backendUrl}/api/send-notification`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                to_email: studentData.email,
+                student_name: `${studentData.first_name} ${studentData.last_name}`,
                 result: testResult,
-                score: evaluationData.averageScore,
-                attempts: newAttemptCount
-              }
+                score: evaluationData.percentage
+              })
             });
           }
         } catch (emailError) {
@@ -234,10 +236,10 @@ const Test = () => {
       navigate("/results", {
         state: {
           studentId,
-          score: evaluationData.averageScore,
+          score: evaluationData.percentage,
           result: testResult,
           level,
-          detailedScores: evaluationData.scores
+          detailedScores: evaluationData.evaluations
         }
       });
       
