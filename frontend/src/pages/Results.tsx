@@ -120,32 +120,18 @@ const Results = () => {
   };
 
   const isPassed = result === "pass";
-  const scorePercentage = (score / 10) * 100;
 
-  // Process detailed scores - handle 6 evaluation criteria from LangGraph
-  const criteria = detailedScores && Array.isArray(detailedScores) ? 
-    detailedScores.flatMap((item: any) => {
-      // If item has scores object (6 criteria per question)
-      if (item.scores) {
-        return [
-          { name: `Q${item.question_number}: Relevance`, score: item.scores.Relevance, category: "Relevance" },
-          { name: `Q${item.question_number}: Clarity`, score: item.scores.Clarity, category: "Clarity" },
-          { name: `Q${item.question_number}: Subject Understanding`, score: item.scores.SubjectUnderstanding, category: "Understanding" },
-          { name: `Q${item.question_number}: Accuracy`, score: item.scores.Accuracy, category: "Accuracy" },
-          { name: `Q${item.question_number}: Completeness`, score: item.scores.Completeness, category: "Completeness" },
-          { name: `Q${item.question_number}: Critical Thinking`, score: item.scores.CriticalThinking, category: "Thinking" }
-        ];
-      }
-      // Fallback format
-      return [{
-        name: `Question ${item.question_number || 1}`,
-        score: item.score || item.average || 5,
-        category: "Overall"
-      }];
-    }) : 
-    [
-      { name: "Overall Performance", score: score, category: "Overall" }
-    ];
+  // Display 6 evaluation criteria (average scores across all questions)
+  const evaluationCriteria = criteria ? [
+    { name: "Relevance", score: criteria.Relevance || 5 },
+    { name: "Clarity", score: criteria.Clarity || 5 },
+    { name: "Subject Understanding", score: criteria.SubjectUnderstanding || 5 },
+    { name: "Accuracy", score: criteria.Accuracy || 5 },
+    { name: "Completeness", score: criteria.Completeness || 5 },
+    { name: "Critical Thinking", score: criteria.CriticalThinking || 5 }
+  ] : [
+    { name: "Overall Performance", score: score }
+  ];
 
   const getScoreColor = (score: number) => {
     if (score >= 8) return "text-green-600";
