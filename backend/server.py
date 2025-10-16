@@ -282,18 +282,26 @@ Student Answer: {student_answer}
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Email notification endpoint (placeholder)
+# Email notification endpoint (placeholder - needs full Gmail OAuth implementation)
 @api_router.post("/send-notification")
 async def send_notification(request: NotificationEmailRequest):
     try:
         # TODO: Implement Gmail OAuth email sending
-        logging.info(f"Notification requested for {request.to_email}: {request.result} (Score: {request.score})")
+        # Current implementation logs the notification but doesn't send actual emails
+        # To enable email sending, implement Gmail SMTP with OAuth2 flow
+        
+        logging.info(f"📧 Email Notification Request:")
+        logging.info(f"   To: {request.to_email}")
+        logging.info(f"   Student: {request.student_name}")
+        logging.info(f"   Result: {request.result}")
+        logging.info(f"   Score: {request.score}")
+        
         return {
             "success": True,
-            "message": "Notification logged (email implementation pending)"
+            "message": "Notification logged (email implementation pending - requires Gmail OAuth setup)"
         }
     except Exception as e:
-        logging.error(f"Error sending notification: {e}")
+        logging.error(f"Error processing notification: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
