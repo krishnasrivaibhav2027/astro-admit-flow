@@ -147,24 +147,66 @@ const Test = () => {
     setSubmitting(true);
     
     try {
+      // Validate we have a result ID
+      if (!resultId) {
+        throw new Error("No test result ID found. Please restart the test.");
+      }
+
+      // Validate we have answers
+      if (!allAnswers || allAnswers.length === 0) {
+        throw new Error("No answers provided");
+      }
+
       // Save all answers
-      const { data: questionRecords } = await supabase
+      const { data: questionRecords, error: questionsError } = await supabase
         .from("questions")
         .select("id")
         .eq("result_id", resultId)
         .order("created_at");
 
-      if (questionRecords) {
-        const answersToInsert = allAnswers.map((answer, idx) => ({
-          question_id: questionRecords[idx].id,
-          student_answer: answer
-        }));
-
-        await supabase.from("student_answers").insert(answersToInsert);
+      if (questionsError) {
+        console.error("Error fetching questions:", questionsError);
+        throw new Error("Failed to fetch questions");
       }
 
-      // Evaluate answers using backend API instead of Supabase Edge Function
+      if (!questionRecords || questionRecords.length === 0) {
+        throw new Error("No questions found for this test");
+      }
+
+      if (questionRecords.length !== allAnswers.length) {
+        console.warn(`Question count mismatch: ${questionRecords.length} questions, ${allAnswers.length} answers`);
+      }
+
+      // Insert answers with validation
+      const answersToInsert = allAnswers.map((answer, idx) => {
+        if (!questionRecords[idx]) {
+          console.error(`No question found at index ${idx}`);
+          return null;
+        }
+        return {
+          question_id: questionRecords[idx].id,
+          student_answer: answer || ""  // Ensure answer is never undefined
+        };
+      }).filter(Boolean);  // Remove any null entries
+
+      if (answersToInsert.length > 0) {
+        const { error: insertError } = await supabase
+          .from("student_answers")
+          .insert(answersToInsert);
+        
+        if (insertError) {
+          console.error("Error inserting answers:", insertError);
+          throw new Error("Failed to save answers");
+        }
+      }
+
+      // Evaluate answers using backend API
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      
+      if (!backendUrl) {
+        throw new Error("Backend URL not configured");
+      }
+
       const evalResponse = await fetch(`${backendUrl}/api/evaluate-answers`, {
         method: 'POST',
         headers: {
@@ -174,24 +216,33 @@ const Test = () => {
       });
 
       if (!evalResponse.ok) {
+        const errorText = await evalResponse.text();
+        console.error("Evaluation error:", errorText);
         throw new Error('Failed to evaluate answers');
       }
 
       const evaluationData = await evalResponse.json();
 
+      // Validate evaluation response
+      if (!evaluationData || typeof evaluationData.score === 'undefined') {
+        throw new Error("Invalid evaluation response");
+      }
+
       // Get current result to update attempts
-      const { data: currentResult } = await supabase
+      const { data: currentResult, error: resultError } = await supabase
         .from("results")
         .select("*")
         .eq("id", resultId)
         .single();
 
-      if (!currentResult) throw new Error("Result not found");
+      if (resultError || !currentResult) {
+        console.error("Error fetching result:", resultError);
+        throw new Error("Result not found");
+      }
 
       const attemptsField = `attempts_${level}`;
-      
       const newAttemptCount = (currentResult[attemptsField] || 0) + 1;
-      const testResult = evaluationData.result; // 'pass' or 'fail' from backend
+      const testResult = evaluationData.result || 'fail';
 
       // Update result with incremented attempts
       await supabase
@@ -205,7 +256,6 @@ const Test = () => {
       const maxAttempts = level === "easy" ? 1 : 2;
       if (testResult === "pass" || newAttemptCount >= maxAttempts) {
         try {
-          // Get student data for email
           const { data: studentData } = await supabase
             .from("students")
             .select("*")
@@ -213,7 +263,6 @@ const Test = () => {
             .single();
 
           if (studentData) {
-            // Send email notification via backend API
             await fetch(`${backendUrl}/api/send-notification`, {
               method: 'POST',
               headers: {
@@ -223,30 +272,32 @@ const Test = () => {
                 to_email: studentData.email,
                 student_name: `${studentData.first_name} ${studentData.last_name}`,
                 result: testResult,
-                score: evaluationData.score  // Out of 10
+                score: evaluationData.score || 0
               })
             });
           }
         } catch (emailError) {
-          console.error("Error sending email notification:", emailError);
+          console.error("Email notification error:", emailError);
           // Don't fail the test submission if email fails
         }
       }
 
+      // Navigate to results with validated data
       navigate("/results", {
         state: {
           studentId,
-          score: evaluationData.score,  // Out of 10
+          score: evaluationData.score || 0,
           result: testResult,
           level,
-          criteria: evaluationData.criteria  // 6 criteria averages
+          criteria: evaluationData.criteria || {}
         }
       });
       
     } catch (error: any) {
+      console.error("Test submission error:", error);
       toast({
         title: "Submission Error",
-        description: error.message || "Failed to submit test",
+        description: error.message || "Failed to submit test. Please try again.",
         variant: "destructive"
       });
     } finally {
