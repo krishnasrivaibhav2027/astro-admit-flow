@@ -317,35 +317,40 @@ async def evaluate_answers(request: EvaluateAnswersRequest):
                     "average": 5.0
                 })
         
-        # Calculate overall score
+        # Calculate overall score (average out of 10)
         total_avg = sum(e['average'] for e in all_evaluations) / len(all_evaluations)
-        percentage = (total_avg / 10) * 100
         
-        # Determine pass/fail (60% threshold)
-        result_status = 'pass' if percentage >= 60 else 'fail'
+        # Score is out of 10
+        score_out_of_10 = total_avg
         
-        # Update result in Supabase
+        # Determine pass/fail (6/10 threshold = 60%)
+        result_status = 'pass' if score_out_of_10 >= 6.0 else 'fail'
+        
+        # Calculate average for each of the 6 criteria across all questions
+        criteria_averages = {
+            "Relevance": sum(e['scores']['Relevance'] for e in all_evaluations) / len(all_evaluations),
+            "Clarity": sum(e['scores']['Clarity'] for e in all_evaluations) / len(all_evaluations),
+            "SubjectUnderstanding": sum(e['scores']['SubjectUnderstanding'] for e in all_evaluations) / len(all_evaluations),
+            "Accuracy": sum(e['scores']['Accuracy'] for e in all_evaluations) / len(all_evaluations),
+            "Completeness": sum(e['scores']['Completeness'] for e in all_evaluations) / len(all_evaluations),
+            "CriticalThinking": sum(e['scores']['CriticalThinking'] for e in all_evaluations) / len(all_evaluations)
+        }
+        
+        # Update result in Supabase with score out of 10
         supabase.table("results").update({
-            "score": percentage,
+            "score": score_out_of_10,
             "result": result_status,
             "updated_at": datetime.utcnow().isoformat()
         }).eq("id", result_id).execute()
         
-        logging.info(f"✅ Evaluation complete: {percentage:.1f}% - {result_status.upper()}")
+        logging.info(f"✅ Evaluation complete: {score_out_of_10:.1f}/10 - {result_status.upper()}")
         
         return {
             "result_id": result_id,
-            "percentage": percentage,
+            "score": score_out_of_10,  # Out of 10
             "result": result_status,
-            "evaluations": all_evaluations,
-            "criteria_breakdown": {
-                "Relevance": sum(e['scores']['Relevance'] for e in all_evaluations) / len(all_evaluations),
-                "Clarity": sum(e['scores']['Clarity'] for e in all_evaluations) / len(all_evaluations),
-                "SubjectUnderstanding": sum(e['scores']['SubjectUnderstanding'] for e in all_evaluations) / len(all_evaluations),
-                "Accuracy": sum(e['scores']['Accuracy'] for e in all_evaluations) / len(all_evaluations),
-                "Completeness": sum(e['scores']['Completeness'] for e in all_evaluations) / len(all_evaluations),
-                "CriticalThinking": sum(e['scores']['CriticalThinking'] for e in all_evaluations) / len(all_evaluations)
-            }
+            "criteria": criteria_averages,  # 6 criteria as overall averages
+            "evaluations": all_evaluations  # Individual question details (for reference)
         }
         
     except json.JSONDecodeError as e:
