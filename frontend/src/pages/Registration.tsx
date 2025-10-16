@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,8 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, UserPlus } from "lucide-react";
+import { ArrowLeft, UserPlus, Shield } from "lucide-react";
 import { z } from "zod";
+import HCaptcha from "@hcaptcha/react-hcaptcha";
 
 const registrationSchema = z.object({
   firstName: z.string().min(2, "First name must be at least 2 characters"),
@@ -22,6 +23,8 @@ const Registration = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRef = useRef<HCaptcha>(null);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -31,8 +34,27 @@ const Registration = () => {
     phone: ""
   });
 
+  const handleCaptchaVerify = (token: string) => {
+    setCaptchaToken(token);
+  };
+
+  const handleCaptchaExpire = () => {
+    setCaptchaToken(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Check if captcha is verified
+    if (!captchaToken) {
+      toast({
+        title: "Verification Required",
+        description: "Please complete the CAPTCHA verification.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
