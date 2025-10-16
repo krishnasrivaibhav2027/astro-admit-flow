@@ -134,8 +134,8 @@ async def generate_questions(request: GenerateQuestionsRequest):
         level = request.level
         num_questions = request.num_questions
         
-        # Configure Gemini model (use gemini-pro for the free tier)
-        model = genai.GenerativeModel('gemini-pro')
+        # Configure Gemini model (use latest model)
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         user_prompt = f"""Generate {num_questions} UNIQUE physics questions at {level} difficulty level.
 
