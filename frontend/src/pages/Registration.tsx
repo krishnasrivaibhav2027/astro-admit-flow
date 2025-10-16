@@ -202,12 +202,28 @@ const Registration = () => {
                 />
               </div>
 
+              {/* hCaptcha Verification */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <Shield className="w-4 h-4 text-primary" />
+                  <Label>Security Verification</Label>
+                </div>
+                <div className="flex justify-center">
+                  <HCaptcha
+                    sitekey={import.meta.env.VITE_HCAPTCHA_SITE_KEY}
+                    onVerify={handleCaptchaVerify}
+                    onExpire={handleCaptchaExpire}
+                    ref={captchaRef}
+                  />
+                </div>
+              </div>
+
               <Button 
                 type="submit" 
                 className="w-full" 
                 size="lg"
                 variant="glow"
-                disabled={loading}
+                disabled={loading || !captchaToken}
               >
                 {loading ? "Registering..." : "Register & Start Test"}
               </Button>
