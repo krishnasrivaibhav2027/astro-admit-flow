@@ -122,19 +122,29 @@ const Results = () => {
   const isPassed = result === "pass";
   const scorePercentage = (score / 10) * 100;
 
-  // Process detailed scores - handle both formats
+  // Process detailed scores - handle 6 evaluation criteria from LangGraph
   const criteria = detailedScores && Array.isArray(detailedScores) ? 
-    detailedScores.map((item: any, index: number) => ({
-      name: `Question ${item.question_number || index + 1}`,
-      score: item.score || 0,
-      feedback: item.feedback || ""
-    })) : 
+    detailedScores.flatMap((item: any) => {
+      // If item has scores object (6 criteria per question)
+      if (item.scores) {
+        return [
+          { name: `Q${item.question_number}: Relevance`, score: item.scores.Relevance, category: "Relevance" },
+          { name: `Q${item.question_number}: Clarity`, score: item.scores.Clarity, category: "Clarity" },
+          { name: `Q${item.question_number}: Subject Understanding`, score: item.scores.SubjectUnderstanding, category: "Understanding" },
+          { name: `Q${item.question_number}: Accuracy`, score: item.scores.Accuracy, category: "Accuracy" },
+          { name: `Q${item.question_number}: Completeness`, score: item.scores.Completeness, category: "Completeness" },
+          { name: `Q${item.question_number}: Critical Thinking`, score: item.scores.CriticalThinking, category: "Thinking" }
+        ];
+      }
+      // Fallback format
+      return [{
+        name: `Question ${item.question_number || 1}`,
+        score: item.score || item.average || 5,
+        category: "Overall"
+      }];
+    }) : 
     [
-      { name: "Question 1", score: score, feedback: "" },
-      { name: "Question 2", score: score, feedback: "" },
-      { name: "Question 3", score: score, feedback: "" },
-      { name: "Question 4", score: score, feedback: "" },
-      { name: "Question 5", score: score, feedback: "" }
+      { name: "Overall Performance", score: score, category: "Overall" }
     ];
 
   const getScoreColor = (score: number) => {
