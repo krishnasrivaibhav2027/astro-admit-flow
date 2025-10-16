@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft, UserPlus, Shield } from "lucide-react";
 import { z } from "zod";
 import HCaptcha from "@hcaptcha/react-hcaptcha";
+import { ModeToggle } from "@/components/mode-toggle";
 
 const registrationSchema = z.object({
   firstName: z.string().min(2, "First name must be at least 2 characters"),
