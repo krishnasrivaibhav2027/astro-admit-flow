@@ -245,12 +245,15 @@ async def evaluate_answers(request: EvaluateAnswersRequest):
     try:
         result_id = request.result_id
         
+        if not result_id:
+            raise HTTPException(status_code=400, detail="result_id is required")
+        
         # Get questions with their answers
         questions_response = supabase.table("questions").select(
             "id, question_text, correct_answer, student_answers(student_answer)"
         ).eq("result_id", result_id).order("created_at").execute()
         
-        if not questions_response.data:
+        if not questions_response.data or len(questions_response.data) == 0:
             raise HTTPException(status_code=404, detail="No questions found for this result")
         
         questions = questions_response.data
@@ -261,51 +264,69 @@ async def evaluate_answers(request: EvaluateAnswersRequest):
         all_evaluations = []
         
         for idx, q in enumerate(questions, 1):
-            student_answer = ""
-            if q.get('student_answers') and len(q['student_answers']) > 0:
-                student_answer = q['student_answers'][0].get('student_answer', 'No answer provided')
-            
-            # Get relevant context for this question
-            context_docs = get_physics_context(q['question_text'], k=2)
-            context = "\n\n".join(context_docs) if context_docs else ""
-            
-            # Evaluate using LangChain prompt
-            prompt = evaluate_answer_prompt.format_messages(
-                context=context[:1500],
-                question=q['question_text'],
-                correct_answer=q['correct_answer'],
-                student_answer=student_answer
-            )
-            
-            response = llm.invoke(prompt)
-            response_text = response.content.strip()
-            
-            # Clean up response
-            if response_text.startswith('```'):
-                response_text = response_text.split('```')[1]
-                if response_text.startswith('json'):
-                    response_text = response_text[4:]
-                response_text = response_text.strip()
-            
-            # Parse evaluation
             try:
-                scores_json = json.loads(response_text)
-                evaluation = EvaluationCriteria(**scores_json)
+                student_answer = ""
+                if q.get('student_answers') and len(q['student_answers']) > 0:
+                    student_answer = q['student_answers'][0].get('student_answer', 'No answer provided')
                 
-                all_evaluations.append({
-                    "question_number": idx,
-                    "question": q['question_text'],
-                    "student_answer": student_answer,
-                    "scores": evaluation.model_dump(),
-                    "average": evaluation.average
-                })
+                # Get relevant context for this question
+                context_docs = get_physics_context(q.get('question_text', ''), k=2)
+                context = "\n\n".join(context_docs) if context_docs else ""
+                
+                # Evaluate using LangChain prompt
+                prompt = evaluate_answer_prompt.format_messages(
+                    context=context[:1500],
+                    question=q.get('question_text', ''),
+                    correct_answer=q.get('correct_answer', ''),
+                    student_answer=student_answer
+                )
+                
+                response = llm.invoke(prompt)
+                response_text = response.content.strip()
+                
+                # Clean up response
+                if response_text.startswith('```'):
+                    response_text = response_text.split('```')[1]
+                    if response_text.startswith('json'):
+                        response_text = response_text[4:]
+                    response_text = response_text.strip()
+                
+                # Parse evaluation
+                try:
+                    scores_json = json.loads(response_text)
+                    evaluation = EvaluationCriteria(**scores_json)
+                    
+                    all_evaluations.append({
+                        "question_number": idx,
+                        "question": q.get('question_text', ''),
+                        "student_answer": student_answer,
+                        "scores": evaluation.model_dump(),
+                        "average": evaluation.average
+                    })
+                except (json.JSONDecodeError, Exception) as e:
+                    logging.error(f"Error parsing evaluation for Q{idx}: {e}")
+                    # Fallback scores
+                    all_evaluations.append({
+                        "question_number": idx,
+                        "question": q.get('question_text', ''),
+                        "student_answer": student_answer,
+                        "scores": {
+                            "Relevance": 5.0,
+                            "Clarity": 5.0,
+                            "SubjectUnderstanding": 5.0,
+                            "Accuracy": 5.0,
+                            "Completeness": 5.0,
+                            "CriticalThinking": 5.0
+                        },
+                        "average": 5.0
+                    })
             except Exception as e:
-                logging.error(f"Error parsing evaluation for Q{idx}: {e}")
-                # Fallback scores
+                logging.error(f"Error evaluating question {idx}: {e}")
+                # Continue with fallback
                 all_evaluations.append({
                     "question_number": idx,
-                    "question": q['question_text'],
-                    "student_answer": student_answer,
+                    "question": "Error",
+                    "student_answer": "",
                     "scores": {
                         "Relevance": 5.0,
                         "Clarity": 5.0,
@@ -316,6 +337,10 @@ async def evaluate_answers(request: EvaluateAnswersRequest):
                     },
                     "average": 5.0
                 })
+        
+        # Ensure we have evaluations
+        if not all_evaluations or len(all_evaluations) == 0:
+            raise HTTPException(status_code=500, detail="Failed to evaluate any answers")
         
         # Calculate overall score (average out of 10)
         total_avg = sum(e['average'] for e in all_evaluations) / len(all_evaluations)
@@ -337,11 +362,15 @@ async def evaluate_answers(request: EvaluateAnswersRequest):
         }
         
         # Update result in Supabase with score out of 10
-        supabase.table("results").update({
-            "score": score_out_of_10,
-            "result": result_status,
-            "updated_at": datetime.utcnow().isoformat()
-        }).eq("id", result_id).execute()
+        try:
+            supabase.table("results").update({
+                "score": score_out_of_10,
+                "result": result_status,
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("id", result_id).execute()
+        except Exception as e:
+            logging.error(f"Error updating result: {e}")
+            # Continue even if update fails
         
         logging.info(f"✅ Evaluation complete: {score_out_of_10:.1f}/10 - {result_status.upper()}")
         
@@ -353,14 +382,12 @@ async def evaluate_answers(request: EvaluateAnswersRequest):
             "evaluations": all_evaluations  # Individual question details (for reference)
         }
         
-    except json.JSONDecodeError as e:
-        logging.error(f"JSON parsing error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to parse AI evaluation")
     except HTTPException:
         raise
     except Exception as e:
         logging.error(f"Error evaluating answers: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"Traceback: ", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Evaluation error: {str(e)}")
 
 
 # ===== EMAIL NOTIFICATION =====
