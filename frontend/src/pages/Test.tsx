@@ -223,7 +223,7 @@ const Test = () => {
                 to_email: studentData.email,
                 student_name: `${studentData.first_name} ${studentData.last_name}`,
                 result: testResult,
-                score: evaluationData.percentage
+                score: evaluationData.score  // Out of 10
               })
             });
           }
