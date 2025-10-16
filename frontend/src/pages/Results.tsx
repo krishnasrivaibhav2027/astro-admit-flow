@@ -193,7 +193,7 @@ const Results = () => {
                 </div>
               </div>
 
-              <Progress value={scorePercentage} className="h-3" />
+              <Progress value={(score / 10) * 100} className="h-3" />
 
               {isPassed ? (
                 <Badge className="text-lg px-6 py-2 bg-green-500 hover:bg-green-600">
