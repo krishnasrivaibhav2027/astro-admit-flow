@@ -116,13 +116,26 @@ class NotificationEmailRequest(BaseModel):
 async def startup_db_pool():
     global db_pool
     database_url = os.environ.get('DATABASE_URL')
-    db_pool = await asyncpg.create_pool(
-        database_url,
-        min_size=2,
-        max_size=10,
-        command_timeout=60
-    )
-    logging.info("Database connection pool created")
+    try:
+        db_pool = await asyncpg.create_pool(
+            database_url,
+            min_size=2,
+            max_size=10,
+            command_timeout=60,
+            timeout=30
+        )
+        # Test the connection
+        async with db_pool.acquire() as conn:
+            await conn.fetchval('SELECT 1')
+        logging.info("✅ Database connection pool created and tested successfully")
+    except Exception as e:
+        logging.error(f"❌ Failed to connect to Supabase database: {str(e)}")
+        logging.error("Please ensure:")
+        logging.error("  1. Database tables are created (see SUPABASE_SETUP_INSTRUCTIONS.md)")
+        logging.error("  2. Supabase project is not paused")
+        logging.error("  3. Connection string is correct")
+        logging.error("  4. Network connectivity to Supabase is available")
+        raise
 
 
 @app.on_event("shutdown")
