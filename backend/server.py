@@ -160,11 +160,21 @@ async def root():
 @api_router.get("/health")
 async def health_check():
     try:
+        if db_pool is None:
+            return {
+                "status": "unhealthy", 
+                "database": "not_connected",
+                "error": "Database pool not initialized. Please check logs and setup instructions."
+            }
         async with db_pool.acquire() as conn:
             await conn.fetchval('SELECT 1')
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Database unhealthy: {str(e)}")
+        return {
+            "status": "unhealthy",
+            "database": "error",
+            "error": str(e)
+        }
 
 
 # Student endpoints
