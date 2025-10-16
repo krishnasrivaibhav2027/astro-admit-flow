@@ -316,10 +316,17 @@ const Results = () => {
               size="lg"
               variant="outline"
               className="flex-1"
-              onClick={() => navigate("/levels", { state: { studentId } })}
+              onClick={() => {
+                // If max attempts reached or easy level failed, go to home
+                if (currentAttempts >= maxAttempts || (level === "easy" && !isPassed)) {
+                  navigate("/");
+                } else {
+                  navigate("/levels", { state: { studentId } });
+                }
+              }}
             >
               <Home className="w-5 h-5 mr-2" />
-              Back to Levels
+              {currentAttempts >= maxAttempts || (level === "easy" && !isPassed) ? "Back to Home" : "Back to Levels"}
             </Button>
           </div>
         </div>
