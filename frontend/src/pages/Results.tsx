@@ -74,26 +74,29 @@ const Results = () => {
         .single();
 
       if (studentData) {
-        // Send email notification
-        const { error } = await supabase.functions.invoke("send-notification-email", {
-          body: {
-            studentEmail: studentData.email,
-            studentName: `${studentData.first_name} ${studentData.last_name}`,
-            level,
+        // Send email notification via backend API
+        const backendUrl = import.meta.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_BACKEND_URL;
+        const response = await fetch(`${backendUrl}/api/send-notification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            to_email: studentData.email,
+            student_name: `${studentData.first_name} ${studentData.last_name}`,
             result: "fail",
-            score,
-            attempts: currentAttempts
-          }
+            score: score
+          })
         });
 
-        if (!error) {
+        if (response.ok) {
           setEmailSent(true);
           toast({
             title: "Email Sent",
             description: "A notification email has been sent regarding your test results.",
           });
         } else {
-          console.error("Email sending error:", error);
+          console.error("Email sending error");
           // Still mark as sent to avoid retry loops
           setEmailSent(true);
         }
