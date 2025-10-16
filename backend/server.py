@@ -399,7 +399,7 @@ Dear {request.student_name},
 Your AdmitAI admission test results:
 
 Result: {request.result.upper()}
-Score: {request.score:.1f}%
+Score: {request.score:.1f} / 10
 
 {'Congratulations! You have passed.' if request.result == 'pass' else 'Please review your results and try again.'}
 
