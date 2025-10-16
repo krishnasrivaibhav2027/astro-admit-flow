@@ -53,8 +53,13 @@ const Test = () => {
     try {
       const numQuestions = level === "easy" ? 5 : level === "medium" ? 3 : 2;
       
-      // Use backend API instead of Supabase Edge Function
+      // Validate backend URL
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      if (!backendUrl) {
+        throw new Error('Backend URL not configured');
+      }
+
+      // Use backend API to generate questions
       const response = await fetch(`${backendUrl}/api/generate-questions`, {
         method: 'POST',
         headers: {
@@ -64,19 +69,31 @@ const Test = () => {
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Question generation error:', errorText);
         throw new Error('Failed to generate questions');
       }
       
       const data = await response.json();
+      
+      // Validate response
+      if (!data || !data.questions || !Array.isArray(data.questions) || data.questions.length === 0) {
+        throw new Error('Invalid questions response from server');
+      }
+
       setQuestions(data.questions);
       
       // Fetch previous results to get current attempt counts
-      const { data: previousResults } = await supabase
+      const { data: previousResults, error: fetchError } = await supabase
         .from("results")
         .select("*")
         .eq("student_id", studentId)
         .order("created_at", { ascending: false })
         .limit(1);
+
+      if (fetchError) {
+        console.warn('Error fetching previous results:', fetchError);
+      }
 
       const previousAttempts = previousResults?.[0] || {
         attempts_easy: 0,
@@ -99,22 +116,34 @@ const Test = () => {
         .select()
         .single();
 
-      if (resultError) throw resultError;
+      if (resultError || !result) {
+        console.error('Error creating result:', resultError);
+        throw new Error('Failed to create test result entry');
+      }
+
       setResultId(result.id);
 
-      // Save questions
+      // Save questions with validation
       const questionsToInsert = data.questions.map((q: Question) => ({
         result_id: result.id,
-        question_text: q.question,
-        correct_answer: q.answer
+        question_text: q.question || '',
+        correct_answer: q.answer || ''
       }));
 
-      await supabase.from("questions").insert(questionsToInsert);
+      const { error: insertError } = await supabase
+        .from("questions")
+        .insert(questionsToInsert);
+      
+      if (insertError) {
+        console.error('Error saving questions:', insertError);
+        throw new Error('Failed to save questions');
+      }
       
     } catch (error: any) {
+      console.error('Generate questions error:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to generate questions",
+        description: error.message || "Failed to generate questions. Please try again.",
         variant: "destructive"
       });
       navigate("/levels", { state: { studentId } });
