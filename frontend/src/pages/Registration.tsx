@@ -85,6 +85,10 @@ const Registration = () => {
 
       navigate("/levels", { state: { studentId: data.id } });
     } catch (error: any) {
+      // Reset captcha on error
+      setCaptchaToken(null);
+      captchaRef.current?.resetCaptcha();
+      
       toast({
         title: "Registration Failed",
         description: error.message || "Please check your information and try again.",
