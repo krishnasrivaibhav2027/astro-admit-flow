@@ -12,7 +12,7 @@ const Results = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const { studentId, score, result, level, detailedScores } = location.state || {};
+  const { studentId, score, result, level, criteria } = location.state || {};
   const [currentAttempts, setCurrentAttempts] = useState<number>(0);
   const [maxAttempts, setMaxAttempts] = useState<number>(0);
   const [emailSent, setEmailSent] = useState<boolean>(false);
