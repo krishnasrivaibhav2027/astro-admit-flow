@@ -218,7 +218,7 @@ const Results = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {criteria.map((criterion: any, index: number) => (
+              {evaluationCriteria.map((criterion: any, index: number) => (
                 <div key={index} className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-sm">{criterion.name}</span>
