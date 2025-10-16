@@ -122,14 +122,20 @@ const Results = () => {
   const isPassed = result === "pass";
   const scorePercentage = (score / 10) * 100;
 
-  const criteria = detailedScores || [
-    { name: "Relevance", score: score },
-    { name: "Clarity", score: score },
-    { name: "Subject Understanding", score: score },
-    { name: "Accuracy", score: score },
-    { name: "Completeness", score: score },
-    { name: "Critical Thinking", score: score }
-  ];
+  // Process detailed scores - handle both formats
+  const criteria = detailedScores && Array.isArray(detailedScores) ? 
+    detailedScores.map((item: any, index: number) => ({
+      name: `Question ${item.question_number || index + 1}`,
+      score: item.score || 0,
+      feedback: item.feedback || ""
+    })) : 
+    [
+      { name: "Question 1", score: score, feedback: "" },
+      { name: "Question 2", score: score, feedback: "" },
+      { name: "Question 3", score: score, feedback: "" },
+      { name: "Question 4", score: score, feedback: "" },
+      { name: "Question 5", score: score, feedback: "" }
+    ];
 
   const getScoreColor = (score: number) => {
     if (score >= 8) return "text-green-600";
