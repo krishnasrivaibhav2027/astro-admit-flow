@@ -175,7 +175,18 @@ const Registration = () => {
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="age">Age *</Label>
+                  <Label htmlFor="dob">Date of Birth *</Label>
+                  <Input
+                    id="dob"
+                    type="date"
+                    required
+                    value={formData.dob}
+                    onChange={(e) => handleDobChange(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="age">Age * (Auto-calculated)</Label>
                   <Input
                     id="age"
                     type="number"
@@ -183,19 +194,10 @@ const Registration = () => {
                     min="16"
                     max="100"
                     value={formData.age}
-                    onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                    placeholder="18"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="dob">Date of Birth *</Label>
-                  <Input
-                    id="dob"
-                    type="date"
-                    required
-                    value={formData.dob}
-                    onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
+                    readOnly
+                    disabled
+                    placeholder="Auto-calculated"
+                    className="bg-muted"
                   />
                 </div>
               </div>
