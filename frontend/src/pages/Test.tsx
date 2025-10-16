@@ -236,10 +236,10 @@ const Test = () => {
       navigate("/results", {
         state: {
           studentId,
-          score: evaluationData.percentage,
+          score: evaluationData.score,  // Out of 10
           result: testResult,
           level,
-          detailedScores: evaluationData.evaluations
+          criteria: evaluationData.criteria  // 6 criteria averages
         }
       });
       
