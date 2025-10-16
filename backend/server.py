@@ -198,8 +198,8 @@ async def evaluate_answers(request: EvaluateAnswersRequest):
         
         questions = questions_response.data
         
-        # Prepare evaluation prompt
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        # Prepare evaluation prompt (use gemini-2.5-flash as requested)
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         evaluation_prompt = """You are an expert physics examiner. Evaluate the following student answers against the model answers.
 
