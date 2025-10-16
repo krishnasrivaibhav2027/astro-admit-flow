@@ -235,7 +235,7 @@ const Results = () => {
               {criteria.map((criterion: any, index: number) => (
                 <div key={index} className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">{criterion.name}</span>
+                    <span className="font-medium text-sm">{criterion.name}</span>
                     <span className={`text-lg font-bold ${getScoreColor(criterion.score)}`}>
                       {criterion.score.toFixed(1)} / 10
                     </span>
@@ -245,15 +245,10 @@ const Results = () => {
                       className={`absolute inset-y-0 left-0 ${getScoreBg(criterion.score)} transition-all duration-1000`}
                       style={{ 
                         width: `${(criterion.score / 10) * 100}%`,
-                        animationDelay: `${index * 0.1}s`
+                        animationDelay: `${index * 0.05}s`
                       }}
                     />
                   </div>
-                  {criterion.feedback && (
-                    <p className="text-sm text-muted-foreground mt-1 pl-2 border-l-2 border-primary/30">
-                      {criterion.feedback}
-                    </p>
-                  )}
                 </div>
               ))}
             </CardContent>
