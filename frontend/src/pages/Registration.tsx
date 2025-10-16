@@ -125,6 +125,11 @@ const Registration = () => {
       <div className="absolute top-20 left-10 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-float" />
       <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
 
+      {/* Theme Toggle */}
+      <div className="absolute top-4 right-4 z-50">
+        <ModeToggle />
+      </div>
+
       <div className="relative z-10 w-full max-w-2xl animate-fade-in">
         <Button
           variant="ghost"
