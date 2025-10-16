@@ -117,12 +117,14 @@ async def startup_db_pool():
     global db_pool
     database_url = os.environ.get('DATABASE_URL')
     try:
+        # Try to establish connection pool with longer timeout
         db_pool = await asyncpg.create_pool(
             database_url,
-            min_size=2,
+            min_size=1,
             max_size=10,
             command_timeout=60,
-            timeout=30
+            timeout=60,
+            ssl='require'  # Supabase requires SSL
         )
         # Test the connection
         async with db_pool.acquire() as conn:
@@ -135,7 +137,10 @@ async def startup_db_pool():
         logging.error("  2. Supabase project is not paused")
         logging.error("  3. Connection string is correct")
         logging.error("  4. Network connectivity to Supabase is available")
-        raise
+        logging.error(f"  5. Connection URL: {database_url[:50]}...")
+        # Don't raise - allow app to start for debugging
+        db_pool = None
+        logging.warning("⚠️  App starting WITHOUT database connection - endpoints will fail until DB is fixed")
 
 
 @app.on_event("shutdown")
