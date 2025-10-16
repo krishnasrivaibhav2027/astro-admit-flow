@@ -75,7 +75,7 @@ const Results = () => {
 
       if (studentData) {
         // Send email notification via backend API
-        const backendUrl = import.meta.env.REACT_APP_BACKEND_URL;
+        const backendUrl = import.meta.env.VITE_BACKEND_URL;
         const response = await fetch(`${backendUrl}/api/send-notification`, {
           method: 'POST',
           headers: {
