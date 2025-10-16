@@ -54,7 +54,7 @@ const Test = () => {
       const numQuestions = level === "easy" ? 5 : level === "medium" ? 3 : 2;
       
       // Use backend API instead of Supabase Edge Function
-      const backendUrl = import.meta.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_BACKEND_URL;
+      const backendUrl = import.meta.env.REACT_APP_BACKEND_URL;
       const response = await fetch(`${backendUrl}/api/generate-questions`, {
         method: 'POST',
         headers: {
