@@ -171,18 +171,20 @@ const Test = () => {
       const result = await createResultResponse.json();
       setResultId(result.id);
 
-      const questionsToInsert = data.questions.map((q: Question) => ({
-        result_id: result.id,
-        question_text: q.question || '',
-        correct_answer: q.answer || ''
-      }));
+      // Save questions via backend API
+      const saveQuestionsResponse = await fetch(`${backendUrl}/api/save-questions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          result_id: result.id,
+          questions: data.questions
+        })
+      });
 
-      const { error: insertError } = await supabase
-        .from("questions")
-        .insert(questionsToInsert);
-      
-      if (insertError) {
-        console.error('Error saving questions:', insertError);
+      if (!saveQuestionsResponse.ok) {
         throw new Error('Failed to save questions');
       }
       
