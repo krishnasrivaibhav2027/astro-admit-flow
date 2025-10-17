@@ -95,19 +95,45 @@ const Registration = () => {
 
       // Verify captcha with backend first
       const backendUrl = import.meta.env.REACT_APP_BACKEND_URL;
-      const captchaResponse = await fetch(`${backendUrl}/api/verify-captcha`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          captcha_token: captchaToken
-        })
-      });
+      
+      let captchaResponse;
+      try {
+        captchaResponse = await fetch(`${backendUrl}/api/verify-captcha`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            captcha_token: captchaToken
+          })
+        });
+      } catch (fetchError: any) {
+        throw new Error(`Network error: ${fetchError.message}`);
+      }
 
+      // Handle captcha verification response
       if (!captchaResponse.ok) {
-        const errorData = await captchaResponse.json();
-        throw new Error(errorData.detail || "Captcha verification failed");
+        let errorMessage = "Captcha verification failed";
+        try {
+          const errorData = await captchaResponse.json();
+          errorMessage = errorData.detail || errorMessage;
+        } catch (jsonError) {
+          // If JSON parsing fails, use status text
+          errorMessage = captchaResponse.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Parse success response
+      let captchaResult;
+      try {
+        captchaResult = await captchaResponse.json();
+      } catch (jsonError) {
+        throw new Error("Invalid response from captcha verification");
+      }
+
+      if (!captchaResult.success) {
+        throw new Error("Captcha verification was not successful");
       }
 
       // Create auth user after captcha verification
@@ -156,11 +182,17 @@ const Registration = () => {
       setCaptchaToken(null);
       captchaRef.current?.resetCaptcha();
       
+      console.error("Registration error:", error);
+      
       toast({
         title: "Registration Failed",
         description: error.message || "Please check your information and try again.",
         variant: "destructive"
       });
+    } finally {
+      setLoading(false);
+    }
+  };
     } finally {
       setLoading(false);
     }
