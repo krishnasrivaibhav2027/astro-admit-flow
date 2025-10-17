@@ -176,7 +176,9 @@ const Results = () => {
 
               <div>
                 <h1 className="text-4xl font-bold mb-2">
-                  {isPassed ? (
+                  {timeout ? (
+                    <>Time's Up! <span className="gradient-text text-red-600 dark:text-red-400">Test Expired</span></>
+                  ) : isPassed ? (
                     <>Congratulations! <span className="gradient-text">You Passed!</span></>
                   ) : (
                     <>Test <span className="gradient-text">Not Passed</span></>
@@ -185,6 +187,12 @@ const Results = () => {
                 <p className="text-xl text-muted-foreground">
                   {level.charAt(0).toUpperCase() + level.slice(1)} Level Results
                 </p>
+                {timeout && (
+                  <Badge variant="destructive" className="mt-2">
+                    <Clock className="w-3 h-3 mr-1" />
+                    Time Limit Exceeded
+                  </Badge>
+                )}
               </div>
 
               <div className="inline-flex items-center gap-4 px-8 py-4 rounded-2xl bg-muted/50 border-2">
