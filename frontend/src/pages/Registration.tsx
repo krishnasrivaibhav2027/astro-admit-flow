@@ -43,14 +43,6 @@ const Registration = () => {
     confirmPassword: ""
   });
 
-  const handleCaptchaVerify = (token: string) => {
-    setCaptchaToken(token);
-  };
-
-  const handleCaptchaExpire = () => {
-    setCaptchaToken(null);
-  };
-
   // Calculate age from date of birth
   const calculateAge = (dob: string) => {
     if (!dob) return "";
