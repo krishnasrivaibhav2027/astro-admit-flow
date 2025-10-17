@@ -396,6 +396,39 @@ async def list_students(current_user: Dict = Depends(get_current_user)):
 
 
 # ===== AI-POWERED QUESTION GENERATION WITH RAG =====
+@api_router.post("/create-result")
+async def create_result(request: CreateResultRequest, current_user: Dict = Depends(get_current_user)):
+    """Create test result entry - Firebase Auth Protected"""
+    try:
+        logging.info(f"🔒 Authenticated request from: {current_user['email']}")
+        
+        # Verify user is creating their own result
+        if request.student_id != current_user.get('uid'):
+            raise HTTPException(status_code=403, detail="Cannot create results for other users")
+        
+        # Create result entry in Supabase
+        response = supabase.table("results").insert({
+            "student_id": request.student_id,
+            "level": request.level,
+            "result": "pending",
+            "score": None,
+            "attempts_easy": request.attempts_easy,
+            "attempts_medium": request.attempts_medium,
+            "attempts_hard": request.attempts_hard
+        }).execute()
+        
+        if not response.data or len(response.data) == 0:
+            raise HTTPException(status_code=500, detail="Failed to create result")
+        
+        return response.data[0]
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error creating result: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @api_router.post("/generate-questions")
 async def generate_questions(request: GenerateQuestionsRequest, current_user: Dict = Depends(get_current_user)):
     """Generate questions - JWT Protected"""
