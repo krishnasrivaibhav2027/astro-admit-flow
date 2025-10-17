@@ -321,7 +321,8 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Test results display with detailed evaluation"
+    - "Password visibility toggle in Login page"
+    - "Logout button in Levels page"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
