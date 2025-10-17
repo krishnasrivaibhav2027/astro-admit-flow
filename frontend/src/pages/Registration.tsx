@@ -93,7 +93,24 @@ const Registration = () => {
         age: parseInt(formData.age)
       });
 
-      // Create auth user first
+      // Verify captcha with backend first
+      const backendUrl = import.meta.env.REACT_APP_BACKEND_URL;
+      const captchaResponse = await fetch(`${backendUrl}/api/verify-captcha`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          captcha_token: captchaToken
+        })
+      });
+
+      if (!captchaResponse.ok) {
+        const errorData = await captchaResponse.json();
+        throw new Error(errorData.detail || "Captcha verification failed");
+      }
+
+      // Create auth user after captcha verification
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: validated.email,
         password: validated.password,
@@ -144,6 +161,10 @@ const Registration = () => {
         description: error.message || "Please check your information and try again.",
         variant: "destructive"
       });
+    } finally {
+      setLoading(false);
+    }
+  };
     } finally {
       setLoading(false);
     }
