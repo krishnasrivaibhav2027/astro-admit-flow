@@ -25,69 +25,52 @@ const Login = () => {
     setLoading(true);
 
     try {
-      // Login using custom backend endpoint (no Supabase Auth)
-      const backendUrl = import.meta.env.VITE_BACKEND_URL;
-      
-      let response;
-      try {
-        response = await fetch(`${backendUrl}/api/login`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: formData.email,
-            password: formData.password
-          })
-        });
-      } catch (fetchError: any) {
-        console.error("Fetch error:", fetchError);
-        throw new Error(`Network error: ${fetchError.message}`);
-      }
+      // Sign in with Firebase Authentication
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        formData.email,
+        formData.password
+      );
 
-      let data;
-      try {
-        const text = await response.text();
-        console.log("Response text:", text);
-        data = text ? JSON.parse(text) : {};
-      } catch (parseError) {
-        console.error("JSON parse error:", parseError);
-        throw new Error("Invalid response from server");
-      }
+      const user = userCredential.user;
 
-      if (!response.ok) {
-        throw new Error(data.detail || data.message || "Login failed");
-      }
+      // Get Firebase ID token
+      const idToken = await user.getIdToken();
 
-      if (!data.success || !data.student) {
-        throw new Error(data.message || "Login failed");
-      }
+      // Store Firebase token
+      localStorage.setItem('firebase_token', idToken);
 
-      const student = data.student;
+      console.log("User authenticated with Firebase, UID:", user.uid);
 
-      console.log("User authenticated:", student.id);
-
-      // Store JWT token and student ID
-      if (data.token) {
-        localStorage.setItem('jwt_token', data.token);
-        console.log("JWT token stored");
-      }
-      sessionStorage.setItem('studentId', student.id);
-      sessionStorage.setItem('studentEmail', student.email);
+      // Store student info in session
+      sessionStorage.setItem('studentId', user.uid);
+      sessionStorage.setItem('studentEmail', user.email || formData.email);
 
       toast({
         title: "Login Successful!",
-        description: `Welcome back, ${student.first_name}!`,
+        description: `Welcome back!`,
       });
 
       // Navigate to levels page
-      navigate("/levels", { state: { studentId: student.id } });
+      navigate("/levels", { state: { studentId: user.uid } });
 
     } catch (error: any) {
       console.error("Login error:", error);
+      
+      let errorMessage = "Invalid email or password. Please try again.";
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = "No account found with this email.";
+      } else if (error.code === 'auth/wrong-password') {
+        errorMessage = "Incorrect password.";
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = "Too many failed attempts. Please try again later.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Login Failed",
-        description: error.message || "Invalid email or password. Please try again.",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
