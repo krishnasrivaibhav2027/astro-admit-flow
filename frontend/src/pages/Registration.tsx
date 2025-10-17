@@ -72,47 +72,44 @@ const Registration = () => {
         age: parseInt(formData.age)
       });
 
-      // Create auth user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: validated.email,
-        password: validated.password,
-        options: {
-          data: {
-            first_name: validated.firstName,
-            last_name: validated.lastName,
-          }
-        }
-      });
-
-      if (authError) throw authError;
-      
-      if (!authData.user) {
-        throw new Error("Failed to create user account");
-      }
-
-      // Create student record
-      const { data, error } = await supabase
-        .from("students")
-        .insert([{
-          id: authData.user.id, // Use auth user ID
+      // Register using custom backend endpoint (no Supabase Auth)
+      const backendUrl = import.meta.env.REACT_APP_BACKEND_URL;
+      const response = await fetch(`${backendUrl}/api/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           first_name: validated.firstName,
           last_name: validated.lastName,
           age: validated.age,
           dob: validated.dob,
           email: validated.email,
-          phone: validated.phone
-        }])
-        .select()
-        .single();
+          phone: validated.phone,
+          password: validated.password
+        })
+      });
 
-      if (error) throw error;
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Registration failed");
+      }
+
+      if (!data.success) {
+        throw new Error(data.message || "Registration failed");
+      }
+
+      // Store student ID in session storage for navigation
+      sessionStorage.setItem('studentId', data.student_id);
+      sessionStorage.setItem('studentEmail', validated.email);
 
       toast({
         title: "Registration Successful!",
         description: "Welcome! You can now proceed to the test.",
       });
 
-      navigate("/levels", { state: { studentId: authData.user.id } });
+      navigate("/levels", { state: { studentId: data.student_id } });
     } catch (error: any) {
       console.error("Registration error:", error);
       
