@@ -84,6 +84,12 @@ class NotificationEmailRequest(BaseModel):
     score: float
 
 
+class SendConfirmationEmailRequest(BaseModel):
+    to_email: str
+    student_name: str
+    user_id: str
+
+
 # ===== PROMPTS (LangGraph style) =====
 generate_questions_prompt = ChatPromptTemplate.from_messages([
     ("system", "You are an expert Physics exam question generator. Use the provided context from NCERT Physics textbook. Return ONLY valid JSON."),
