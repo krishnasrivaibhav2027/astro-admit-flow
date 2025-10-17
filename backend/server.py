@@ -126,6 +126,45 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 
+# ===== JWT AUTHENTICATION =====
+JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'default-secret-key-change-in-production')
+JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
+JWT_EXPIRATION_HOURS = int(os.environ.get('JWT_EXPIRATION_HOURS', 24))
+
+security = HTTPBearer()
+
+
+def create_jwt_token(student_id: str, email: str) -> str:
+    """Create JWT token for authenticated user"""
+    expiration = datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
+    payload = {
+        "student_id": student_id,
+        "email": email,
+        "exp": expiration,
+        "iat": datetime.utcnow()
+    }
+    token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return token
+
+
+def verify_jwt_token(token: str) -> Dict:
+    """Verify and decode JWT token"""
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict:
+    """Dependency to get current authenticated user from JWT"""
+    token = credentials.credentials
+    payload = verify_jwt_token(token)
+    return payload
+
+
 # ===== PROMPTS (LangGraph style) =====
 generate_questions_prompt = ChatPromptTemplate.from_messages([
     ("system", "You are an expert Physics exam question generator. Use the provided context from NCERT Physics textbook. Return ONLY valid JSON."),
