@@ -15,6 +15,7 @@ import jwt
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate
+from firebase_config import initialize_firebase, verify_firebase_token
 
 # Import RAG module
 try:
