@@ -229,7 +229,7 @@ async def health_check():
 # ===== CUSTOM AUTHENTICATION ENDPOINTS =====
 @api_router.post("/register")
 async def register_student(student: StudentRegister):
-    """Custom registration without Supabase Auth"""
+    """Custom registration without Supabase Auth - Returns JWT token"""
     try:
         # Check if email already exists
         check_response = supabase.table("students").select("email").eq("email", student.email).execute()
@@ -260,11 +260,15 @@ async def register_student(student: StudentRegister):
         
         student_data = response.data[0]
         
+        # Generate JWT token
+        token = create_jwt_token(student_id, student.email)
+        
         logging.info(f"✅ Student registered: {student.email}")
         
         return {
             "success": True,
             "message": "Registration successful",
+            "token": token,
             "student_id": student_id,
             "student": {
                 "id": student_data["id"],
