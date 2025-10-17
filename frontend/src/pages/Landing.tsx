@@ -50,9 +50,10 @@ const Landing = () => {
             <Button 
               variant="outline" 
               size="lg"
+              onClick={() => navigate("/login")}
               className="text-lg"
             >
-              Learn More
+              Login
             </Button>
           </div>
         </div>
