@@ -460,10 +460,18 @@ const Test = () => {
     score: number
   ) => {
     try {
+      // Get JWT token for authentication
+      const token = localStorage.getItem('jwt_token');
+      if (!token) {
+        console.error('No JWT token found for email notification');
+        return;
+      }
+      
       await fetch(`${backendUrl}/api/send-notification`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           to_email: studentData.email,
