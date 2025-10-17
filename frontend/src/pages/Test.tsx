@@ -301,8 +301,8 @@ const Test = () => {
       // Evaluate answers
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
       
-      // Get JWT token for authentication
-      const token = localStorage.getItem('jwt_token');
+      // Get Firebase token for authentication
+      const token = localStorage.getItem('firebase_token');
       if (!token) {
         throw new Error('Authentication required');
       }
