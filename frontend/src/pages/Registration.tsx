@@ -125,56 +125,6 @@ const Registration = () => {
       setLoading(false);
     }
   };
-        password: validated.password,
-        options: {
-          data: {
-            first_name: validated.firstName,
-            last_name: validated.lastName,
-          }
-        }
-      });
-
-      if (authError) throw authError;
-      
-      if (!authData.user) {
-        throw new Error("Failed to create user account");
-      }
-
-      // Create student record
-      const { data, error } = await supabase
-        .from("students")
-        .insert([{
-          id: authData.user.id, // Use auth user ID
-          first_name: validated.firstName,
-          last_name: validated.lastName,
-          age: validated.age,
-          dob: validated.dob,
-          email: validated.email,
-          phone: validated.phone
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      toast({
-        title: "Registration Successful!",
-        description: "You can now proceed to the test.",
-      });
-
-      navigate("/levels", { state: { studentId: authData.user.id } });
-    } catch (error: any) {
-      console.error("Registration error:", error);
-      
-      toast({
-        title: "Registration Failed",
-        description: error.message || "Please check your information and try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
