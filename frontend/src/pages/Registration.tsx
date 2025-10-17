@@ -164,10 +164,6 @@ const Registration = () => {
 
       navigate("/levels", { state: { studentId: authData.user.id } });
     } catch (error: any) {
-      // Reset captcha on error
-      setCaptchaToken(null);
-      captchaRef.current?.resetCaptcha();
-      
       console.error("Registration error:", error);
       
       toast({
