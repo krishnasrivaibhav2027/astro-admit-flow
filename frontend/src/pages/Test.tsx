@@ -89,8 +89,8 @@ const Test = () => {
         throw new Error('Backend URL not configured');
       }
 
-      // Get JWT token for authentication
-      const token = localStorage.getItem('jwt_token');
+      // Get Firebase token for authentication
+      const token = localStorage.getItem('firebase_token');
       if (!token) {
         throw new Error('Authentication required');
       }
