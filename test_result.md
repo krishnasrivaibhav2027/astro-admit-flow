@@ -276,9 +276,11 @@ metadata:
 
 test_plan:
   current_focus:
+    - "hCaptcha integration on registration"
     - "Multi-level test flow with navigation"
     - "Test results display with detailed evaluation"
-  stuck_tasks: []
+  stuck_tasks: 
+    - "hCaptcha integration on registration"
   test_all: false
   test_priority: "high_first"
 
