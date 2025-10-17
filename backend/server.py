@@ -574,8 +574,10 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
 
 # ===== EMAIL NOTIFICATION =====
 @api_router.post("/send-notification")
-async def send_notification(request: NotificationEmailRequest):
+async def send_notification(request: NotificationEmailRequest, current_user: Dict = Depends(get_current_user)):
+    """Send email notification - JWT Protected"""
     try:
+        logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         from email.mime.text import MIMEText
         from google.oauth2.credentials import Credentials
         from google.auth.transport.requests import Request
