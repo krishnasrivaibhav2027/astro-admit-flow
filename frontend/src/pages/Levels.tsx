@@ -24,6 +24,7 @@ interface LevelData {
 const Levels = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { toast } = useToast();
   const studentId = location.state?.studentId;
   const [levels, setLevels] = useState<LevelData[]>([
     {
