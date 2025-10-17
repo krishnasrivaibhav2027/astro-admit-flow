@@ -29,11 +29,16 @@ const Login = () => {
         password: formData.password
       });
 
-      if (authError) throw authError;
+      if (authError) {
+        console.error("Auth error:", authError);
+        throw new Error(authError.message || "Invalid email or password");
+      }
 
       if (!authData.user) {
-        throw new Error("Login failed");
+        throw new Error("Login failed - no user data returned");
       }
+
+      console.log("User authenticated:", authData.user.id);
 
       // Get student record
       const { data: studentData, error: studentError } = await supabase
@@ -42,9 +47,20 @@ const Login = () => {
         .eq("id", authData.user.id)
         .single();
 
-      if (studentError || !studentData) {
+      if (studentError) {
+        console.error("Student fetch error:", studentError);
+        // If student record doesn't exist, create it
+        if (studentError.code === 'PGRST116') {
+          throw new Error("Student profile not found. Please contact support.");
+        }
+        throw new Error(studentError.message || "Error fetching student profile");
+      }
+
+      if (!studentData) {
         throw new Error("Student record not found");
       }
+
+      console.log("Student data retrieved:", studentData);
 
       toast({
         title: "Login Successful!",
