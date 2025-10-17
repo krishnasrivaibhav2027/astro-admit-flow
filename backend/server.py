@@ -146,30 +146,6 @@ async def health_check():
         }
 
 
-# ===== CAPTCHA VERIFICATION ENDPOINT =====
-@api_router.post("/verify-captcha")
-async def verify_captcha_endpoint(request: VerifyCaptchaRequest):
-    """Verify hCaptcha token"""
-    try:
-        is_valid = verify_hcaptcha(request.captcha_token)
-        
-        if not is_valid:
-            raise HTTPException(
-                status_code=400, 
-                detail="captcha verification process failed"
-            )
-        
-        return {
-            "success": True,
-            "message": "Captcha verified successfully"
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error in captcha verification endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # ===== STUDENT ENDPOINTS =====
 @api_router.post("/students")
 async def create_student(student: StudentCreate):
