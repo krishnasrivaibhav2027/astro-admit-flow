@@ -36,6 +36,11 @@ const Test = () => {
   const [submitting, setSubmitting] = useState(false);
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [resultId, setResultId] = useState<string | null>(null);
+  
+  // Timer states
+  const [timeRemaining, setTimeRemaining] = useState<number>(0);
+  const [timerActive, setTimerActive] = useState(false);
+  const [timeOut, setTimeOut] = useState(false);
 
   useEffect(() => {
     if (!studentId || !level) {
