@@ -160,10 +160,16 @@ def verify_jwt_token(token: str) -> Dict:
 
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict:
-    """Dependency to get current authenticated user from JWT"""
+    """Dependency to get current authenticated user from Firebase token"""
     token = credentials.credentials
-    payload = verify_jwt_token(token)
-    return payload
+    try:
+        # Verify Firebase ID token
+        decoded_token = verify_firebase_token(token)
+        return decoded_token
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
 
 
 # ===== PROMPTS (LangGraph style) =====
