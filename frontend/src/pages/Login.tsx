@@ -23,52 +23,44 @@ const Login = () => {
     setLoading(true);
 
     try {
-      // Sign in with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: formData.email,
-        password: formData.password
+      // Login using custom backend endpoint (no Supabase Auth)
+      const backendUrl = import.meta.env.REACT_APP_BACKEND_URL;
+      const response = await fetch(`${backendUrl}/api/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password
+        })
       });
 
-      if (authError) {
-        console.error("Auth error:", authError);
-        throw new Error(authError.message || "Invalid email or password");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Login failed");
       }
 
-      if (!authData.user) {
-        throw new Error("Login failed - no user data returned");
+      if (!data.success || !data.student) {
+        throw new Error(data.message || "Login failed");
       }
 
-      console.log("User authenticated:", authData.user.id);
+      const student = data.student;
 
-      // Get student record
-      const { data: studentData, error: studentError } = await supabase
-        .from("students")
-        .select("*")
-        .eq("id", authData.user.id)
-        .single();
+      console.log("User authenticated:", student.id);
 
-      if (studentError) {
-        console.error("Student fetch error:", studentError);
-        // If student record doesn't exist, create it
-        if (studentError.code === 'PGRST116') {
-          throw new Error("Student profile not found. Please contact support.");
-        }
-        throw new Error(studentError.message || "Error fetching student profile");
-      }
-
-      if (!studentData) {
-        throw new Error("Student record not found");
-      }
-
-      console.log("Student data retrieved:", studentData);
+      // Store student ID in session storage
+      sessionStorage.setItem('studentId', student.id);
+      sessionStorage.setItem('studentEmail', student.email);
 
       toast({
         title: "Login Successful!",
-        description: `Welcome back, ${studentData.first_name}!`,
+        description: `Welcome back, ${student.first_name}!`,
       });
 
       // Navigate to levels page
-      navigate("/levels", { state: { studentId: authData.user.id } });
+      navigate("/levels", { state: { studentId: student.id } });
 
     } catch (error: any) {
       console.error("Login error:", error);
