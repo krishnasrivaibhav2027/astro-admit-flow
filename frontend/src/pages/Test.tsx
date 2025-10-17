@@ -89,10 +89,17 @@ const Test = () => {
         throw new Error('Backend URL not configured');
       }
 
+      // Get JWT token for authentication
+      const token = localStorage.getItem('jwt_token');
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
       const response = await fetch(`${backendUrl}/api/generate-questions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ level, num_questions: numQuestions })
       });
