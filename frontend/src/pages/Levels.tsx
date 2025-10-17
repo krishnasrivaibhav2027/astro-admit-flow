@@ -58,11 +58,32 @@ const Levels = () => {
   ]);
 
   useEffect(() => {
-    if (!studentId) {
-      navigate("/registration");
-      return;
-    }
-    loadProgress();
+    const checkAuthAndLoadData = async () => {
+      try {
+        // Check if user is authenticated
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (!user) {
+          navigate("/login");
+          return;
+        }
+
+        // Use auth user ID if no studentId in state
+        const currentStudentId = studentId || user.id;
+        
+        if (!currentStudentId) {
+          navigate("/login");
+          return;
+        }
+
+        loadProgress();
+      } catch (error) {
+        console.error("Error checking auth:", error);
+        navigate("/login");
+      }
+    };
+
+    checkAuthAndLoadData();
   }, [studentId]);
 
   const loadProgress = async () => {
