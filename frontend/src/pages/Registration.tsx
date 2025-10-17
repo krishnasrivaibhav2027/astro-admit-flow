@@ -89,9 +89,29 @@ const Registration = () => {
         age: parseInt(formData.age)
       });
 
+      // Create auth user first
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: validated.email,
+        password: validated.password,
+        options: {
+          data: {
+            first_name: validated.firstName,
+            last_name: validated.lastName,
+          }
+        }
+      });
+
+      if (authError) throw authError;
+      
+      if (!authData.user) {
+        throw new Error("Failed to create user account");
+      }
+
+      // Create student record
       const { data, error } = await supabase
         .from("students")
         .insert([{
+          id: authData.user.id, // Use auth user ID
           first_name: validated.firstName,
           last_name: validated.lastName,
           age: validated.age,
@@ -109,7 +129,7 @@ const Registration = () => {
         description: "You can now proceed to the test.",
       });
 
-      navigate("/levels", { state: { studentId: data.id } });
+      navigate("/levels", { state: { studentId: authData.user.id } });
     } catch (error: any) {
       // Reset captcha on error
       setCaptchaToken(null);
