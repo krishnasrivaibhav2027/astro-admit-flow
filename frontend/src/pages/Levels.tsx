@@ -143,6 +143,21 @@ const Levels = () => {
     });
   };
 
+  const handleLogout = () => {
+    // Clear all authentication data
+    localStorage.removeItem('jwt_token');
+    sessionStorage.removeItem('studentId');
+    sessionStorage.removeItem('studentEmail');
+    
+    toast({
+      title: "Logged Out",
+      description: "You have been successfully logged out.",
+    });
+    
+    // Navigate to home page
+    navigate("/");
+  };
+
   return (
     <div className="min-h-screen relative overflow-hidden">
       {/* Background */}
@@ -150,8 +165,16 @@ const Levels = () => {
       <div className="absolute top-20 left-10 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-float" />
       <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
 
-      {/* Theme Toggle */}
-      <div className="absolute top-4 right-4 z-50">
+      {/* Theme Toggle and Logout */}
+      <div className="absolute top-4 right-4 z-50 flex gap-2">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleLogout}
+          className="bg-background/80 backdrop-blur-sm"
+        >
+          <LogOut className="h-[1.2rem] w-[1.2rem]" />
+        </Button>
         <ModeToggle />
       </div>
 
