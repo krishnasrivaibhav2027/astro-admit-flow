@@ -287,7 +287,7 @@ async def register_student(student: StudentRegister):
 
 @api_router.post("/login")
 async def login_student(credentials: StudentLogin):
-    """Custom login by checking email and password from database"""
+    """Custom login by checking email and password from database - Returns JWT token"""
     try:
         # Get student by email
         response = supabase.table("students").select("*").eq("email", credentials.email).execute()
@@ -301,6 +301,9 @@ async def login_student(credentials: StudentLogin):
         if "password" not in student or not verify_password(credentials.password, student["password"]):
             raise HTTPException(status_code=401, detail="Invalid email or password")
         
+        # Generate JWT token
+        token = create_jwt_token(student["id"], student["email"])
+        
         logging.info(f"✅ Student logged in: {credentials.email}")
         
         # Remove password from response
@@ -309,6 +312,7 @@ async def login_student(credentials: StudentLogin):
         return {
             "success": True,
             "message": "Login successful",
+            "token": token,
             "student": student
         }
         
