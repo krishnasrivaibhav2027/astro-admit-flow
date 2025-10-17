@@ -114,11 +114,15 @@ const Registration = () => {
         throw new Error(data.message || "Registration failed");
       }
 
-      // Store student ID in session storage for navigation
+      // Store JWT token and student ID
+      if (data.token) {
+        localStorage.setItem('jwt_token', data.token);
+      }
       sessionStorage.setItem('studentId', data.student_id);
       sessionStorage.setItem('studentEmail', validated.email);
 
       console.log("Registration successful, student ID:", data.student_id);
+      console.log("JWT token stored");
 
       toast({
         title: "Registration Successful!",
