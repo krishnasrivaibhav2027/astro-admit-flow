@@ -197,10 +197,10 @@ frontend:
         comment: "✅ TESTED: Password strength component working perfectly! Real-time visual feedback with green checkmarks for met requirements (8 chars, uppercase, special char), red X marks for unmet requirements, animated progress bar (red->orange->yellow->green), 'Strong password ✓' message when all requirements met. Password match validation shows 'Passwords match ✓' or 'Passwords don't match' with appropriate icons."
   
   - task: "hCaptcha integration on registration"
-    implemented: true
-    working: true
+    implemented: false
+    working: false
     file: "frontend/src/pages/Registration.tsx"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
     needs_retesting: false
     status_history:
@@ -219,6 +219,9 @@ frontend:
       - working: true
         agent: "testing"
         comment: "✅ COMPREHENSIVE REGISTRATION FLOW TEST COMPLETE: Tested complete registration flow with correct hCaptcha credentials as requested. Registration page loads without errors, all form fields accept input correctly (First Name: John, Last Name: TestUser, DOB: 2000-06-15, Age auto-calculated to 25, Email: unique timestamp-based, Phone: +1234567890). Password strength indicators working perfectly - all three requirements show green checkmarks (8+ chars, uppercase, special char), green progress bar (100%), 'Strong password ✓' message appears. Password match validation shows 'Passwords match ✓'. hCaptcha widget renders properly with 2 iframes, Security Verification section visible with shield icon. Submit button properly disabled without captcha completion. Backend /api/verify-captcha endpoint accessible and properly rejects invalid tokens (400 status). CRITICAL SUCCESS: NO JSON parsing errors detected, NO 'Failed to execute json on Response' errors, NO 'captcha verification process failed' errors. The user-reported issue has been completely resolved. Clean registration flow with improved error handling confirmed."
+      - working: false
+        agent: "testing"
+        comment: "❌ CRITICAL ISSUE: User requested hCaptcha removal but Supabase Auth still requires captcha verification. Frontend hCaptcha completely removed ✅ (no widget, iframe, Security Verification section, or captcha text found). Form loads correctly ✅, password strength indicators work perfectly ✅ (all green checkmarks, 'Strong password ✓', 'Passwords match ✓'), age auto-calculation works ✅ (DOB 1998-03-20 → Age 27), submit button enabled ✅. However, registration fails with 'AuthApiError: captcha verification process failed' from Supabase Auth API (500 error from https://uminpkhjsrfogjtwqqfn.supabase.co/auth/v1/signup). Root cause: Supabase project has CAPTCHA protection enabled in Authentication settings. SOLUTION REQUIRED: Disable CAPTCHA in Supabase Dashboard → Settings → Authentication → Bot and Abuse Protection → Toggle off 'Enable CAPTCHA protection'."
   
   - task: "Multi-level test flow with navigation"
     implemented: true
