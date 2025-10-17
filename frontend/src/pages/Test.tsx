@@ -113,6 +113,11 @@ const Test = () => {
       setAnswers(new Array(data.questions.length).fill(""));
       setSubmittedQuestions(new Array(data.questions.length).fill(false));
       
+      // Start timer
+      const duration = TIMER_DURATIONS[level as keyof typeof TIMER_DURATIONS];
+      setTimeRemaining(duration);
+      setTimerActive(true);
+      
       const { data: previousResults, error: fetchError } = await supabase
         .from("results")
         .select("*")
