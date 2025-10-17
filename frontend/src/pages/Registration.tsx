@@ -193,10 +193,6 @@ const Registration = () => {
       setLoading(false);
     }
   };
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
