@@ -285,11 +285,9 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Registration and Login Flow Integration"
     - "Multi-level test flow with navigation"
     - "Test results display with detailed evaluation"
-  stuck_tasks: 
-    - "Registration and Login Flow Integration"
+  stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
