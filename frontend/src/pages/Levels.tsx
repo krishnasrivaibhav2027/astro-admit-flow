@@ -145,6 +145,7 @@ const Levels = () => {
 
   const handleLogout = () => {
     // Clear all authentication data
+    localStorage.removeItem('firebase_token');
     localStorage.removeItem('jwt_token');
     sessionStorage.removeItem('studentId');
     sessionStorage.removeItem('studentEmail');
