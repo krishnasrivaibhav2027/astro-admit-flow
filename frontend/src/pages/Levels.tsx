@@ -60,23 +60,18 @@ const Levels = () => {
   useEffect(() => {
     const checkAuthAndLoadData = async () => {
       try {
-        // Check if user is authenticated
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (!user) {
-          navigate("/login");
-          return;
-        }
-
-        // Use auth user ID if no studentId in state
-        const currentStudentId = studentId || user.id;
+        // Check if user is authenticated using sessionStorage (custom auth)
+        const storedStudentId = sessionStorage.getItem('studentId');
+        const currentStudentId = studentId || storedStudentId;
         
         if (!currentStudentId) {
+          console.log("No student ID found, redirecting to login");
           navigate("/login");
           return;
         }
 
-        loadProgress();
+        console.log("Student authenticated:", currentStudentId);
+        loadProgress(currentStudentId);
       } catch (error) {
         console.error("Error checking auth:", error);
         navigate("/login");
