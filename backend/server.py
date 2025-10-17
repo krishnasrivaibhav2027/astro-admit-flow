@@ -185,6 +185,95 @@ async def health_check():
         }
 
 
+# ===== CUSTOM AUTHENTICATION ENDPOINTS =====
+@api_router.post("/register")
+async def register_student(student: StudentRegister):
+    """Custom registration without Supabase Auth"""
+    try:
+        # Check if email already exists
+        check_response = supabase.table("students").select("email").eq("email", student.email).execute()
+        if check_response.data and len(check_response.data) > 0:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        # Hash the password
+        hashed_password = hash_password(student.password)
+        
+        # Generate UUID for student
+        import uuid
+        student_id = str(uuid.uuid4())
+        
+        # Insert student record with hashed password
+        response = supabase.table("students").insert({
+            "id": student_id,
+            "first_name": student.first_name,
+            "last_name": student.last_name,
+            "age": student.age,
+            "dob": student.dob,
+            "email": student.email,
+            "phone": student.phone,
+            "password": hashed_password
+        }).execute()
+        
+        if not response.data or len(response.data) == 0:
+            raise HTTPException(status_code=500, detail="Failed to create student record")
+        
+        student_data = response.data[0]
+        
+        logging.info(f"✅ Student registered: {student.email}")
+        
+        return {
+            "success": True,
+            "message": "Registration successful",
+            "student_id": student_id,
+            "student": {
+                "id": student_data["id"],
+                "first_name": student_data["first_name"],
+                "last_name": student_data["last_name"],
+                "email": student_data["email"]
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Registration error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/login")
+async def login_student(credentials: StudentLogin):
+    """Custom login by checking email and password from database"""
+    try:
+        # Get student by email
+        response = supabase.table("students").select("*").eq("email", credentials.email).execute()
+        
+        if not response.data or len(response.data) == 0:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        student = response.data[0]
+        
+        # Verify password
+        if "password" not in student or not verify_password(credentials.password, student["password"]):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        logging.info(f"✅ Student logged in: {credentials.email}")
+        
+        # Remove password from response
+        student.pop("password", None)
+        
+        return {
+            "success": True,
+            "message": "Login successful",
+            "student": student
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ===== STUDENT ENDPOINTS =====
 @api_router.post("/students")
 async def create_student(student: StudentCreate):
