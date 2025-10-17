@@ -107,6 +107,23 @@ class SendConfirmationEmailRequest(BaseModel):
     user_id: str
 
 
+# ===== PASSWORD HASHING FUNCTIONS =====
+def hash_password(password: str) -> str:
+    """Hash password using SHA256 with salt"""
+    salt = secrets.token_hex(16)
+    pwd_hash = hashlib.sha256((password + salt).encode()).hexdigest()
+    return f"{salt}${pwd_hash}"
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verify password against hash"""
+    try:
+        salt, pwd_hash = hashed.split('$')
+        return hashlib.sha256((password + salt).encode()).hexdigest() == pwd_hash
+    except:
+        return False
+
+
 # ===== PROMPTS (LangGraph style) =====
 generate_questions_prompt = ChatPromptTemplate.from_messages([
     ("system", "You are an expert Physics exam question generator. Use the provided context from NCERT Physics textbook. Return ONLY valid JSON."),
