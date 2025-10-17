@@ -61,6 +61,25 @@ const Test = () => {
     };
   }, [studentId, level]);
 
+  // Timer effect
+  useEffect(() => {
+    if (!timerActive || timeRemaining <= 0) return;
+
+    const interval = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev <= 1) {
+          setTimeOut(true);
+          setTimerActive(false);
+          handleTimeOut();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timerActive, timeRemaining]);
+
   const generateQuestions = async () => {
     try {
       const numQuestions = level === "easy" ? 5 : level === "medium" ? 3 : 2;
