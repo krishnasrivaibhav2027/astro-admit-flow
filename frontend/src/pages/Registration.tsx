@@ -311,6 +311,17 @@ const Registration = () => {
               >
                 {loading ? "Registering..." : "Register & Start Test"}
               </Button>
+
+              <div className="text-center text-sm text-muted-foreground">
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => navigate("/login")}
+                  className="text-primary hover:underline font-medium"
+                >
+                  Login here
+                </button>
+              </div>
             </form>
           </CardContent>
         </Card>
