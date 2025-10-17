@@ -85,40 +85,6 @@ class NotificationEmailRequest(BaseModel):
     score: float
 
 
-class VerifyCaptchaRequest(BaseModel):
-    captcha_token: str
-
-
-# ===== HCAPTCHA VERIFICATION FUNCTION =====
-def verify_hcaptcha(token: str) -> bool:
-    """Verify hCaptcha token with hCaptcha API"""
-    try:
-        secret = os.environ.get('HCAPTCHA_SECRET_KEY')
-        if not secret:
-            logging.error("HCAPTCHA_SECRET_KEY not found in environment")
-            return False
-        
-        response = requests.post(
-            'https://hcaptcha.com/siteverify',
-            data={
-                'secret': secret,
-                'response': token
-            },
-            timeout=10
-        )
-        
-        result = response.json()
-        success = result.get('success', False)
-        
-        if not success:
-            logging.warning(f"hCaptcha verification failed: {result.get('error-codes', [])}")
-        
-        return success
-    except Exception as e:
-        logging.error(f"Error verifying hCaptcha: {e}")
-        return False
-
-
 # ===== PROMPTS (LangGraph style) =====
 generate_questions_prompt = ChatPromptTemplate.from_messages([
     ("system", "You are an expert Physics exam question generator. Use the provided context from NCERT Physics textbook. Return ONLY valid JSON."),
