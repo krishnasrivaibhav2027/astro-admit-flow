@@ -125,6 +125,7 @@ const Test = () => {
       setTimeRemaining(duration);
       setTimerActive(true);
       
+      // Get previous attempts from Supabase
       const { data: previousResults, error: fetchError } = await supabase
         .from("results")
         .select("*")
@@ -142,25 +143,32 @@ const Test = () => {
         attempts_hard: 0
       };
 
-      const { data: result, error: resultError } = await supabase
-        .from("results")
-        .insert([{
+      // Create result entry via backend API
+      const token = localStorage.getItem('firebase_token');
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      const createResultResponse = await fetch(`${backendUrl}/api/create-result`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
           student_id: studentId,
           level,
-          result: "pending",
-          score: null,
           attempts_easy: previousAttempts.attempts_easy || 0,
           attempts_medium: previousAttempts.attempts_medium || 0,
           attempts_hard: previousAttempts.attempts_hard || 0
-        }])
-        .select()
-        .single();
+        })
+      });
 
-      if (resultError || !result) {
-        console.error('Error creating result:', resultError);
+      if (!createResultResponse.ok) {
         throw new Error('Failed to create test result entry');
       }
 
+      const result = await createResultResponse.json();
       setResultId(result.id);
 
       const questionsToInsert = data.questions.map((q: Question) => ({
