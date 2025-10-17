@@ -239,26 +239,29 @@ const Test = () => {
     }
   };
 
-  const submitAllAnswers = async () => {
-    // Check if all questions are answered
-    const unansweredQuestions = answers.map((ans, idx) => ans?.trim() ? null : idx + 1).filter(Boolean);
-    if (unansweredQuestions.length > 0) {
-      toast({
-        title: "Incomplete Answers",
-        description: `Please answer all questions. Missing: Q${unansweredQuestions.join(', Q')}`,
-        variant: "destructive"
-      });
-      return;
+  const submitAllAnswers = async (isTimeout: boolean = false) => {
+    // For timeout, don't check if all questions are answered
+    if (!isTimeout) {
+      const unansweredQuestions = answers.map((ans, idx) => ans?.trim() ? null : idx + 1).filter(Boolean);
+      if (unansweredQuestions.length > 0) {
+        toast({
+          title: "Incomplete Answers",
+          description: `Please answer all questions. Missing: Q${unansweredQuestions.join(', Q')}`,
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     setSubmitting(true);
+    setTimerActive(false); // Stop timer
     
     try {
       if (!resultId) {
         throw new Error("No test result ID found");
       }
 
-      // Save all answers
+      // Save all answers (even empty ones for timeout)
       const { data: questionRecords, error: questionsError } = await supabase
         .from("questions")
         .select("id")
@@ -273,7 +276,7 @@ const Test = () => {
         if (!questionRecords[idx]) return null;
         return {
           question_id: questionRecords[idx].id,
-          student_answer: answer || ""
+          student_answer: answer || ""  // Empty string for unanswered
         };
       }).filter(Boolean);
 
@@ -317,7 +320,9 @@ const Test = () => {
 
       const attemptsField = `attempts_${level}`;
       const newAttemptCount = (currentResult[attemptsField] || 0) + 1;
-      const testResult = evaluationData.result || 'fail';
+      
+      // If timeout, automatically fail
+      const testResult = isTimeout ? 'fail' : (evaluationData.result || 'fail');
       const testScore = evaluationData.score || 0;
 
       // Update result with incremented attempts
@@ -334,7 +339,8 @@ const Test = () => {
         testResult,
         newAttemptCount,
         studentId,
-        testScore
+        testScore,
+        isTimeout
       );
 
       // Navigate to results
@@ -345,7 +351,8 @@ const Test = () => {
           result: testResult,
           level,
           criteria: evaluationData.criteria || {},
-          emailSent: shouldSendEmail
+          emailSent: shouldSendEmail,
+          timeout: isTimeout
         }
       });
       
