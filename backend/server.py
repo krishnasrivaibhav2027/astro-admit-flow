@@ -96,6 +96,14 @@ class GenerateQuestionsRequest(BaseModel):
     num_questions: int = 5
 
 
+class CreateResultRequest(BaseModel):
+    student_id: str
+    level: str
+    attempts_easy: int = 0
+    attempts_medium: int = 0
+    attempts_hard: int = 0
+
+
 class EvaluateAnswersRequest(BaseModel):
     result_id: str
 
