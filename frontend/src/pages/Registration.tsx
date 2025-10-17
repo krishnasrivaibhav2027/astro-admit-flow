@@ -77,6 +77,7 @@ const Registration = () => {
         email: validated.email,
         password: validated.password,
         options: {
+          emailRedirectTo: window.location.origin + '/levels',
           data: {
             first_name: validated.firstName,
             last_name: validated.lastName,
@@ -107,12 +108,22 @@ const Registration = () => {
 
       if (error) throw error;
 
-      toast({
-        title: "Registration Successful!",
-        description: "You can now proceed to the test.",
-      });
-
-      navigate("/levels", { state: { studentId: authData.user.id } });
+      // Check if email confirmation is required
+      if (authData.session) {
+        // User is logged in immediately (no email confirmation required)
+        toast({
+          title: "Registration Successful!",
+          description: "You can now proceed to the test.",
+        });
+        navigate("/levels", { state: { studentId: authData.user.id } });
+      } else {
+        // Email confirmation is required
+        toast({
+          title: "Registration Successful!",
+          description: "Please check your email to confirm your account, then login.",
+        });
+        navigate("/login");
+      }
     } catch (error: any) {
       console.error("Registration error:", error);
       
