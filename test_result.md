@@ -319,10 +319,21 @@ metadata:
   test_sequence: 1
   run_ui: true
 
+  - task: "Firebase Authentication Integration"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/config/firebase.ts, frontend/src/pages/Registration.tsx, frontend/src/pages/Login.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Firebase Email/Password authentication has been enabled in Firebase Console. Need to test complete Firebase authentication flow including registration, login, protected API access, and logout functionality."
+
 test_plan:
   current_focus:
-    - "Password visibility toggle in Login page"
-    - "Logout button in Levels page"
+    - "Firebase Authentication Integration"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -356,3 +367,5 @@ agent_communication:
     message: "Added two new features: 1) Password visibility toggle (eye icon) in Login page password field, 2) Logout button in Levels page top-right corner next to theme toggle. Ready for testing both features."
   - agent: "testing"
     message: "✅ PASSWORD VISIBILITY TOGGLE & LOGOUT BUTTON TESTING COMPLETE: Successfully tested both new features. PASSWORD VISIBILITY TOGGLE: ✅ Eye icon present in login page password field (right side), clicking toggles between visible/hidden password perfectly, icon changes from Eye to EyeOff correctly, password text changes from dots to plain text and back, smooth functionality with no errors, screenshots captured showing both states. LOGOUT BUTTON: ✅ Button correctly positioned in top-right corner of levels page next to theme toggle, clicking logout clears JWT token and sessionStorage, redirects to home page, prevents access to protected pages without re-authentication, authentication security working correctly. Both features implemented and working as expected."
+  - agent: "main"
+    message: "Firebase Email/Password authentication has been enabled in Firebase Console. Need to test complete Firebase authentication flow including registration with unique email, login, protected API access with Firebase token, and logout functionality. Testing should verify Firebase UID storage, token management, and backend API integration."
