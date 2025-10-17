@@ -64,7 +64,11 @@ const Login = () => {
 
       console.log("User authenticated:", student.id);
 
-      // Store student ID in session storage
+      // Store JWT token and student ID
+      if (data.token) {
+        localStorage.setItem('jwt_token', data.token);
+        console.log("JWT token stored");
+      }
       sessionStorage.setItem('studentId', student.id);
       sessionStorage.setItem('studentEmail', student.email);
 
