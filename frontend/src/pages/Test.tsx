@@ -300,10 +300,18 @@ const Test = () => {
 
       // Evaluate answers
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      
+      // Get JWT token for authentication
+      const token = localStorage.getItem('jwt_token');
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+      
       const evalResponse = await fetch(`${backendUrl}/api/evaluate-answers`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ result_id: resultId })
       });
