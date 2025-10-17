@@ -108,19 +108,39 @@ const Registration = () => {
 
       if (error) throw error;
 
+      // Send confirmation email using Gmail API
+      try {
+        const backendUrl = import.meta.env.REACT_APP_BACKEND_URL;
+        await fetch(`${backendUrl}/api/send-confirmation-email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            to_email: validated.email,
+            student_name: validated.firstName,
+            user_id: authData.user.id
+          })
+        });
+        console.log("Confirmation email sent via Gmail API");
+      } catch (emailError) {
+        console.error("Email sending failed:", emailError);
+        // Don't fail registration if email fails
+      }
+
       // Check if email confirmation is required
       if (authData.session) {
         // User is logged in immediately (no email confirmation required)
         toast({
           title: "Registration Successful!",
-          description: "You can now proceed to the test.",
+          description: "Welcome! You can now proceed to the test.",
         });
         navigate("/levels", { state: { studentId: authData.user.id } });
       } else {
         // Email confirmation is required
         toast({
           title: "Registration Successful!",
-          description: "Please check your email to confirm your account, then login.",
+          description: "Please check your email to confirm your account.",
         });
         navigate("/login");
       }
