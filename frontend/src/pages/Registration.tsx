@@ -73,26 +73,41 @@ const Registration = () => {
 
       // Register using custom backend endpoint (no Supabase Auth)
       const backendUrl = import.meta.env.REACT_APP_BACKEND_URL;
-      const response = await fetch(`${backendUrl}/api/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          first_name: validated.firstName,
-          last_name: validated.lastName,
-          age: validated.age,
-          dob: validated.dob,
-          email: validated.email,
-          phone: validated.phone,
-          password: validated.password
-        })
-      });
+      
+      let response;
+      try {
+        response = await fetch(`${backendUrl}/api/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            first_name: validated.firstName,
+            last_name: validated.lastName,
+            age: validated.age,
+            dob: validated.dob,
+            email: validated.email,
+            phone: validated.phone,
+            password: validated.password
+          })
+        });
+      } catch (fetchError: any) {
+        console.error("Fetch error:", fetchError);
+        throw new Error(`Network error: ${fetchError.message}`);
+      }
 
-      const data = await response.json();
+      let data;
+      try {
+        const text = await response.text();
+        console.log("Response text:", text);
+        data = text ? JSON.parse(text) : {};
+      } catch (parseError) {
+        console.error("JSON parse error:", parseError);
+        throw new Error("Invalid response from server");
+      }
 
       if (!response.ok) {
-        throw new Error(data.detail || "Registration failed");
+        throw new Error(data.detail || data.message || "Registration failed");
       }
 
       if (!data.success) {
@@ -102,6 +117,8 @@ const Registration = () => {
       // Store student ID in session storage for navigation
       sessionStorage.setItem('studentId', data.student_id);
       sessionStorage.setItem('studentEmail', validated.email);
+
+      console.log("Registration successful, student ID:", data.student_id);
 
       toast({
         title: "Registration Successful!",
