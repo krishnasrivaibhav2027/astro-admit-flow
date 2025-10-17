@@ -453,6 +453,69 @@ AdmitAI Team
         return {"success": False, "message": f"Email failed: {str(e)}"}
 
 
+@api_router.post("/send-confirmation-email")
+async def send_confirmation_email(request: SendConfirmationEmailRequest):
+    """Send email confirmation using Gmail API"""
+    try:
+        from email.mime.text import MIMEText
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        from googleapiclient.discovery import build
+        import base64
+        
+        client_id = os.environ.get('GMAIL_CLIENT_ID')
+        client_secret = os.environ.get('GMAIL_CLIENT_SECRET')
+        refresh_token = os.environ.get('GMAIL_REFRESH_TOKEN')
+        frontend_url = os.environ.get('FRONTEND_URL', 'https://physics-rai.preview.emergentagent.com')
+        
+        if not all([client_id, client_secret, refresh_token]):
+            logging.warning("Gmail credentials not configured")
+            return {"success": False, "message": "Gmail not configured"}
+        
+        creds = Credentials(
+            None,
+            refresh_token=refresh_token,
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=['https://www.googleapis.com/auth/gmail.send']
+        )
+        
+        creds.refresh(Request())
+        service = build('gmail', 'v1', credentials=creds)
+        
+        # Create confirmation link
+        confirmation_link = f"{frontend_url}/confirm-email?user_id={request.user_id}"
+        
+        message = MIMEText(f"""
+Dear {request.student_name},
+
+Welcome to AdmitAI! 
+
+Thank you for registering. Please confirm your email address by clicking the link below:
+
+{confirmation_link}
+
+If you did not create an account, please ignore this email.
+
+Best regards,
+AdmitAI Team
+        """)
+        message['to'] = request.to_email
+        message['from'] = os.environ.get('GMAIL_FROM_EMAIL', 'noreply@admitai.com')
+        message['subject'] = "Confirm Your AdmitAI Account"
+        
+        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        service.users().messages().send(userId="me", body={'raw': raw}).execute()
+        
+        logging.info(f"✅ Confirmation email sent to {request.to_email}")
+        return {"success": True, "message": "Confirmation email sent successfully"}
+        
+    except Exception as e:
+        logging.error(f"❌ Confirmation email error: {str(e)}")
+        return {"success": False, "message": f"Email failed: {str(e)}"}
+
+
 # ===== SETUP =====
 app.include_router(api_router)
 
