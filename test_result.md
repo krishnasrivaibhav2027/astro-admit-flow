@@ -181,6 +181,36 @@ backend:
         comment: "✅ TESTED: Email notification endpoint working correctly. Gmail OAuth configured and sending emails successfully for test results."
 
 frontend:
+  - task: "Password visibility toggle in Login page"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/Login.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Added password visibility toggle (eye icon) in Login page password field. Users can click to show/hide password text."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Password visibility toggle working perfectly! Eye icon present in password field (right side), clicking toggles between visible/hidden password, icon changes from Eye to EyeOff correctly, password text changes from dots to plain text and back, smooth functionality with no errors. Screenshots captured showing both states."
+
+  - task: "Logout button in Levels page"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/Levels.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Added logout button (LogOut icon) in top-right corner of Levels page, next to theme toggle. Clicking clears authentication and redirects to home page."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Logout button correctly positioned in top-right corner next to theme toggle. Button functionality verified - clicking logout clears JWT token and sessionStorage, redirects to home page, prevents access to protected pages without re-authentication. Authentication security working correctly."
+
   - task: "Password strength visual feedback component"
     implemented: true
     working: true
