@@ -460,10 +460,10 @@ const Test = () => {
     score: number
   ) => {
     try {
-      // Get JWT token for authentication
-      const token = localStorage.getItem('jwt_token');
+      // Get Firebase token for authentication
+      const token = localStorage.getItem('firebase_token');
       if (!token) {
-        console.error('No JWT token found for email notification');
+        console.error('No Firebase token found for email notification');
         return;
       }
       
