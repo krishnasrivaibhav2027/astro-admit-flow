@@ -24,21 +24,36 @@ const Login = () => {
     try {
       // Login using custom backend endpoint (no Supabase Auth)
       const backendUrl = import.meta.env.REACT_APP_BACKEND_URL;
-      const response = await fetch(`${backendUrl}/api/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password
-        })
-      });
+      
+      let response;
+      try {
+        response = await fetch(`${backendUrl}/api/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password
+          })
+        });
+      } catch (fetchError: any) {
+        console.error("Fetch error:", fetchError);
+        throw new Error(`Network error: ${fetchError.message}`);
+      }
 
-      const data = await response.json();
+      let data;
+      try {
+        const text = await response.text();
+        console.log("Response text:", text);
+        data = text ? JSON.parse(text) : {};
+      } catch (parseError) {
+        console.error("JSON parse error:", parseError);
+        throw new Error("Invalid response from server");
+      }
 
       if (!response.ok) {
-        throw new Error(data.detail || "Login failed");
+        throw new Error(data.detail || data.message || "Login failed");
       }
 
       if (!data.success || !data.student) {
