@@ -63,16 +63,6 @@ const Registration = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Check if captcha is verified
-    if (!captchaToken) {
-      toast({
-        title: "Verification Required",
-        description: "Please complete the CAPTCHA verification.",
-        variant: "destructive"
-      });
-      return;
-    }
 
     setLoading(true);
 
@@ -82,52 +72,59 @@ const Registration = () => {
         age: parseInt(formData.age)
       });
 
-      // Verify captcha with backend first
-      const backendUrl = import.meta.env.REACT_APP_BACKEND_URL;
-      
-      let captchaResponse;
-      try {
-        captchaResponse = await fetch(`${backendUrl}/api/verify-captcha`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            captcha_token: captchaToken
-          })
-        });
-      } catch (fetchError: any) {
-        throw new Error(`Network error: ${fetchError.message}`);
-      }
-
-      // Handle captcha verification response
-      if (!captchaResponse.ok) {
-        let errorMessage = "Captcha verification failed";
-        try {
-          const errorData = await captchaResponse.json();
-          errorMessage = errorData.detail || errorMessage;
-        } catch (jsonError) {
-          // If JSON parsing fails, use status text
-          errorMessage = captchaResponse.statusText || errorMessage;
-        }
-        throw new Error(errorMessage);
-      }
-
-      // Parse success response
-      let captchaResult;
-      try {
-        captchaResult = await captchaResponse.json();
-      } catch (jsonError) {
-        throw new Error("Invalid response from captcha verification");
-      }
-
-      if (!captchaResult.success) {
-        throw new Error("Captcha verification was not successful");
-      }
-
-      // Create auth user after captcha verification
+      // Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: validated.email,
+        password: validated.password,
+        options: {
+          data: {
+            first_name: validated.firstName,
+            last_name: validated.lastName,
+          }
+        }
+      });
+
+      if (authError) throw authError;
+      
+      if (!authData.user) {
+        throw new Error("Failed to create user account");
+      }
+
+      // Create student record
+      const { data, error } = await supabase
+        .from("students")
+        .insert([{
+          id: authData.user.id, // Use auth user ID
+          first_name: validated.firstName,
+          last_name: validated.lastName,
+          age: validated.age,
+          dob: validated.dob,
+          email: validated.email,
+          phone: validated.phone
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: "Registration Successful!",
+        description: "You can now proceed to the test.",
+      });
+
+      navigate("/levels", { state: { studentId: authData.user.id } });
+    } catch (error: any) {
+      console.error("Registration error:", error);
+      
+      toast({
+        title: "Registration Failed",
+        description: error.message || "Please check your information and try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
         password: validated.password,
         options: {
           data: {
