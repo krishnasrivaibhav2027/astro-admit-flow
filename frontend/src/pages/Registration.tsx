@@ -273,9 +273,7 @@ const Registration = () => {
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   placeholder="Minimum 8 characters"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Must be at least 8 characters long
-                </p>
+                <PasswordStrength password={formData.password} />
               </div>
 
               <div className="space-y-2">
@@ -287,6 +285,10 @@ const Registration = () => {
                   value={formData.confirmPassword}
                   onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                   placeholder="Re-enter your password"
+                />
+                <PasswordMatch 
+                  password={formData.password} 
+                  confirmPassword={formData.confirmPassword} 
                 />
               </div>
 
