@@ -10,6 +10,7 @@ import { ArrowLeft, UserPlus, Shield } from "lucide-react";
 import { z } from "zod";
 import HCaptcha from "@hcaptcha/react-hcaptcha";
 import { ModeToggle } from "@/components/mode-toggle";
+import { PasswordStrength, PasswordMatch } from "@/components/PasswordStrength";
 
 const registrationSchema = z.object({
   firstName: z.string().min(2, "First name must be at least 2 characters"),
