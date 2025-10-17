@@ -373,7 +373,8 @@ const Test = () => {
     result: string,
     attempts: number,
     studentId: string,
-    score: number
+    score: number,
+    isTimeout: boolean = false
   ): Promise<boolean> => {
     const backendUrl = import.meta.env.VITE_BACKEND_URL;
     let shouldSendEmail = false;
@@ -385,7 +386,6 @@ const Test = () => {
         .eq("id", studentId)
         .single();
 
-      // Get all results for this student
       const { data: allResults } = await supabase
         .from("results")
         .select("*")
@@ -395,30 +395,30 @@ const Test = () => {
       const mediumPassed = allResults?.some(r => r.level === 'medium' && r.result === 'pass');
 
       if (currentLevel === "easy") {
-        if (result === "fail") {
-          // Easy failed - send fail email
+        if (result === "fail" || isTimeout) {
+          // Easy failed or timeout - send fail email
           shouldSendEmail = true;
           await sendEmailNotification(backendUrl, studentData, "fail", score);
         }
-        // Easy passed - no email, continue to medium
       } else if (currentLevel === "medium") {
         const maxAttempts = 2;
-        if (result === "pass") {
+        if (result === "pass" && !isTimeout) {
           // Medium passed - no email, continue to hard
           shouldSendEmail = false;
         } else if (attempts >= maxAttempts) {
-          // Medium failed both attempts - send fail email
+          // Medium failed both attempts or timeout on last attempt - send fail email
           shouldSendEmail = true;
           await sendEmailNotification(backendUrl, studentData, "fail", score);
         }
+        // If timeout but still has attempts, no email (will retry)
       } else if (currentLevel === "hard") {
         const maxAttempts = 2;
-        if (result === "pass") {
+        if (result === "pass" && !isTimeout) {
           // Hard passed - send pass email
           shouldSendEmail = true;
           await sendEmailNotification(backendUrl, studentData, "pass", score);
         } else if (attempts >= maxAttempts) {
-          // Hard failed both attempts
+          // Hard failed both attempts or timeout on last attempt
           if (mediumPassed) {
             // Medium was passed, so overall pass
             shouldSendEmail = true;
@@ -429,6 +429,7 @@ const Test = () => {
             await sendEmailNotification(backendUrl, studentData, "fail", score);
           }
         }
+        // If timeout but still has attempts, no email (will retry)
       }
     } catch (error) {
       console.error("Error determining next step:", error);
