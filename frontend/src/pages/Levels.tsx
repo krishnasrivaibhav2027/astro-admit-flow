@@ -81,11 +81,7 @@ const Levels = () => {
     checkAuthAndLoadData();
   }, [studentId]);
 
-  const loadProgress = async () => {
-    // Get current user to ensure we have the right student ID
-    const { data: { user } } = await supabase.auth.getUser();
-    const currentStudentId = studentId || user?.id;
-    
+  const loadProgress = async (currentStudentId: string) => {
     if (!currentStudentId) {
       navigate("/login");
       return;
