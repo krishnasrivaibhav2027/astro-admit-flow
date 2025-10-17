@@ -77,7 +77,6 @@ const Registration = () => {
         email: validated.email,
         password: validated.password,
         options: {
-          emailRedirectTo: window.location.origin + '/levels',
           data: {
             first_name: validated.firstName,
             last_name: validated.lastName,
