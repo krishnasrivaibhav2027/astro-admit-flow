@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,9 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, UserPlus, Shield } from "lucide-react";
+import { ArrowLeft, UserPlus } from "lucide-react";
 import { z } from "zod";
-import HCaptcha from "@hcaptcha/react-hcaptcha";
 import { ModeToggle } from "@/components/mode-toggle";
 import { PasswordStrength, PasswordMatch } from "@/components/PasswordStrength";
 
