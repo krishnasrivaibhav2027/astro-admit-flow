@@ -487,6 +487,20 @@ const Test = () => {
   const isCurrentSubmitted = submittedQuestions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
 
+  // Format time remaining
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getTimerColor = () => {
+    const percentage = (timeRemaining / TIMER_DURATIONS[level as keyof typeof TIMER_DURATIONS]) * 100;
+    if (percentage > 50) return 'text-green-600 dark:text-green-400';
+    if (percentage > 20) return 'text-orange-600 dark:text-orange-400';
+    return 'text-red-600 dark:text-red-400 animate-pulse';
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 dark:from-primary/10 dark:via-background dark:to-secondary/10 p-4">
       {/* Theme Toggle */}
