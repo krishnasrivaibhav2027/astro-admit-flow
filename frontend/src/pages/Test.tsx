@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Send, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
+import { Loader2, Send, ChevronLeft, ChevronRight, CheckCircle2, Clock } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ModeToggle } from "@/components/mode-toggle";
 
@@ -14,6 +14,13 @@ interface Question {
   question: string;
   answer: string;
 }
+
+// Timer durations in seconds
+const TIMER_DURATIONS = {
+  easy: 10 * 60,    // 10 minutes
+  medium: 35 * 60,  // 35 minutes
+  hard: 45 * 60     // 45 minutes
+};
 
 const Test = () => {
   const navigate = useNavigate();
