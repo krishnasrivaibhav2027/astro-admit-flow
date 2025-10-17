@@ -264,12 +264,10 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Password strength visual feedback component"
-    - "hCaptcha integration on registration"
     - "Multi-level test flow with navigation"
     - "Test results display with detailed evaluation"
   stuck_tasks: []
-  test_all: true
+  test_all: false
   test_priority: "high_first"
 
 agent_communication:
