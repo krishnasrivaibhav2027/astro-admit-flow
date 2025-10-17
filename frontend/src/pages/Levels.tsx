@@ -87,10 +87,19 @@ const Levels = () => {
   }, [studentId]);
 
   const loadProgress = async () => {
+    // Get current user to ensure we have the right student ID
+    const { data: { user } } = await supabase.auth.getUser();
+    const currentStudentId = studentId || user?.id;
+    
+    if (!currentStudentId) {
+      navigate("/login");
+      return;
+    }
+
     const { data } = await supabase
       .from("results")
       .select("*")
-      .eq("student_id", studentId)
+      .eq("student_id", currentStudentId)
       .order("created_at", { ascending: false });
 
     if (data && data.length > 0) {
