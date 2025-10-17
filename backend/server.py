@@ -373,8 +373,10 @@ async def list_students():
 
 # ===== AI-POWERED QUESTION GENERATION WITH RAG =====
 @api_router.post("/generate-questions")
-async def generate_questions(request: GenerateQuestionsRequest):
+async def generate_questions(request: GenerateQuestionsRequest, current_user: Dict = Depends(get_current_user)):
+    """Generate questions - JWT Protected"""
     try:
+        logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         level = request.level
         num_questions = request.num_questions
         
