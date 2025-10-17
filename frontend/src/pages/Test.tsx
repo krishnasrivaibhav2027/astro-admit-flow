@@ -17,7 +17,7 @@ interface Question {
 
 // Timer durations in seconds
 const TIMER_DURATIONS = {
-  easy: 10 * 60,    // 10 minutes
+  easy: 1 * 60,     // 1 minute (FOR TESTING)
   medium: 35 * 60,  // 35 minutes
   hard: 45 * 60     // 45 minutes
 };
