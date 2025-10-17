@@ -73,71 +73,71 @@ const Registration = () => {
         age: parseInt(formData.age)
       });
 
-      // Register using custom backend endpoint (no Supabase Auth)
-      const backendUrl = import.meta.env.VITE_BACKEND_URL;
-      
-      let response;
-      try {
-        response = await fetch(`${backendUrl}/api/register`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            first_name: validated.firstName,
-            last_name: validated.lastName,
-            age: validated.age,
-            dob: validated.dob,
-            email: validated.email,
-            phone: validated.phone,
-            password: validated.password
-          })
-        });
-      } catch (fetchError: any) {
-        console.error("Fetch error:", fetchError);
-        throw new Error(`Network error: ${fetchError.message}`);
-      }
+      // Create user with Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        validated.email,
+        validated.password
+      );
 
-      let data;
-      try {
-        const text = await response.text();
-        console.log("Response text:", text);
-        data = text ? JSON.parse(text) : {};
-      } catch (parseError) {
-        console.error("JSON parse error:", parseError);
-        throw new Error("Invalid response from server");
-      }
+      const user = userCredential.user;
+
+      // Get Firebase ID token
+      const idToken = await user.getIdToken();
+
+      // Store Firebase token
+      localStorage.setItem('firebase_token', idToken);
+
+      // Create student record in Supabase with Firebase UID
+      const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      const response = await fetch(`${backendUrl}/api/students`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          id: user.uid,
+          first_name: validated.firstName,
+          last_name: validated.lastName,
+          age: validated.age,
+          dob: validated.dob,
+          email: validated.email,
+          phone: validated.phone
+        })
+      });
 
       if (!response.ok) {
-        throw new Error(data.detail || data.message || "Registration failed");
+        throw new Error('Failed to create student record');
       }
 
-      if (!data.success) {
-        throw new Error(data.message || "Registration failed");
-      }
-
-      // Store JWT token and student ID
-      if (data.token) {
-        localStorage.setItem('jwt_token', data.token);
-      }
-      sessionStorage.setItem('studentId', data.student_id);
+      // Store student info in session
+      sessionStorage.setItem('studentId', user.uid);
       sessionStorage.setItem('studentEmail', validated.email);
 
-      console.log("Registration successful, student ID:", data.student_id);
-      console.log("JWT token stored");
+      console.log("Registration successful with Firebase, UID:", user.uid);
 
       toast({
         title: "Registration Successful!",
         description: "Welcome! You can now proceed to the test.",
       });
 
-      navigate("/levels", { state: { studentId: data.student_id } });
+      navigate("/levels", { state: { studentId: user.uid } });
     } catch (error: any) {
       console.error("Registration error:", error);
       
+      let errorMessage = "Please check your information and try again.";
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = "Email already registered. Please login instead.";
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = "Password is too weak. Use at least 6 characters.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Registration Failed",
-        description: error.message || "Please check your information and try again.",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
