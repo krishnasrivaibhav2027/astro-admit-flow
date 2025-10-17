@@ -17,7 +17,12 @@ const registrationSchema = z.object({
   age: z.number().min(16, "Must be at least 16 years old").max(100, "Invalid age"),
   dob: z.string().min(1, "Date of birth is required"),
   email: z.string().email("Invalid email address"),
-  phone: z.string().min(10, "Phone number must be at least 10 characters")
+  phone: z.string().min(10, "Phone number must be at least 10 characters"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  confirmPassword: z.string()
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
 });
 
 const Registration = () => {
