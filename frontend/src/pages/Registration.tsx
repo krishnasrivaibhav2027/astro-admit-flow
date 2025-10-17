@@ -32,8 +32,6 @@ const Registration = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const captchaRef = useRef<HCaptcha>(null);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
