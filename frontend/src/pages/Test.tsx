@@ -519,9 +519,23 @@ const Test = () => {
               Question {currentQuestionIndex + 1} of {questions.length}
             </p>
           </div>
-          <Button variant="outline" onClick={handleExit}>
-            Exit Test
-          </Button>
+          <div className="flex items-center gap-4">
+            {/* Timer Display */}
+            <Card className={`px-4 py-2 ${timeRemaining < 60 ? 'animate-pulse border-red-500' : ''}`}>
+              <div className="flex items-center gap-2">
+                <Clock className={`w-5 h-5 ${getTimerColor()}`} />
+                <div>
+                  <p className="text-xs text-muted-foreground">Time Remaining</p>
+                  <p className={`text-2xl font-bold ${getTimerColor()}`}>
+                    {formatTime(timeRemaining)}
+                  </p>
+                </div>
+              </div>
+            </Card>
+            <Button variant="outline" onClick={handleExit}>
+              Exit Test
+            </Button>
+          </div>
         </div>
 
         {/* Progress */}
