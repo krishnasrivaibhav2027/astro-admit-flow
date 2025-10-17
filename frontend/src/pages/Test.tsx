@@ -184,6 +184,17 @@ const Test = () => {
     }
   };
 
+  const handleTimeOut = async () => {
+    toast({
+      title: "Time's Up!",
+      description: "The test time has expired. Submitting your answers...",
+      variant: "destructive"
+    });
+
+    // Auto-submit with current answers
+    await submitAllAnswers(true); // Pass true to indicate timeout
+  };
+
   const handleAnswerChange = (value: string) => {
     const newAnswers = [...answers];
     newAnswers[currentQuestionIndex] = value;
