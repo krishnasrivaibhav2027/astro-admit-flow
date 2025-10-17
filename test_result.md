@@ -196,11 +196,11 @@ frontend:
         agent: "testing"
         comment: "✅ TESTED: Password strength component working perfectly! Real-time visual feedback with green checkmarks for met requirements (8 chars, uppercase, special char), red X marks for unmet requirements, animated progress bar (red->orange->yellow->green), 'Strong password ✓' message when all requirements met. Password match validation shows 'Passwords match ✓' or 'Passwords don't match' with appropriate icons."
   
-  - task: "hCaptcha integration on registration"
-    implemented: false
+  - task: "Registration and Login Flow Integration"
+    implemented: true
     working: false
-    file: "frontend/src/pages/Registration.tsx"
-    stuck_count: 1
+    file: "frontend/src/pages/Registration.tsx, frontend/src/pages/Login.tsx"
+    stuck_count: 2
     priority: "high"
     needs_retesting: false
     status_history:
@@ -222,6 +222,9 @@ frontend:
       - working: false
         agent: "testing"
         comment: "❌ CRITICAL ISSUE: User requested hCaptcha removal but Supabase Auth still requires captcha verification. Frontend hCaptcha completely removed ✅ (no widget, iframe, Security Verification section, or captcha text found). Form loads correctly ✅, password strength indicators work perfectly ✅ (all green checkmarks, 'Strong password ✓', 'Passwords match ✓'), age auto-calculation works ✅ (DOB 1998-03-20 → Age 27), submit button enabled ✅. However, registration fails with 'AuthApiError: captcha verification process failed' from Supabase Auth API (500 error from https://uminpkhjsrfogjtwqqfn.supabase.co/auth/v1/signup). Root cause: Supabase project has CAPTCHA protection enabled in Authentication settings. SOLUTION REQUIRED: Disable CAPTCHA in Supabase Dashboard → Settings → Authentication → Bot and Abuse Protection → Toggle off 'Enable CAPTCHA protection'."
+      - working: false
+        agent: "testing"
+        comment: "❌ COMPREHENSIVE REGISTRATION & LOGIN FLOW TESTING COMPLETE: Identified exact root causes of user-reported issues. REGISTRATION FLOW ANALYSIS: ✅ Registration works correctly with valid email domains (gmail.com) - creates user account, student record, shows success toast 'Registration Successful! Please check your email to confirm your account, then login', correctly redirects to /login. ❌ Registration fails with invalid email domains (example.com) - Supabase rejects with 'Email address is invalid' error (400 status). LOGIN FLOW ANALYSIS: ❌ Login fails for newly registered users with 'Email not confirmed' error - expected behavior as Supabase requires email confirmation. ❌ Login fails for test accounts with 'Invalid login credentials' - no existing confirmed accounts in system. CRITICAL FINDINGS: 1) User issue 'redirected to /login instead of /levels' is CORRECT BEHAVIOR - Supabase email confirmation is enabled, requiring users to confirm email before login. 2) User issue 'login throwing error' is due to attempting login with unconfirmed email accounts. 3) No existing confirmed test accounts available for successful login testing. SOLUTION REQUIRED: Either disable email confirmation in Supabase Dashboard OR provide confirmed test account credentials for login testing."
   
   - task: "Multi-level test flow with navigation"
     implemented: true
