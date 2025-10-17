@@ -37,7 +37,9 @@ const Registration = () => {
     age: "",
     dob: "",
     email: "",
-    phone: ""
+    phone: "",
+    password: "",
+    confirmPassword: ""
   });
 
   const handleCaptchaVerify = (token: string) => {
