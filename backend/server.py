@@ -434,6 +434,36 @@ async def create_result(request: CreateResultRequest, current_user: Dict = Depen
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@api_router.post("/save-questions")
+async def save_questions(request: SaveQuestionsRequest, current_user: Dict = Depends(get_current_user)):
+    """Save test questions - Firebase Auth Protected"""
+    try:
+        logging.info(f"🔒 Authenticated request from: {current_user['email']}")
+        
+        # Prepare questions for insert
+        questions_to_insert = []
+        for q in request.questions:
+            questions_to_insert.append({
+                "result_id": request.result_id,
+                "question_text": q.get("question", ""),
+                "correct_answer": q.get("answer", "")
+            })
+        
+        # Insert questions into Supabase
+        response = supabase.table("questions").insert(questions_to_insert).execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=500, detail="Failed to save questions")
+        
+        return {"success": True, "message": f"Saved {len(response.data)} questions"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error saving questions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @api_router.post("/generate-questions")
 async def generate_questions(request: GenerateQuestionsRequest, current_user: Dict = Depends(get_current_user)):
     """Generate questions - JWT Protected"""
