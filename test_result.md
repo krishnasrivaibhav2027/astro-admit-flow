@@ -291,7 +291,6 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Multi-level test flow with navigation"
     - "Test results display with detailed evaluation"
   stuck_tasks: []
   test_all: false
