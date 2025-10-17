@@ -104,6 +104,11 @@ class CreateResultRequest(BaseModel):
     attempts_hard: int = 0
 
 
+class SaveQuestionsRequest(BaseModel):
+    result_id: str
+    questions: List[Dict[str, str]]
+
+
 class EvaluateAnswersRequest(BaseModel):
     result_id: str
 
