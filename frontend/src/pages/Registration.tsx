@@ -110,11 +110,15 @@ const Registration = () => {
         throw new Error('Failed to create student record');
       }
 
+      const studentData = await response.json();
+      const studentId = studentData.id; // Use the UUID returned by backend
+
       // Store student info in session
-      sessionStorage.setItem('studentId', user.uid);
+      sessionStorage.setItem('studentId', studentId);
       sessionStorage.setItem('studentEmail', validated.email);
 
       console.log("Registration successful with Firebase, UID:", user.uid);
+      console.log("Student created with ID:", studentId);
 
       toast({
         title: "Registration Successful!",
