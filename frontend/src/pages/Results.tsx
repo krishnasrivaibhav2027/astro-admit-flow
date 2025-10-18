@@ -334,22 +334,34 @@ const Results = () => {
               </Button>
             ) : null}
             
-            <Button
-              size="lg"
-              variant="outline"
-              className="flex-1"
-              onClick={() => {
-                // If max attempts reached or easy level failed, go to home
-                if (currentAttempts >= maxAttempts || (level === "easy" && !isPassed)) {
-                  navigate("/");
-                } else {
-                  navigate("/levels", { state: { studentId } });
-                }
-              }}
-            >
-              <Home className="w-5 h-5 mr-2" />
-              {currentAttempts >= maxAttempts || (level === "easy" && !isPassed) ? "Back to Home" : "Back to Levels"}
-            </Button>
+            {/* Show Logout button if test is completed, otherwise show Back to Levels/Home */}
+            {isTestCompleted || (isPassed && level === "hard") || (currentAttempts >= maxAttempts && !isPassed) ? (
+              <Button
+                size="lg"
+                variant="outline"
+                className="flex-1"
+                onClick={handleLogout}
+              >
+                <LogOut className="w-5 h-5 mr-2" />
+                Logout
+              </Button>
+            ) : (
+              <Button
+                size="lg"
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  if (level === "easy" && !isPassed) {
+                    navigate("/");
+                  } else {
+                    navigate("/levels", { state: { studentId } });
+                  }
+                }}
+              >
+                <Home className="w-5 h-5 mr-2" />
+                {level === "easy" && !isPassed ? "Back to Home" : "Back to Levels"}
+              </Button>
+            )}
           </div>
         </div>
       </div>
