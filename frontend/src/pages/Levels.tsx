@@ -261,7 +261,8 @@ const Levels = () => {
   };
 
   const handleStartLevel = (level: LevelData) => {
-    if (level.status === "locked") return;
+    // Don't allow starting locked or completed levels
+    if (level.status === "locked" || level.status === "completed") return;
     
     navigate("/test", { 
       state: { 
