@@ -345,9 +345,16 @@ const Test = () => {
       const attemptsField = `attempts_${level}`;
       const newAttemptCount = (currentResult[attemptsField] || 0) + 1;
       
-      // If timeout, automatically fail
-      const testResult = isTimeout ? 'fail' : (evaluationData.result || 'fail');
-      const testScore = evaluationData.score || 0;
+      // Determine result based on score and timeout
+      let testResult: string;
+      let testScore = evaluationData.score || 0;
+      
+      if (isTimeout) {
+        // If timeout but score >= 5, still pass
+        testResult = testScore >= 5 ? 'pass' : 'fail';
+      } else {
+        testResult = evaluationData.result || 'fail';
+      }
 
       // Update result with incremented attempts
       await supabase
@@ -356,6 +363,20 @@ const Test = () => {
           [attemptsField]: newAttemptCount
         })
         .eq("id", resultId);
+
+      // If timeout with passing score, show message and go to levels
+      if (isTimeout && testScore >= 5) {
+        toast({
+          title: "Time's Up - But You Passed!",
+          description: `Your score: ${testScore.toFixed(1)}/10. You can proceed to the next level!`,
+        });
+        
+        // Small delay to show the toast
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        navigate("/levels", { state: { studentId } });
+        return;
+      }
 
       // Determine what happens next and if email should be sent
       const shouldSendEmail = await determineNextStep(
