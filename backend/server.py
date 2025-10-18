@@ -657,8 +657,8 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
         # Score is out of 10
         score_out_of_10 = total_avg
         
-        # Determine pass/fail (6/10 threshold = 60%)
-        result_status = 'pass' if score_out_of_10 >= 6.0 else 'fail'
+        # Determine pass/fail (5/10 threshold = 50%)
+        result_status = 'pass' if score_out_of_10 >= 5.0 else 'fail'
         
         # Calculate average for each of the 6 criteria across all questions
         criteria_averages = {
