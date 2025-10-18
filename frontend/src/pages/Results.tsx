@@ -121,6 +121,22 @@ const Results = () => {
     });
   };
 
+  const handleLogout = () => {
+    // Clear all authentication data
+    localStorage.removeItem('firebase_token');
+    localStorage.removeItem('jwt_token');
+    sessionStorage.removeItem('studentId');
+    sessionStorage.removeItem('studentEmail');
+    
+    toast({
+      title: "Logged Out",
+      description: "You have been successfully logged out.",
+    });
+    
+    // Navigate to home page
+    navigate("/");
+  };
+
   const isPassed = result === "pass";
 
   // Display 6 evaluation criteria (average scores across all questions)
