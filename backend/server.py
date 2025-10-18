@@ -353,20 +353,20 @@ async def create_student(student: StudentCreate, current_user: Dict = Depends(ge
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
-        # Generate UUID for database, but store Firebase UID mapping
-        import uuid
-        student_uuid = str(uuid.uuid4())
-        firebase_uid = current_user.get('uid')
+        # Check if student already exists by email
+        existing_response = supabase.table("students").select("*").eq("email", student.email).execute()
+        if existing_response.data and len(existing_response.data) > 0:
+            # Student already exists, return existing student
+            return existing_response.data[0]
         
+        # Generate UUID for new student (let Supabase auto-generate)
         student_data = {
-            "id": student_uuid,  # Use generated UUID for database
             "first_name": student.first_name,
             "last_name": student.last_name,
             "age": student.age,
             "dob": student.dob,
             "email": student.email,
-            "phone": student.phone,
-            "firebase_uid": firebase_uid  # Store Firebase UID for mapping
+            "phone": student.phone
         }
         
         response = supabase.table("students").insert(student_data).execute()
