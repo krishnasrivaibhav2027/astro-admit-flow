@@ -6,15 +6,17 @@ Your Supabase project needs to have the database tables set up. Please follow th
 
 ### Option A: Using Supabase SQL Editor (Recommended)
 
-1. Go to your Supabase Dashboard: https://supabase.com/dashboard/project/uminpkhjsrfogjtwqqfn
-2. Click on "SQL Editor" in the left sidebar
-3. Click "New query"
-4. Copy and paste the following SQL migration and click "Run":
+1. Go to your Supabase Dashboard: `https://supabase.com/dashboard/project/<your-project-id>`
+2. Click on "SQL Editor" in the left sidebar.
+3. Click "New query".
+4. Copy and paste the following SQL migration and click "Run". This script is now secure and enforces proper data access policies.
 
 ```sql
 -- Create students table
+-- This table now includes a user_id to link students to authenticated users.
 CREATE TABLE IF NOT EXISTS public.students (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   first_name TEXT NOT NULL,
   last_name TEXT NOT NULL,
   age INTEGER NOT NULL,
@@ -57,65 +59,67 @@ CREATE TABLE IF NOT EXISTS public.student_answers (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Enable RLS
+-- Enable RLS on all tables
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.results ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.questions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_answers ENABLE ROW LEVEL SECURITY;
 
--- Create RLS policies for students
-DROP POLICY IF EXISTS "Students can view their own data" ON public.students;
-CREATE POLICY "Students can view their own data" 
-  ON public.students FOR SELECT 
-  USING (true);
+-- Create SECURE RLS policies for students
+-- Users can only manage their own student profile.
+DROP POLICY IF EXISTS "Users can manage their own student profile" ON public.students;
+CREATE POLICY "Users can manage their own student profile"
+  ON public.students FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Students can insert their own data" ON public.students;
-CREATE POLICY "Students can insert their own data" 
-  ON public.students FOR INSERT 
-  WITH CHECK (true);
+-- Create SECURE RLS policies for results
+-- Users can only manage results linked to their student profile.
+DROP POLICY IF EXISTS "Users can manage results linked to their student profile" ON public.results;
+CREATE POLICY "Users can manage results linked to their student profile"
+  ON public.results FOR ALL
+  USING (EXISTS (
+    SELECT 1 FROM public.students
+    WHERE students.id = results.student_id AND students.user_id = auth.uid()
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.students
+    WHERE students.id = results.student_id AND students.user_id = auth.uid()
+  ));
 
-DROP POLICY IF EXISTS "Students can update their own data" ON public.students;
-CREATE POLICY "Students can update their own data" 
-  ON public.students FOR UPDATE 
-  USING (true);
+-- Create SECURE RLS policies for questions
+-- Users can only manage questions linked to their results.
+DROP POLICY IF EXISTS "Users can manage questions linked to their results" ON public.questions;
+CREATE POLICY "Users can manage questions linked to their results"
+  ON public.questions FOR ALL
+  USING (EXISTS (
+    SELECT 1 FROM public.results
+    JOIN public.students ON results.student_id = students.id
+    WHERE results.id = questions.result_id AND students.user_id = auth.uid()
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.results
+    JOIN public.students ON results.student_id = students.id
+    WHERE results.id = questions.result_id AND students.user_id = auth.uid()
+  ));
 
--- Create RLS policies for results
-DROP POLICY IF EXISTS "Students can view results" ON public.results;
-CREATE POLICY "Students can view results" 
-  ON public.results FOR SELECT 
-  USING (true);
-
-DROP POLICY IF EXISTS "Students can insert results" ON public.results;
-CREATE POLICY "Students can insert results" 
-  ON public.results FOR INSERT 
-  WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Students can update results" ON public.results;
-CREATE POLICY "Students can update results" 
-  ON public.results FOR UPDATE 
-  USING (true);
-
--- Create RLS policies for questions
-DROP POLICY IF EXISTS "Students can view questions" ON public.questions;
-CREATE POLICY "Students can view questions" 
-  ON public.questions FOR SELECT 
-  USING (true);
-
-DROP POLICY IF EXISTS "Students can insert questions" ON public.questions;
-CREATE POLICY "Students can insert questions" 
-  ON public.questions FOR INSERT 
-  WITH CHECK (true);
-
--- Create RLS policies for student_answers
-DROP POLICY IF EXISTS "Students can view answers" ON public.student_answers;
-CREATE POLICY "Students can view answers" 
-  ON public.student_answers FOR SELECT 
-  USING (true);
-
-DROP POLICY IF EXISTS "Students can insert answers" ON public.student_answers;
-CREATE POLICY "Students can insert answers" 
-  ON public.student_answers FOR INSERT 
-  WITH CHECK (true);
+-- Create SECURE RLS policies for student_answers
+-- Users can only manage answers linked to their questions.
+DROP POLICY IF EXISTS "Users can manage answers linked to their questions" ON public.student_answers;
+CREATE POLICY "Users can manage answers linked to their questions"
+  ON public.student_answers FOR ALL
+  USING (EXISTS (
+    SELECT 1 FROM public.questions
+    JOIN public.results ON questions.result_id = results.id
+    JOIN public.students ON results.student_id = students.id
+    WHERE questions.id = student_answers.question_id AND students.user_id = auth.uid()
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.questions
+    JOIN public.results ON questions.result_id = results.id
+    JOIN public.students ON results.student_id = students.id
+    WHERE questions.id = student_answers.question_id AND students.user_id = auth.uid()
+  ));
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
@@ -143,7 +147,7 @@ CREATE TRIGGER update_results_updated_at
 ALTER FUNCTION public.update_updated_at_column() SET search_path = public;
 ```
 
-5. Verify the tables were created by going to "Table Editor" in the left sidebar
+5. Verify the tables were created by going to "Table Editor" in the left sidebar.
 
 ### Option B: Using Supabase CLI
 
@@ -158,40 +162,34 @@ supabase db reset --linked
 
 After creating the tables, test the database connection:
 
-1. Check if the Supabase project is active and accessible
-2. Verify the database password is correct
-3. Test the connection from the backend
+1. Check if the Supabase project is active and accessible.
+2. Verify your database credentials are correct in your environment variables.
+3. Test the connection from the backend.
 
 ## Step 3: Important Notes
 
 ### Database Credentials
-- **Project ID**: uminpkhjsrfogjtwqqfn
-- **URL**: https://uminpkhjsrfogjtwqqfn.supabase.co
-- **Connection String**: The password contains special characters and is URL-encoded in the backend `.env` file
+- Your project's credentials (URL, anon key) should be stored securely in environment variables, not in documentation.
 
 ### AI Integration
-- **Question Generation**: Using Gemini AI (`gemini-1.5-pro` model)
-- **Answer Evaluation**: Using Gemini AI for intelligent assessment
-- **API Key**: Configured in backend `.env` file
+- **Question Generation**: Using Gemini AI (`gemini-1.5-pro` model).
+- **Answer Evaluation**: Using Gemini AI for intelligent assessment.
+- **API Key**: Ensure your Gemini API key is configured in your backend's `.env` file.
 
 ### Email Notifications
-- Gmail OAuth credentials are configured
-- Email sending functionality is placeholder (needs implementation)
-- Can be implemented later if needed
+- The email sending functionality is currently a placeholder and needs to be implemented.
 
 ## Troubleshooting
 
 ### If Backend Won't Start:
-1. Check backend logs: `tail -50 /var/log/supervisor/backend.err.log`
-2. Verify database tables exist in Supabase dashboard
-3. Ensure Supabase project is not paused (free tier projects pause after inactivity)
-4. Check if PostgreSQL pooler is enabled in Supabase project settings
+1. Check backend logs for errors.
+2. Verify that the database tables were created in the Supabase dashboard.
+3. Ensure your Supabase project is not paused (free tier projects may pause after a week of inactivity).
 
 ### If Connection Fails:
-1. Go to Supabase Dashboard → Settings → Database
-2. Check "Connection Pooling" settings
-3. Use "Transaction" mode pooler
-4. Verify the connection string matches
+1. Go to your Supabase Dashboard → Settings → Database.
+2. Check your "Connection Pooling" settings.
+3. Verify the connection string is correctly configured in your backend.
 
 ### To Test Backend:
 ```bash
@@ -206,30 +204,9 @@ Should return:
 }
 ```
 
-## What's Different from Old Setup
-
-### Before (MongoDB):
-- Used MongoDB for database
-- Had Supabase Edge Functions for AI operations
-- Required Lovable API for question generation
-
-### Now (Supabase PostgreSQL):
-- Using Supabase PostgreSQL for all data
-- AI operations integrated in FastAPI backend
-- Using Gemini API for question generation and evaluation
-- Simpler architecture - everything in one place
-
-## Next Steps After Database Setup
-
-1. Run the SQL migration in Supabase SQL Editor
-2. Restart the backend: `sudo supervisorctl restart backend`
-3. Test the backend connection
-4. Test the frontend by registering a student
-5. Try generating questions for a test level
-
 ---
 
 **Need Help?** Check if your Supabase project:
-- Is not paused (free tier projects pause after 1 week of inactivity)
-- Has database pooling enabled
-- Allows connections from external IPs
+- Is not paused.
+- Has database pooling enabled.
+- Is configured to allow connections from your application's IP.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,122 +21,127 @@ interface LevelData {
   maxAttempts: number;
 }
 
+const initialLevels: LevelData[] = [
+  {
+    level: "easy",
+    title: "Easy Level",
+    icon: Target,
+    color: "from-green-500 to-emerald-500",
+    description: "Foundation concepts - 5 questions",
+    status: "current",
+    attempts: 0,
+    maxAttempts: 1,
+  },
+  {
+    level: "medium",
+    title: "Medium Level",
+    icon: Zap,
+    color: "from-blue-500 to-cyan-500",
+    description: "Intermediate concepts - 3 questions",
+    status: "locked",
+    attempts: 0,
+    maxAttempts: 2,
+  },
+  {
+    level: "hard",
+    title: "Hard Level",
+    icon: Crown,
+    color: "from-purple-500 to-pink-500",
+    description: "Advanced concepts - 2 questions",
+    status: "locked",
+    attempts: 0,
+    maxAttempts: 2,
+  },
+];
+
 const Levels = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const studentId = location.state?.studentId;
-  const [levels, setLevels] = useState<LevelData[]>([
-    {
-      level: "easy",
-      title: "Easy Level",
-      icon: Target,
-      color: "from-green-500 to-emerald-500",
-      description: "Foundation concepts - 5 questions",
-      status: "current",
-      attempts: 0,
-      maxAttempts: 1
-    },
-    {
-      level: "medium",
-      title: "Medium Level",
-      icon: Zap,
-      color: "from-blue-500 to-cyan-500",
-      description: "Intermediate concepts - 3 questions",
-      status: "locked",
-      attempts: 0,
-      maxAttempts: 2
-    },
-    {
-      level: "hard",
-      title: "Hard Level",
-      icon: Crown,
-      color: "from-purple-500 to-pink-500",
-      description: "Advanced concepts - 2 questions",
-      status: "locked",
-      attempts: 0,
-      maxAttempts: 2
+  const [studentId, setStudentId] = useState<string | null>(location.state?.studentId);
+  const [levels, setLevels] = useState<LevelData[]>(initialLevels);
+
+  const loadProgress = useCallback(async (currentStudentId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("results")
+        .select("*")
+        .eq("student_id", currentStudentId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data && data.length > 0) {
+        const latestResult = data[0];
+        setLevels(prevLevels => {
+          const newLevels = [...prevLevels];
+          
+          newLevels[0].attempts = latestResult.attempts_easy || 0;
+          newLevels[1].attempts = latestResult.attempts_medium || 0;
+          newLevels[2].attempts = latestResult.attempts_hard || 0;
+          
+          const easyPassed = data.some(r => r.level === "easy" && r.result === "pass");
+          const mediumPassed = data.some(r => r.level === "medium" && r.result === "pass");
+          
+          if (mediumPassed) {
+            newLevels[0].status = "completed";
+            newLevels[1].status = "completed";
+            newLevels[2].status = "current";
+          } else if (easyPassed) {
+            newLevels[0].status = "completed";
+            newLevels[1].status = "current";
+            newLevels[2].status = "locked";
+          }
+          
+          return newLevels;
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load your progress. Please try again.",
+        variant: "destructive",
+      });
     }
-  ]);
+  }, [toast]);
 
   useEffect(() => {
-    const checkAuthAndLoadData = async () => {
-      try {
-        // Check if user is authenticated using sessionStorage (custom auth)
-        const storedStudentId = sessionStorage.getItem('studentId');
-        const currentStudentId = studentId || storedStudentId;
-        
-        if (!currentStudentId) {
-          console.log("No student ID found, redirecting to login");
-          navigate("/login");
-          return;
-        }
-
-        console.log("Student authenticated:", currentStudentId);
-        loadProgress(currentStudentId);
-      } catch (error) {
-        console.error("Error checking auth:", error);
-        navigate("/login");
-      }
-    };
-
-    checkAuthAndLoadData();
-  }, [studentId]);
-
-  const loadProgress = async (currentStudentId: string) => {
+    const storedStudentId = sessionStorage.getItem('studentId');
+    const currentStudentId = studentId || storedStudentId;
+    
     if (!currentStudentId) {
       navigate("/login");
       return;
     }
-
-    const { data } = await supabase
-      .from("results")
-      .select("*")
-      .eq("student_id", currentStudentId)
-      .order("created_at", { ascending: false });
-
-    if (data && data.length > 0) {
-      const latestResult = data[0];
-      const newLevels = [...levels];
-      
-      // Update attempts from latest result
-      newLevels[0].attempts = latestResult.attempts_easy || 0;
-      newLevels[1].attempts = latestResult.attempts_medium || 0;
-      newLevels[2].attempts = latestResult.attempts_hard || 0;
-      
-      // Determine current level based on progress and attempts
-      const easyPassed = latestResult.attempts_easy > 0 && 
-        data.some(r => r.level === "easy" && r.result === "pass");
-      const mediumPassed = latestResult.attempts_medium > 0 && 
-        data.some(r => r.level === "medium" && r.result === "pass");
-      
-      if (mediumPassed) {
-        // Both easy and medium passed, unlock hard
-        newLevels[0].status = "completed";
-        newLevels[1].status = "completed";
-        newLevels[2].status = "current";
-      } else if (easyPassed) {
-        // Easy passed, medium is current
-        newLevels[0].status = "completed";
-        newLevels[1].status = "current";
-        newLevels[2].status = "locked";
-      } else {
-        // Easy is current
-        newLevels[0].status = "current";
-        newLevels[1].status = "locked";
-        newLevels[2].status = "locked";
-      }
-      
-      setLevels(newLevels);
-    }
-  };
-
+    
+    setStudentId(currentStudentId);
+    sessionStorage.setItem('studentId', currentStudentId);
+    loadProgress(currentStudentId);
+  }, [studentId, navigate, loadProgress]);
+  
   const handleStartLevel = (level: LevelData) => {
     if (level.status === "locked") return;
     
+    const currentStudentId = sessionStorage.getItem('studentId');
+    if (!currentStudentId) {
+      navigate("/login");
+      return;
+    }
+    
+    if (level.attempts >= level.maxAttempts) {
+      toast({
+        title: "Max attempts reached",
+        description: `You have reached the maximum number of attempts for the ${level.title}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     navigate("/test", { 
       state: { 
-        studentId, 
+        studentId: currentStudentId, 
         level: level.level,
         currentAttempt: level.attempts + 1
       } 
@@ -144,18 +149,14 @@ const Levels = () => {
   };
 
   const handleLogout = () => {
-    // Clear all authentication data
     localStorage.removeItem('firebase_token');
-    localStorage.removeItem('jwt_token');
     sessionStorage.removeItem('studentId');
-    sessionStorage.removeItem('studentEmail');
     
     toast({
       title: "Logged Out",
       description: "You have been successfully logged out.",
     });
     
-    // Navigate to home page
     navigate("/");
   };
 

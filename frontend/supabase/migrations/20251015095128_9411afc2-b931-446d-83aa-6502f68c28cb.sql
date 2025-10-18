@@ -1,9 +1,10 @@
--- Create students table
+-- Create students table with validation constraints
 CREATE TABLE public.students (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  first_name TEXT NOT NULL,
-  last_name TEXT NOT NULL,
-  age INTEGER NOT NULL,
+  user_id UUID NOT NULL REFERENCES auth.users(id) DEFAULT auth.uid(),
+  first_name TEXT NOT NULL CHECK (char_length(first_name) > 0),
+  last_name TEXT NOT NULL CHECK (char_length(last_name) > 0),
+  age INTEGER NOT NULL CHECK (age > 0),
   dob DATE NOT NULL,
   email TEXT NOT NULL UNIQUE,
   phone TEXT NOT NULL,
@@ -12,12 +13,12 @@ CREATE TABLE public.students (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create results table
+-- Create results table with validation constraints
 CREATE TABLE public.results (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_id UUID NOT NULL REFERENCES public.students(id) ON DELETE CASCADE,
   level TEXT NOT NULL CHECK (level IN ('easy', 'medium', 'hard')),
-  score REAL,
+  score REAL CHECK (score >= 0 AND score <= 10),
   result TEXT CHECK (result IN ('pass', 'fail', 'pending')),
   attempts_easy INTEGER DEFAULT 0,
   attempts_medium INTEGER DEFAULT 0,
@@ -49,49 +50,41 @@ ALTER TABLE public.results ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.questions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_answers ENABLE ROW LEVEL SECURITY;
 
--- Create RLS policies for students
-CREATE POLICY "Students can view their own data" 
-  ON public.students FOR SELECT 
-  USING (true);
+-- Secure RLS policies for students
+CREATE POLICY "Users can manage their own student data"
+  ON public.students FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Students can insert their own data" 
-  ON public.students FOR INSERT 
-  WITH CHECK (true);
+-- Secure RLS policies for results
+CREATE POLICY "Users can manage their own results"
+  ON public.results FOR ALL
+  USING (EXISTS (
+    SELECT 1 FROM public.students
+    WHERE students.id = results.student_id AND students.user_id = auth.uid()
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.students
+    WHERE students.id = results.student_id AND students.user_id = auth.uid()
+  ));
 
-CREATE POLICY "Students can update their own data" 
-  ON public.students FOR UPDATE 
-  USING (true);
+-- Secure RLS policies for questions and answers (cascaded access)
+CREATE POLICY "Users can view questions of their results"
+  ON public.questions FOR SELECT
+  USING (EXISTS (
+    SELECT 1 FROM public.results r
+    JOIN public.students s ON r.student_id = s.id
+    WHERE r.id = result_id AND s.user_id = auth.uid()
+  ));
 
--- Create RLS policies for results
-CREATE POLICY "Students can view results" 
-  ON public.results FOR SELECT 
-  USING (true);
-
-CREATE POLICY "Students can insert results" 
-  ON public.results FOR INSERT 
-  WITH CHECK (true);
-
-CREATE POLICY "Students can update results" 
-  ON public.results FOR UPDATE 
-  USING (true);
-
--- Create RLS policies for questions
-CREATE POLICY "Students can view questions" 
-  ON public.questions FOR SELECT 
-  USING (true);
-
-CREATE POLICY "Students can insert questions" 
-  ON public.questions FOR INSERT 
-  WITH CHECK (true);
-
--- Create RLS policies for student_answers
-CREATE POLICY "Students can view answers" 
-  ON public.student_answers FOR SELECT 
-  USING (true);
-
-CREATE POLICY "Students can insert answers" 
-  ON public.student_answers FOR INSERT 
-  WITH CHECK (true);
+CREATE POLICY "Users can view answers to their questions"
+  ON public.student_answers FOR SELECT
+  USING (EXISTS (
+    SELECT 1 FROM public.questions q
+    JOIN public.results r ON q.result_id = r.id
+    JOIN public.students s ON r.student_id = s.id
+    WHERE q.id = question_id AND s.user_id = auth.uid()
+  ));
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()

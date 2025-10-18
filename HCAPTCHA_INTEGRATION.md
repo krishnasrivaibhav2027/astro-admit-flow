@@ -11,7 +11,7 @@ yarn add @hcaptcha/react-hcaptcha
 
 **2. Environment Configuration**
 - Added `VITE_HCAPTCHA_SITE_KEY` to `/app/frontend/.env`
-- Site Key: `eb8c9fc0-d502-45b0-b840-08865c5acc32`
+- Site Key: `your-hcaptcha-site-key`
 
 **3. Updated Registration Page**
 - Imported `@hcaptcha/react-hcaptcha` and `Shield` icon
@@ -79,11 +79,11 @@ yarn add @hcaptcha/react-hcaptcha
 **hCaptcha Settings in Supabase:**
 - Location: Supabase Dashboard → Authentication → Bot Protection
 - Mode: Enabled
-- Site Key: `eb8c9fc0-d502-45b0-b840-08865c5acc32`
+- Site Key: `your-hcaptcha-site-key`
 
 **Environment Variable:**
 ```env
-VITE_HCAPTCHA_SITE_KEY="eb8c9fc0-d502-45b0-b840-08865c5acc32"
+VITE_HCAPTCHA_SITE_KEY="your-hcaptcha-site-key"
 ```
 
 ### Code Snippet:
@@ -115,16 +115,24 @@ The captcha token can be verified server-side using Supabase's built-in bot prot
 
 For current implementation, the frontend validation ensures users complete CAPTCHA before submission.
 
-### Optional: Server-Side Verification
+### Backend Verification is Mandatory
 
-If you want to add backend verification (recommended for production):
+Frontend-only validation is insufficient for production environments as it can be easily bypassed by attackers. You must implement server-side verification to ensure security.
+
+To add backend verification (recommended for production):
 
 ```python
 # In backend/server.py
 import requests
+import os
 
 def verify_hcaptcha(token: str) -> bool:
     secret = os.environ.get('HCAPTCHA_SECRET_KEY')
+    if not secret:
+        # It's crucial to handle the case where the secret key is missing.
+        # For production, you might want to log this as a critical error.
+        return False
+        
     response = requests.post(
         'https://hcaptcha.com/siteverify',
         data={
@@ -134,6 +142,14 @@ def verify_hcaptcha(token: str) -> bool:
     )
     result = response.json()
     return result.get('success', False)
+
+# Example of how to use it in a Flask route:
+# @app.route('/register', methods=['POST'])
+# def register():
+#     token = request.json.get('captchaToken')
+#     if not verify_hcaptcha(token):
+#         return "CAPTCHA verification failed", 400
+#     # ... rest of the registration logic
 ```
 
 ### Troubleshooting:
@@ -159,10 +175,9 @@ def verify_hcaptcha(token: str) -> bool:
    - Secret key (private): Used in backend for verification
    - Only site key is configured in frontend
 
-2. **Current Implementation:**
-   - Frontend validation only
-   - Prevents basic bot attempts
-   - For production, add backend verification
+2. **Backend Verification:**
+   - Frontend validation only is not enough for production.
+   - For production, you must add backend verification.
 
 3. **Best Practices:**
    - Never expose secret key in frontend
@@ -177,4 +192,4 @@ def verify_hcaptcha(token: str) -> bool:
 
 ### Status: ✅ Integration Complete
 
-Your registration page now has hCaptcha protection enabled! Users must complete the CAPTCHA verification before they can submit the registration form.
+Your registration page now has hCaptcha protection enabled! Users must complete the CAPTCHA verification before they can submit the registration form. For production use, remember to implement backend verification.

@@ -29,10 +29,10 @@ PaginationItem.displayName = "PaginationItem";
 type PaginationLinkProps = {
   isActive?: boolean;
 } & Pick<ButtonProps, "size"> &
-  React.ComponentProps<"a">;
+  React.ComponentProps<"button">;
 
 const PaginationLink = ({ className, isActive, size = "icon", ...props }: PaginationLinkProps) => (
-  <a
+  <button
     aria-current={isActive ? "page" : undefined}
     className={cn(
       buttonVariants({
@@ -63,7 +63,7 @@ const PaginationNext = ({ className, ...props }: React.ComponentProps<typeof Pag
 PaginationNext.displayName = "PaginationNext";
 
 const PaginationEllipsis = ({ className, ...props }: React.ComponentProps<"span">) => (
-  <span aria-hidden className={cn("flex h-9 w-9 items-center justify-center", className)} {...props}>
+  <span className={cn("flex h-9 w-9 items-center justify-center", className)} {...props}>
     <MoreHorizontal className="h-4 w-4" />
     <span className="sr-only">More pages</span>
   </span>

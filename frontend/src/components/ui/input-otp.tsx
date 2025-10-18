@@ -26,11 +26,20 @@ const InputOTPSlot = React.forwardRef<
   React.ComponentPropsWithoutRef<"div"> & { index: number }
 >(({ index, className, ...props }, ref) => {
   const inputOTPContext = React.useContext(OTPInputContext);
-  const { char, hasFakeCaret, isActive } = inputOTPContext.slots[index];
+  const slot = inputOTPContext.slots[index];
+
+  if (!slot) {
+    return null;
+  }
+  
+  const { char, hasFakeCaret, isActive } = slot;
 
   return (
     <div
       ref={ref}
+      role="group"
+      aria-label={`OTP input ${index + 1}`}
+      aria-valuetext={char || "empty"}
       className={cn(
         "relative flex h-10 w-10 items-center justify-center border-y border-r border-input text-sm transition-all first:rounded-l-md first:border-l last:rounded-r-md",
         isActive && "z-10 ring-2 ring-ring ring-offset-background",

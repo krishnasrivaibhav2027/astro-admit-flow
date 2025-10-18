@@ -71,11 +71,13 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
         __html: Object.entries(THEMES)
           .map(
             ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
+${prefix} [data-chart="${id}"] {
 ${colorConfig
   .map(([key, itemConfig]) => {
     const color = itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color;
-    return color ? `  --color-${key}: ${color};` : null;
+    // Sanitize color values to prevent CSS injection
+    const sanitizedColor = color?.replace(/[^a-zA-Z0-9\s,()#%-]/g, "");
+    return sanitizedColor ? `  --color-${key}: ${sanitizedColor};` : null;
   })
   .join("\n")}
 }
@@ -167,7 +169,7 @@ const ChartTooltipContent = React.forwardRef<
 
             return (
               <div
-                key={item.dataKey}
+                key={`${item.dataKey}-${index}`}
                 className={cn(
                   "flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5 [&>svg]:text-muted-foreground",
                   indicator === "dot" && "items-center",
@@ -207,11 +209,12 @@ const ChartTooltipContent = React.forwardRef<
                         {nestLabel ? tooltipLabel : null}
                         <span className="text-muted-foreground">{itemConfig?.label || item.name}</span>
                       </div>
-                      {item.value && (
-                        <span className="font-mono font-medium tabular-nums text-foreground">
-                          {item.value.toLocaleString()}
-                        </span>
-                      )}
+                      {item.value &&
+                        (typeof item.value === "number" || typeof item.value === "string") && (
+                          <span className="font-mono font-medium tabular-nums text-foreground">
+                            {item.value.toLocaleString()}
+                          </span>
+                        )}
                     </div>
                   </>
                 )}
@@ -249,10 +252,11 @@ const ChartLegendContent = React.forwardRef<
       {payload.map((item) => {
         const key = `${nameKey || item.dataKey || "value"}`;
         const itemConfig = getPayloadConfigFromPayload(config, item, key);
+        const uniqueKey = `${item.value}-${item.color}`;
 
         return (
           <div
-            key={item.value}
+            key={uniqueKey}
             className={cn("flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground")}
           >
             {itemConfig?.icon && !hideIcon ? (
@@ -265,7 +269,7 @@ const ChartLegendContent = React.forwardRef<
                 }}
               />
             )}
-            {itemConfig?.label}
+            {itemConfig?.label || item.value}
           </div>
         );
       })}

@@ -1,115 +1,59 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# IDE and editors
-.idea/
-.vscode/
-
-# Dependencies
-node_modules/
+# Node
 /node_modules
-/.pnp
-.pnp.js
-.yarn/install-state.gz
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# Testing
-/coverage
-
-# Next.js
-/.next/
-/out/
-next-env.d.ts
-*.tsbuildinfo
-
-# Production builds
+/dist
 /build
-dist/
-dist
+/.next
 
-# Environment files (comprehensive coverage)
+# Deno
+/deno.lock
 
-*token.json*
-*credentials.json*
+# Bun
+/bun.lockb
 
-# Logs and debug files
+# Supabase
+/supabase/.temp
+
+# IDEs
+/.idea
+/.vscode
+
+# Environment
+/.env
+/.env.local
+/.env.development.local
+/.env.test.local
+/.env.production.local
+
+# Credentials
+/credentials
+/secrets
+*.credential
+*.key
+*.secret
+
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
-dump.rdb
 
-# System files
+# Misc
 .DS_Store
-*.pem
-
-# Python
-__pycache__/
-*pyc*
-venv/
-.venv/
-
-# Development tools
-chainlit.md
-.chainlit
-.ipynb_checkpoints/
-.ac
-
-# Deployment
 .vercel
+dist
 
-# Data and databases
-agenthub/agents/youtube/db
+# ignore all .env files
+*.env
 
-# Archive files and large assets
-**/*.zip
-**/*.tar.gz
-**/*.tar
-**/*.tgz
-*.pack
-*.deb
-*.dylib
+# but not the example file
+!/.env.example
 
-# Build caches
-.cache/
+# ignore all credential files
+*credentials.json
+*service_account.json
 
-# Mobile development
-android-sdk/ -e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
+-e .prod.env
+-e .dev.env
+
+# Deduplicated and corrected environment file blocks
+/prod.env
+/dev.env

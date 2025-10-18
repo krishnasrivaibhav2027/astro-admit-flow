@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, LogIn, Eye, EyeOff } from "lucide-react";
 import { ModeToggle } from "@/components/mode-toggle";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, AuthErrorCodes } from "firebase/auth";
 import { auth } from "@/config/firebase";
 
 const Login = () => {
@@ -34,18 +34,6 @@ const Login = () => {
 
       const user = userCredential.user;
 
-      // Get Firebase ID token
-      const idToken = await user.getIdToken();
-
-      // Store Firebase token
-      localStorage.setItem('firebase_token', idToken);
-
-      console.log("User authenticated with Firebase, UID:", user.uid);
-
-      // Store student info in session
-      sessionStorage.setItem('studentId', user.uid);
-      sessionStorage.setItem('studentEmail', user.email || formData.email);
-
       toast({
         title: "Login Successful!",
         description: `Welcome back!`,
@@ -58,14 +46,10 @@ const Login = () => {
       console.error("Login error:", error);
       
       let errorMessage = "Invalid email or password. Please try again.";
-      if (error.code === 'auth/user-not-found') {
-        errorMessage = "No account found with this email.";
-      } else if (error.code === 'auth/wrong-password') {
-        errorMessage = "Incorrect password.";
-      } else if (error.code === 'auth/too-many-requests') {
+      if (error.code === AuthErrorCodes.INVALID_LOGIN_CREDENTIALS) {
+        errorMessage = "Invalid email or password. Please try again.";
+      } else if (error.code === AuthErrorCodes.TOO_MANY_ATTEMPTS_TRY_LATER) {
         errorMessage = "Too many failed attempts. Please try again later.";
-      } else if (error.message) {
-        errorMessage = error.message;
       }
       
       toast({

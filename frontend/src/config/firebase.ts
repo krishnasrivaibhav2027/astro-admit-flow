@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getAnalytics } from "firebase/analytics";
+import { getAnalytics, Analytics } from "firebase/analytics";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -12,6 +12,14 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+// Validate environment variables before initialization
+const requiredEnvVars = Object.keys(firebaseConfig);
+const missingEnvVars = requiredEnvVars.filter(key => !firebaseConfig[key as keyof typeof firebaseConfig]);
+
+if (missingEnvVars.length > 0) {
+  throw new Error(`Missing Firebase environment variables: ${missingEnvVars.join(", ")}`);
+}
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
@@ -19,12 +27,12 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 // Initialize Analytics (optional)
-let analytics;
+let analytics: Analytics | undefined;
 if (typeof window !== 'undefined') {
   try {
     analytics = getAnalytics(app);
   } catch (error) {
-    console.log('Analytics not available');
+    console.error("Failed to initialize Firebase Analytics:", error);
   }
 }
 

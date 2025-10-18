@@ -33,14 +33,13 @@ const FormField = <
 const useFormField = () => {
   const fieldContext = React.useContext(FormFieldContext);
   const itemContext = React.useContext(FormItemContext);
-  const { getFieldState, formState } = useFormContext();
-
-  const fieldState = getFieldState(fieldContext.name, formState);
-
+  
   if (!fieldContext) {
     throw new Error("useFormField should be used within <FormField>");
   }
-
+  
+  const { getFieldState, formState } = useFormContext();
+  const fieldState = getFieldState(fieldContext.name, formState);
   const { id } = itemContext;
 
   return {
@@ -83,14 +82,21 @@ const FormLabel = React.forwardRef<
 FormLabel.displayName = "FormLabel";
 
 const FormControl = React.forwardRef<React.ElementRef<typeof Slot>, React.ComponentPropsWithoutRef<typeof Slot>>(
-  ({ ...props }, ref) => {
+  (props, ref) => {
     const { error, formItemId, formDescriptionId, formMessageId } = useFormField();
+    const descriptionId = props["aria-describedby"];
+
+    const ariaDescribedBy = [
+      descriptionId,
+      error ? formMessageId : undefined,
+      formDescriptionId,
+    ].filter(Boolean).join(" ");
 
     return (
       <Slot
         ref={ref}
         id={formItemId}
-        aria-describedby={!error ? `${formDescriptionId}` : `${formDescriptionId} ${formMessageId}`}
+        aria-describedby={ariaDescribedBy || undefined}
         aria-invalid={!!error}
         {...props}
       />
