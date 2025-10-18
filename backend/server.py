@@ -441,8 +441,9 @@ async def create_result(request: CreateResultRequest, current_user: Dict = Depen
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
-        # Verify user is creating their own result
-        if request.student_id != current_user.get('uid'):
+        # Verify the student exists and belongs to the authenticated user
+        student_response = supabase.table("students").select("*").eq("id", request.student_id).eq("email", current_user.get('email')).execute()
+        if not student_response.data or len(student_response.data) == 0:
             raise HTTPException(status_code=403, detail="Cannot create results for other users")
         
         # Create result entry in Supabase
