@@ -144,7 +144,6 @@ const Test = () => {
       };
 
       // Create result entry via backend API
-      const token = localStorage.getItem('firebase_token');
       if (!token) {
         throw new Error('Authentication required');
       }
