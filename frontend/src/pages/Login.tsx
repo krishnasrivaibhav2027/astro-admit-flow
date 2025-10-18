@@ -42,9 +42,26 @@ const Login = () => {
 
       console.log("User authenticated with Firebase, UID:", user.uid);
 
+      // Get student UUID from backend by email
+      const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      const studentResponse = await fetch(`${backendUrl}/api/students/by-email/${user.email || formData.email}`, {
+        headers: {
+          'Authorization': `Bearer ${idToken}`
+        }
+      });
+
+      if (!studentResponse.ok) {
+        throw new Error('Failed to get student information');
+      }
+
+      const studentData = await studentResponse.json();
+      const studentId = studentData.id;
+
       // Store student info in session
-      sessionStorage.setItem('studentId', user.uid);
+      sessionStorage.setItem('studentId', studentId);
       sessionStorage.setItem('studentEmail', user.email || formData.email);
+
+      console.log("Student ID retrieved:", studentId);
 
       toast({
         title: "Login Successful!",
@@ -52,7 +69,7 @@ const Login = () => {
       });
 
       // Navigate to levels page
-      navigate("/levels", { state: { studentId: user.uid } });
+      navigate("/levels", { state: { studentId: studentId } });
 
     } catch (error: any) {
       console.error("Login error:", error);
