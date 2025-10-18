@@ -382,6 +382,30 @@ async def create_student(student: StudentCreate, current_user: Dict = Depends(ge
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@api_router.get("/students/by-email/{email}")
+async def get_student_by_email(email: str, current_user: Dict = Depends(get_current_user)):
+    """Get student by email - JWT Protected"""
+    try:
+        logging.info(f"🔒 Authenticated request from: {current_user['email']}")
+        
+        # Verify user is requesting their own data
+        if email != current_user.get('email'):
+            raise HTTPException(status_code=403, detail="Cannot access other users' data")
+        
+        response = supabase.table("students").select("*").eq("email", email).execute()
+        
+        if not response.data or len(response.data) == 0:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        return response.data[0]
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error getting student by email: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @api_router.get("/students/{student_id}")
 async def get_student(student_id: str, current_user: Dict = Depends(get_current_user)):
     """Get student by ID - JWT Protected"""
