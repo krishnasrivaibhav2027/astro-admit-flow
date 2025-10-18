@@ -125,7 +125,7 @@ const Registration = () => {
         description: "Welcome! You can now proceed to the test.",
       });
 
-      navigate("/levels", { state: { studentId: user.uid } });
+      navigate("/levels", { state: { studentId: studentId } });
     } catch (error: any) {
       console.error("Registration error:", error);
       
