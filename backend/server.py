@@ -352,14 +352,19 @@ async def create_student(student: StudentCreate, current_user: Dict = Depends(ge
     """Create student - JWT Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
-        response = supabase.table("students").insert({
+        
+        # Use Firebase UID as student ID
+        student_data = {
+            "id": current_user.get('uid'),  # Use Firebase UID
             "first_name": student.first_name,
             "last_name": student.last_name,
             "age": student.age,
             "dob": student.dob,
             "email": student.email,
             "phone": student.phone
-        }).execute()
+        }
+        
+        response = supabase.table("students").insert(student_data).execute()
         
         if hasattr(response, 'data') and response.data:
             return response.data[0]
