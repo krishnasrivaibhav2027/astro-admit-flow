@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Trophy, XCircle, RotateCcw, Home, CheckCircle2, TrendingUp, Mail, Clock } from "lucide-react";
+import { Trophy, XCircle, RotateCcw, Home, CheckCircle2, TrendingUp, Mail, Clock, LogOut } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ModeToggle } from "@/components/mode-toggle";
@@ -13,11 +13,12 @@ const Results = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const { studentId, score, result, level, criteria, timeout } = location.state || {};
+  const { studentId, score, result, level, criteria, timeout, completed } = location.state || {};
   const [currentAttempts, setCurrentAttempts] = useState<number>(0);
   const [maxAttempts, setMaxAttempts] = useState<number>(0);
   const [emailSent, setEmailSent] = useState<boolean>(false);
   const [sendingEmail, setSendingEmail] = useState<boolean>(false);
+  const [isTestCompleted, setIsTestCompleted] = useState<boolean>(completed || false);
 
   useEffect(() => {
     if (!studentId || score === undefined) {
