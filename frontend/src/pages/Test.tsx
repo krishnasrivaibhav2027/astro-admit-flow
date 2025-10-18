@@ -440,22 +440,23 @@ const Test = () => {
       const mediumPassed = allResults?.some(r => r.level === 'medium' && r.result === 'pass');
 
       if (currentLevel === "easy") {
-        if (result === "fail" || isTimeout) {
-          // Easy failed or timeout - send fail email
+        // Only send fail email if score < 5
+        if ((result === "fail" && score < 5) || (isTimeout && score < 5)) {
           shouldSendEmail = true;
           await sendEmailNotification(backendUrl, studentData, "fail", score);
         }
+        // If timeout but score >= 5, no email (already passed)
       } else if (currentLevel === "medium") {
         const maxAttempts = 2;
         if (result === "pass" && !isTimeout) {
           // Medium passed - no email, continue to hard
           shouldSendEmail = false;
-        } else if (attempts >= maxAttempts) {
-          // Medium failed both attempts or timeout on last attempt - send fail email
+        } else if ((result === "fail" && score < 5 && attempts >= maxAttempts) || (isTimeout && score < 5 && attempts >= maxAttempts)) {
+          // Medium failed both attempts with score < 5 - send fail email
           shouldSendEmail = true;
           await sendEmailNotification(backendUrl, studentData, "fail", score);
         }
-        // If timeout but still has attempts, no email (will retry)
+        // If timeout but score >= 5, or still has attempts, no email
       } else if (currentLevel === "hard") {
         const maxAttempts = 2;
         if (result === "pass" && !isTimeout) {
