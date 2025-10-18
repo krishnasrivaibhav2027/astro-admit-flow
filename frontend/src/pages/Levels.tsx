@@ -97,18 +97,128 @@ const Levels = () => {
 
     if (data && data.length > 0) {
       const latestResult = data[0];
+      
+      // Check if test is completed (passed all levels OR failed completely)
+      const easyPassed = data.some(r => r.level === "easy" && r.result === "pass");
+      const mediumPassed = data.some(r => r.level === "medium" && r.result === "pass");
+      const hardPassed = data.some(r => r.level === "hard" && r.result === "pass");
+      
+      const easyAttempts = latestResult.attempts_easy || 0;
+      const mediumAttempts = latestResult.attempts_medium || 0;
+      const hardAttempts = latestResult.attempts_hard || 0;
+      
+      // Check if user completed all levels (passed all OR exhausted attempts)
+      const allLevelsPassed = easyPassed && mediumPassed && hardPassed;
+      
+      // Check if user failed completely (exhausted all attempts without passing)
+      const easyFailed = easyAttempts >= 1 && !easyPassed;
+      const mediumFailed = mediumAttempts >= 2 && !mediumPassed;
+      const hardFailed = hardAttempts >= 2 && !hardPassed;
+      
+      // If all levels passed, redirect to results with final score
+      if (allLevelsPassed) {
+        const hardResult = data.find(r => r.level === "hard" && r.result === "pass");
+        if (hardResult) {
+          toast({
+            title: "Test Completed!",
+            description: "All levels passed. Showing final results.",
+          });
+          
+          navigate("/results", {
+            state: {
+              studentId: currentStudentId,
+              score: hardResult.score || 0,
+              result: "pass",
+              level: "hard",
+              criteria: {}, // You can fetch this if needed
+              emailSent: true,
+              completed: true
+            }
+          });
+          return;
+        }
+      }
+      
+      // If failed at any level and exhausted attempts, show failure results
+      if (easyFailed) {
+        const easyResult = data.find(r => r.level === "easy" && r.result === "fail");
+        if (easyResult) {
+          toast({
+            title: "Test Failed",
+            description: "Failed at Easy level. Showing results.",
+            variant: "destructive"
+          });
+          
+          navigate("/results", {
+            state: {
+              studentId: currentStudentId,
+              score: easyResult.score || 0,
+              result: "fail",
+              level: "easy",
+              criteria: {},
+              emailSent: true,
+              completed: true
+            }
+          });
+          return;
+        }
+      }
+      
+      if (mediumFailed && easyPassed) {
+        const mediumResult = data.find(r => r.level === "medium" && r.result === "fail");
+        if (mediumResult) {
+          toast({
+            title: "Test Failed",
+            description: "Failed at Medium level. Showing results.",
+            variant: "destructive"
+          });
+          
+          navigate("/results", {
+            state: {
+              studentId: currentStudentId,
+              score: mediumResult.score || 0,
+              result: "fail",
+              level: "medium",
+              criteria: {},
+              emailSent: true,
+              completed: true
+            }
+          });
+          return;
+        }
+      }
+      
+      if (hardFailed && mediumPassed) {
+        // Even if hard failed but medium passed, overall pass
+        const finalResult = data.find(r => r.level === "medium" && r.result === "pass");
+        if (finalResult) {
+          toast({
+            title: "Test Completed!",
+            description: "Medium level passed. Showing final results.",
+          });
+          
+          navigate("/results", {
+            state: {
+              studentId: currentStudentId,
+              score: finalResult.score || 0,
+              result: "pass",
+              level: "medium",
+              criteria: {},
+              emailSent: true,
+              completed: true
+            }
+          });
+          return;
+        }
+      }
+      
+      // If test is not completed, continue with normal level display
       const newLevels = [...levels];
       
       // Update attempts from latest result
       newLevels[0].attempts = latestResult.attempts_easy || 0;
       newLevels[1].attempts = latestResult.attempts_medium || 0;
       newLevels[2].attempts = latestResult.attempts_hard || 0;
-      
-      // Determine current level based on progress and attempts
-      const easyPassed = latestResult.attempts_easy > 0 && 
-        data.some(r => r.level === "easy" && r.result === "pass");
-      const mediumPassed = latestResult.attempts_medium > 0 && 
-        data.some(r => r.level === "medium" && r.result === "pass");
       
       if (mediumPassed) {
         // Both easy and medium passed, unlock hard
