@@ -463,19 +463,19 @@ const Test = () => {
           // Hard passed - send pass email
           shouldSendEmail = true;
           await sendEmailNotification(backendUrl, studentData, "pass", score);
-        } else if (attempts >= maxAttempts) {
-          // Hard failed both attempts or timeout on last attempt
+        } else if (attempts >= maxAttempts && score < 5) {
+          // Hard failed both attempts with score < 5
           if (mediumPassed) {
             // Medium was passed, so overall pass
             shouldSendEmail = true;
             await sendEmailNotification(backendUrl, studentData, "pass", score);
           } else {
-            // Both medium and hard failed
+            // Both medium and hard failed with low score
             shouldSendEmail = true;
             await sendEmailNotification(backendUrl, studentData, "fail", score);
           }
         }
-        // If timeout but still has attempts, no email (will retry)
+        // If timeout but score >= 5, or still has attempts, no email
       }
     } catch (error) {
       console.error("Error determining next step:", error);
