@@ -97,7 +97,6 @@ const Registration = () => {
           'Authorization': `Bearer ${idToken}`
         },
         body: JSON.stringify({
-          id: user.uid,
           first_name: validated.firstName,
           last_name: validated.lastName,
           age: validated.age,
