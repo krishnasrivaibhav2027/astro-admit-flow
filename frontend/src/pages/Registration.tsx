@@ -73,12 +73,35 @@ const Registration = () => {
         age: parseInt(formData.age)
       });
 
-      // Create user with Firebase Authentication
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        validated.email,
-        validated.password
-      );
+      let userCredential;
+      let isNewUser = true;
+
+      try {
+        // Try to create user with Firebase Authentication
+        userCredential = await createUserWithEmailAndPassword(
+          auth,
+          validated.email,
+          validated.password
+        );
+      } catch (firebaseError: any) {
+        if (firebaseError.code === 'auth/email-already-in-use') {
+          // Email exists in Firebase, try to sign in instead
+          console.log("Email exists in Firebase, attempting to sign in...");
+          try {
+            const { signInWithEmailAndPassword } = await import("firebase/auth");
+            userCredential = await signInWithEmailAndPassword(
+              auth,
+              validated.email,
+              validated.password
+            );
+            isNewUser = false;
+          } catch (signInError: any) {
+            throw new Error("Email already registered with a different password. Please login instead.");
+          }
+        } else {
+          throw firebaseError;
+        }
+      }
 
       const user = userCredential.user;
 
@@ -88,7 +111,7 @@ const Registration = () => {
       // Store Firebase token
       localStorage.setItem('firebase_token', idToken);
 
-      // Create student record in Supabase with Firebase UID
+      // Create or get student record in Supabase with Firebase UID
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
       const response = await fetch(`${backendUrl}/api/students`, {
         method: 'POST',
@@ -107,7 +130,8 @@ const Registration = () => {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create student record');
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to create student record');
       }
 
       const studentData = await response.json();
@@ -120,10 +144,17 @@ const Registration = () => {
       console.log("Registration successful with Firebase, UID:", user.uid);
       console.log("Student created with ID:", studentId);
 
-      toast({
-        title: "Registration Successful!",
-        description: "Welcome! You can now proceed to the test.",
-      });
+      if (isNewUser) {
+        toast({
+          title: "Registration Successful!",
+          description: "Welcome! You can now proceed to the test.",
+        });
+      } else {
+        toast({
+          title: "Welcome Back!",
+          description: "Your account was found. Proceeding to test.",
+        });
+      }
 
       navigate("/levels", { state: { studentId: studentId } });
     } catch (error: any) {
