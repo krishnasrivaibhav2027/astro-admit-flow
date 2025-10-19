@@ -175,7 +175,7 @@ const Review = () => {
 
       setAiReviews(prev => ({
         ...prev,
-        [questionId]: { expanded: true, content: reviewText, loading: false }
+        [questionId]: { expanded: true, content: cleanedText, loading: false }
       }));
 
     } catch (error: any) {
