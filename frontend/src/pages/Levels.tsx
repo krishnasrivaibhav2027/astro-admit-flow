@@ -446,32 +446,43 @@ const Levels = () => {
                         </div>
                       </div>
 
-                      <Button
-                        size="lg"
-                        variant={isCurrent ? "glow" : "outline"}
-                        disabled={isLocked || isCompleted}
-                        onClick={() => handleStartLevel(level)}
-                        className="ml-4"
-                      >
-                        {isCompleted ? (
-                          <>
-                            <CheckCircle2 className="w-4 h-4 mr-2" />
-                            Completed
-                          </>
-                        ) : isLocked ? (
-                          <>
-                            <Lock className="w-4 h-4 mr-2" />
-                            Locked
-                          </>
-                        ) : level.attempts >= level.maxAttempts ? (
-                          <>
-                            <CheckCircle2 className="w-4 h-4 mr-2" />
-                            Completed
-                          </>
-                        ) : (
-                          "Start Test"
-                        )}
-                      </Button>
+                      {testCompleted ? (
+                        <Button
+                          size="lg"
+                          variant="secondary"
+                          onClick={() => navigate(`/review/${level.level}`)}
+                          className="ml-4"
+                        >
+                          Review
+                        </Button>
+                      ) : (
+                        <Button
+                          size="lg"
+                          variant={isCurrent ? "glow" : "outline"}
+                          disabled={isLocked || isCompleted}
+                          onClick={() => handleStartLevel(level)}
+                          className="ml-4"
+                        >
+                          {isCompleted ? (
+                            <>
+                              <CheckCircle2 className="w-4 h-4 mr-2" />
+                              Completed
+                            </>
+                          ) : isLocked ? (
+                            <>
+                              <Lock className="w-4 h-4 mr-2" />
+                              Locked
+                            </>
+                          ) : level.attempts >= level.maxAttempts ? (
+                            <>
+                              <CheckCircle2 className="w-4 h-4 mr-2" />
+                              Completed
+                            </>
+                          ) : (
+                            "Start Test"
+                          )}
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
