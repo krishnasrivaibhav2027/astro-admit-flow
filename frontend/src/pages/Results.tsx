@@ -326,7 +326,7 @@ const Results = () => {
               size="lg"
               variant="glow"
               className="flex-1"
-              onClick={() => navigate("/levels", { state: { studentId } })}
+              onClick={() => navigate("/levels", { state: { studentId, fromResults: true } })}
             >
               <TrendingUp className="w-5 h-5 mr-2" />
               Detailed Analysis
