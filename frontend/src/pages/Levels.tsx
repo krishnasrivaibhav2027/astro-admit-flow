@@ -131,6 +131,31 @@ const Levels = () => {
       const isCompleted = allLevelsPassed || easyFailed || (mediumFailed && easyPassed) || (hardFailed && mediumPassed);
       setTestCompleted(isCompleted);
       
+      // Skip auto-redirect if user is coming from Results page to view reviews
+      if (fromResults) {
+        // Just set the levels and return, don't auto-redirect
+        const newLevels = [...levels];
+        
+        // Update attempts from latest result
+        newLevels[0].attempts = latestResult.attempts_easy || 0;
+        newLevels[1].attempts = latestResult.attempts_medium || 0;
+        newLevels[2].attempts = latestResult.attempts_hard || 0;
+        
+        // Update level statuses
+        if (easyPassed) {
+          newLevels[0].status = "completed";
+        }
+        if (mediumPassed) {
+          newLevels[1].status = "completed";
+        }
+        if (hardPassed) {
+          newLevels[2].status = "completed";
+        }
+        
+        setLevels(newLevels);
+        return;
+      }
+      
       // If all levels passed, redirect to results with final score
       if (allLevelsPassed) {
         const hardResult = data.find(r => r.level === "hard" && r.result === "pass");
