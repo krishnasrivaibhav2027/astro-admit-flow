@@ -150,9 +150,17 @@ const Review = () => {
       const data = await response.json();
       const reviewText = data.review;
 
+      // Clean up markdown formatting (remove asterisks, format headers)
+      let cleanedText = reviewText
+        .replace(/\*\*/g, '') // Remove bold markdown
+        .replace(/\*/g, '')   // Remove italic markdown
+        .replace(/###\s*/g, '\n') // Convert ### headers to newlines
+        .replace(/##\s*/g, '\n')  // Convert ## headers to newlines
+        .replace(/\n{3,}/g, '\n\n'); // Remove excessive newlines
+
       // Simulate typing effect
       let currentText = '';
-      const words = reviewText.split(' ');
+      const words = cleanedText.split(' ');
       
       for (let i = 0; i < words.length; i++) {
         currentText += (i > 0 ? ' ' : '') + words[i];
