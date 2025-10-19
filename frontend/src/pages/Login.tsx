@@ -95,6 +95,38 @@ const Login = () => {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!formData.email) {
+      toast({
+        title: "Email Required",
+        description: "Please enter your email address to reset your password.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, formData.email);
+      toast({
+        title: "Password Reset Email Sent!",
+        description: "Please check your email for instructions to reset your password.",
+      });
+    } catch (error: any) {
+      console.error("Password reset error:", error);
+      let errorMessage = "Failed to send password reset email.";
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = "No account found with this email address.";
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = "Invalid email address.";
+      }
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
       {/* Background */}
