@@ -85,9 +85,46 @@ const Registration = () => {
         );
       } catch (firebaseError: any) {
         if (firebaseError.code === 'auth/email-already-in-use') {
-          // Email exists in Firebase
-          // Show user-friendly message to use login instead
-          throw new Error("This email is already registered. Please use the Login page instead, or click 'Forgot Password' if you don't remember your password.");
+          // Firebase user exists, check if student profile exists in database
+          console.log("Firebase user exists, checking database for student profile...");
+          
+          // Try to sign in with the provided password
+          try {
+            userCredential = await signInWithEmailAndPassword(
+              auth,
+              validated.email,
+              validated.password
+            );
+            
+            const tempToken = await userCredential.user.getIdToken();
+            
+            // Check if student profile exists in database
+            const backendUrl = import.meta.env.VITE_BACKEND_URL;
+            const checkResponse = await fetch(`${backendUrl}/api/students/by-email/${validated.email}`, {
+              headers: {
+                'Authorization': `Bearer ${tempToken}`
+              }
+            });
+            
+            if (checkResponse.ok) {
+              // Student profile exists, user should login instead
+              throw new Error("This email is already registered with a complete profile. Please use the Login page instead.");
+            } else if (checkResponse.status === 404) {
+              // Firebase user exists but no student profile - allow profile creation
+              console.log("Firebase user exists but no student profile found. Creating profile...");
+              isNewUser = false; // Firebase user exists, but creating new student profile
+            } else {
+              throw new Error("Unable to verify account status. Please try again.");
+            }
+          } catch (signInError: any) {
+            if (signInError.code === 'auth/wrong-password' || signInError.code === 'auth/invalid-credential') {
+              throw new Error("This email is already registered with a different password. Please use the Login page, or click 'Forgot Password' if you don't remember your password.");
+            } else if (signInError.message) {
+              throw signInError; // Re-throw if it's one of our custom errors
+            } else {
+              throw new Error("Unable to complete registration. Please try again.");
+            }
+          }
         } else {
           throw firebaseError;
         }
