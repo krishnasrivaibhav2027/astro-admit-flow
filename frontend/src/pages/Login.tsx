@@ -106,18 +106,32 @@ const Login = () => {
     }
 
     try {
-      await sendPasswordResetEmail(auth, formData.email);
+      const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      const response = await fetch(`${backendUrl}/api/send-password-reset-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          to_email: formData.email
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to send password reset email');
+      }
+
       toast({
         title: "Password Reset Email Sent!",
         description: "Please check your email for instructions to reset your password.",
       });
     } catch (error: any) {
       console.error("Password reset error:", error);
-      let errorMessage = "Failed to send password reset email.";
-      if (error.code === 'auth/user-not-found') {
-        errorMessage = "No account found with this email address.";
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = "Invalid email address.";
+      let errorMessage = "Failed to send password reset email. Please try again.";
+      if (error.message) {
+        errorMessage = error.message;
       }
       toast({
         title: "Error",
