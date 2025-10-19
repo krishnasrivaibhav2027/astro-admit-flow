@@ -316,14 +316,39 @@ const Review = () => {
                   <p className="text-foreground">{question.correct_answer}</p>
                 </div>
 
-                {/* AI Explanation (for incorrect answers) */}
-                {question.student_answer && !question.is_correct && question.explanation && (
-                  <div className="p-4 rounded-lg border-2 bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800">
-                    <p className="font-semibold mb-2 flex items-center gap-2">
-                      <Lightbulb className="w-5 h-5 text-amber-600" />
-                      AI Explanation:
-                    </p>
-                    <p className="text-foreground whitespace-pre-wrap">{question.explanation}</p>
+                {/* AI Review Button and Content (for attempted questions) */}
+                {question.student_answer && (
+                  <div>
+                    <Button
+                      variant={aiReviews[question.id]?.expanded ? "secondary" : "default"}
+                      className="w-full"
+                      onClick={() => handleAIReview(question)}
+                      disabled={aiReviews[question.id]?.loading}
+                    >
+                      <Lightbulb className="w-4 h-4 mr-2" />
+                      {aiReviews[question.id]?.loading 
+                        ? "AI is typing..." 
+                        : aiReviews[question.id]?.expanded 
+                          ? "Hide AI Review" 
+                          : "Get AI Review"
+                      }
+                    </Button>
+
+                    {/* AI Review Content with Typing Animation */}
+                    {aiReviews[question.id]?.expanded && (
+                      <div className="mt-4 p-4 rounded-lg border-2 bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800 animate-in slide-in-from-top-2">
+                        <p className="font-semibold mb-2 flex items-center gap-2">
+                          <Lightbulb className="w-5 h-5 text-purple-600 animate-pulse" />
+                          AI Detailed Review:
+                        </p>
+                        <div className="text-foreground whitespace-pre-wrap">
+                          {aiReviews[question.id]?.content}
+                          {aiReviews[question.id]?.loading && (
+                            <span className="inline-block w-2 h-4 ml-1 bg-purple-600 animate-pulse"></span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
