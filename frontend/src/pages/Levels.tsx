@@ -68,6 +68,7 @@ const Levels = () => {
       maxAttempts: 2
     }
   ]);
+  const [testCompleted, setTestCompleted] = useState(false);
 
   useEffect(() => {
     const checkAuthAndLoadData = async () => {
