@@ -299,6 +299,34 @@ const Levels = () => {
     navigate("/");
   };
 
+  const handleChangePassword = async () => {
+    try {
+      const email = sessionStorage.getItem('studentEmail');
+      if (!email) {
+        toast({
+          title: "Error",
+          description: "Email not found. Please log in again.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      await sendPasswordResetEmail(auth, email);
+
+      toast({
+        title: "Password Reset Email Sent!",
+        description: "Please check your email to reset your password.",
+      });
+    } catch (error: any) {
+      console.error('Error sending password reset:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send password reset email.",
+        variant: "destructive"
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen relative overflow-hidden">
       {/* Background */}
