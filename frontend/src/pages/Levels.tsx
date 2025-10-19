@@ -36,6 +36,7 @@ const Levels = () => {
   const location = useLocation();
   const { toast } = useToast();
   const studentId = location.state?.studentId;
+  const fromResults = location.state?.fromResults; // Check if coming from Results page
   const [levels, setLevels] = useState<LevelData[]>([
     {
       level: "easy",
