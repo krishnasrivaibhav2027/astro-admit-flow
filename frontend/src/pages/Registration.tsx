@@ -171,10 +171,17 @@ const Registration = () => {
       console.log("Registration successful with Firebase, UID:", user.uid);
       console.log("Student created with ID:", studentId);
 
-      toast({
-        title: "Registration Successful!",
-        description: "Welcome! You can now proceed to the test.",
-      });
+      if (isNewUser) {
+        toast({
+          title: "Registration Successful!",
+          description: "Welcome! You can now proceed to the test.",
+        });
+      } else {
+        toast({
+          title: "Profile Completed!",
+          description: "Your profile has been created. You can now proceed to the test.",
+        });
+      }
 
       navigate("/levels", { state: { studentId: studentId } });
     } catch (error: any) {
