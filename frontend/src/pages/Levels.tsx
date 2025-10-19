@@ -3,10 +3,20 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Target, Zap, Crown, Lock, CheckCircle2, LogOut, User } from "lucide-react";
+import { Target, Zap, Crown, Lock, CheckCircle2, LogOut, User, KeyRound } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ModeToggle } from "@/components/mode-toggle";
 import { useToast } from "@/hooks/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { auth } from "@/config/firebase";
 
 type LevelStatus = "locked" | "current" | "completed";
 
