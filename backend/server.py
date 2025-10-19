@@ -91,6 +91,11 @@ class StudentLogin(BaseModel):
     password: str
 
 
+class UpdatePhoneRequest(BaseModel):
+    student_id: str
+    phone: str
+
+
 class GenerateQuestionsRequest(BaseModel):
     level: str
     num_questions: int = 5
