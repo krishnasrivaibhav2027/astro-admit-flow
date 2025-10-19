@@ -96,6 +96,93 @@ const Review = () => {
     return colors[level || 'easy'] || "from-gray-500 to-gray-600";
   };
 
+  const handleAIReview = async (question: Question) => {
+    if (!question.student_answer) return;
+
+    const questionId = question.id;
+
+    // Toggle expanded state
+    if (aiReviews[questionId]?.expanded) {
+      setAiReviews(prev => ({
+        ...prev,
+        [questionId]: { ...prev[questionId], expanded: false }
+      }));
+      return;
+    }
+
+    // If content already exists, just expand
+    if (aiReviews[questionId]?.content) {
+      setAiReviews(prev => ({
+        ...prev,
+        [questionId]: { ...prev[questionId], expanded: true }
+      }));
+      return;
+    }
+
+    // Initialize state for this question
+    setAiReviews(prev => ({
+      ...prev,
+      [questionId]: { expanded: true, content: '', loading: true }
+    }));
+
+    try {
+      const token = localStorage.getItem('firebase_token');
+      const backendUrl = import.meta.env.VITE_BACKEND_URL;
+
+      const response = await fetch(`${backendUrl}/api/ai-review`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          question: question.question_text,
+          correct_answer: question.correct_answer,
+          student_answer: question.student_answer,
+          level: level
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate AI review');
+      }
+
+      const data = await response.json();
+      const reviewText = data.review;
+
+      // Simulate typing effect
+      let currentText = '';
+      const words = reviewText.split(' ');
+      
+      for (let i = 0; i < words.length; i++) {
+        currentText += (i > 0 ? ' ' : '') + words[i];
+        setAiReviews(prev => ({
+          ...prev,
+          [questionId]: { expanded: true, content: currentText, loading: i < words.length - 1 }
+        }));
+        
+        // Delay between words for typing effect
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      setAiReviews(prev => ({
+        ...prev,
+        [questionId]: { expanded: true, content: reviewText, loading: false }
+      }));
+
+    } catch (error: any) {
+      console.error('Error generating AI review:', error);
+      setAiReviews(prev => ({
+        ...prev,
+        [questionId]: { 
+          expanded: true, 
+          content: 'Failed to generate AI review. Please try again.', 
+          loading: false 
+        }
+      }));
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
