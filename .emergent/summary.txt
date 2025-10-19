@@ -1,157 +1,49 @@
 <analysis>
-The previous AI engineer successfully transformed an MVP application, initially running on FastAPI/MongoDB with partial Supabase integration, into a robust AI Admission Test platform. Key milestones included a complete migration to Supabase (PostgreSQL via REST API after direct connection issues), integration of Gemini AI for dynamic question generation and evaluation (initially facing model name errors), and the implementation of hCaptcha for registration security.
-
-Subsequent work focused on refining user experience and robustness: fixing frontend environment variable issues ( to ), enhancing result display (score out of 10, average criteria), auto-calculating age, implementing comprehensive error handling, and revamping the test flow with multi-question navigation, timed levels, and refined email logic. A significant architectural shift involved integrating a LangGraph-based RAG system (using a physics PDF and ChromaDB) into the backend. Dark mode and JWT authentication with test resume functionality were also added. The latest challenge involves fixing git push failures due to committed secrets, which is currently blocking further development.
+The previous AI engineer meticulously developed the AI Admission Test application through several significant iterations. Starting with core features like RAG-based question generation, Supabase integration, and hCaptcha, the work evolved based on user feedback and evolving requirements. Key phases involved resolving git secret issues, integrating password strength UI, and a substantial migration from Supabase/custom JWT authentication to Firebase Authentication. The engineer systematically addressed critical bugs related to hCaptcha verification, login/registration navigation, Supabase Row Level Security (RLS) by shifting operations to backend APIs, refining test timeout and pass/fail logic, and enhancing the dynamic display of test level statuses. The trajectory concluded with the initiation of a user profile page and associated backend functionality for phone number updates, aligning with the user's latest request for personal detail management and password reset features.
 </analysis>
 
 <product_requirements>
-The goal is to develop an AI-powered admission test application. The application should:
-1.  **Backend Migration:** Migrate the backend from MongoDB to Supabase PostgreSQL, utilizing Supabase's REST API for data interaction.
-2.  **AI Integration:** Integrate Gemini AI for dynamic question generation and answer evaluation. The system should generate physics questions based on a provided textbook PDF using a RAG (Retrieval Augmented Generation) approach.
-3.  **Authentication & Authorization:** Implement user registration and login functionality using JWT authentication with Supabase Auth, allowing users to resume tests. Password validation should be robust (8 chars, special char, capital letter) with real-time UI feedback.
-4.  **Frontend Enhancements:**
-    *   Integrate hCaptcha on the registration page for bot protection.
-    *   Implement a multi-level test flow (easy, medium, hard) with distinct timers for each level (10 min easy, 35 min medium, 45 min hard).
-    *   Add Previous and Next buttons for question navigation during the test.
-    *   Display a Submit Answer button per question, with the final question's button acting as a full submission.
-    *   Show detailed evaluation results, including an overall score (out of 10) and an average of 6 evaluation criteria (Relevance, Clarity, SubjectUnderstanding, Accuracy, Completeness, CriticalThinking).
-    *   Ensure proper email notifications for test pass/fail/timeout scenarios, aligning with specific retry logic.
-    *   Auto-calculate age based on Date of Birth input during registration.
-    *   Implement a dark mode toggle that persists across sessions.
-5.  **Robustness & Error Handling:** Improve error handling for API calls, question generation, and test submission.
-6.  **Environment Configuration:** Properly manage environment variables for frontend and backend, including Supabase, Gemini API, and Gmail OAuth credentials.
+The AI-powered admission test application dynamically generates and evaluates physics questions using Gemini AI and a RAG system.
+**Key functional requirements include:**
+-   **Authentication:** Firebase (Email/Password) for user registration/login, replacing prior Supabase and custom JWT solutions. This includes a Profile page for viewing/editing personal details (e.g., phone number) and changing passwords, alongside a Forgot Password flow on the login page leading to the same password reset mechanism.
+-   **Test Flow:** Multi-level (easy, medium, hard) with distinct timers, multi-question navigation, and per-question answer submission.
+-   **Results:** Detailed evaluation (score out of 10, average of 6 criteria), refined pass/fail logic (5.0 threshold), and dynamic result display after test completion. Timeout handling ensures fair pass/fail based on score.
+-   **UI/UX:** Dark mode, logout functionality, password strength feedback on registration, password visibility toggle on login, age auto-calculation, and dynamic display of level statuses (completed, locked, start test).
+-   **Backend:** Supabase PostgreSQL for data storage (after migrating from MongoDB) and a robust FastAPI backend managing AI, RAG, and custom data operations (e.g., test result creation, question saving).
+-   **Security:** Ensure secure handling of credentials and clean git history.
 </product_requirements>
 
 <key_technical_concepts>
--   **Supabase:** Backend-as-a-Service for PostgreSQL database, authentication, and REST API.
+-   **Firebase Authentication:** Primary authentication and user management.
 -   **FastAPI:** Python web framework for the backend.
--   **React/Vite:** Frontend framework with build tool.
--   **Gemini AI:** Google's LLM for question generation and evaluation.
--   **LangGraph/LangChain:** Frameworks for building LLM-powered applications and RAG.
+-   **React/Vite:** Frontend framework with fast build tools.
+-   **Gemini AI:** Google's LLM for dynamic question generation and answer evaluation.
+-   **LangGraph/LangChain:** Frameworks for building LLM applications and RAG.
 -   **ChromaDB:** Vector database for RAG context storage.
--   **hCaptcha:** Bot protection for forms.
--   **JWT Authentication:** Token-based authentication for user sessions.
--   **Tailwind CSS:** Utility-first CSS framework for UI.
--   **Gmail API:** For sending email notifications.
+-   **Supabase:** Backend-as-a-Service for PostgreSQL database.
+-   **Tailwind CSS:** Utility-first CSS framework for UI development.
 </key_technical_concepts>
 
 <code_architecture>
-The application follows a standard full-stack architecture:
-
-
-
--   ****: Configured for  and , .
--   ****: Contains a  script aliasing  command.
--   ****: Added .
--   ** (frontend) & **: Store environment variables. Initially contained , . Updated to  for frontend, and new Supabase URL, keys, Gemini API key, Gmail OAuth credentials for backend.
--   ****: The core FastAPI backend.
-    -   Initially used MongoDB, then migrated to Supabase REST API.
-    -   Integrated the LangGraph RAG system.
-    -   Handles question generation, answer evaluation using Gemini AI ().
-    -   Manages student, results, questions, and answers in Supabase.
-    -   Sends email notifications via Gmail API.
-    -   Contains health check and error handling for database connection and RAG.
--   ****: Created to encapsulate memory-efficient RAG setup using usage: pdfplumber [-h] [--structure | --structure-text]
-                  [--format {csv,json,text}] [--types TYPES [TYPES ...]]
-                  [--include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]]
-                  [--exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]]
-                  [--laparams LAPARAMS] [--precision PRECISION]
-                  [--pages PAGES [PAGES ...]] [--indent INDENT]
-                  [infile]
-
-positional arguments:
-  infile
-
-options:
-  -h, --help            show this help message and exit
-  --structure           Write the structure tree as JSON. All other arguments
-                        except --pages, --laparams, and --indent will be
-                        ignored
-  --structure-text      Write the structure tree as JSON including text
-                        contents. All other arguments except --pages,
-                        --laparams, and --indent will be ignored
-  --format {csv,json,text}
-  --types TYPES [TYPES ...]
-  --include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]
-                        Include *only* these object attributes in output.
-  --exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]
-                        Exclude these object attributes from output.
-  --laparams LAPARAMS
-  --precision PRECISION
-  --pages PAGES [PAGES ...]
-  --indent INDENT       Indent level for JSON pretty-printing., , , and  for physics content.
--   ****: The physics textbook downloaded for RAG.
--   ****: Updated multiple times to include , , , , , usage: pdfplumber [-h] [--structure | --structure-text]
-                  [--format {csv,json,text}] [--types TYPES [TYPES ...]]
-                  [--include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]]
-                  [--exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]]
-                  [--laparams LAPARAMS] [--precision PRECISION]
-                  [--pages PAGES [PAGES ...]] [--indent INDENT]
-                  [infile]
-
-positional arguments:
-  infile
-
-options:
-  -h, --help            show this help message and exit
-  --structure           Write the structure tree as JSON. All other arguments
-                        except --pages, --laparams, and --indent will be
-                        ignored
-  --structure-text      Write the structure tree as JSON including text
-                        contents. All other arguments except --pages,
-                        --laparams, and --indent will be ignored
-  --format {csv,json,text}
-  --types TYPES [TYPES ...]
-  --include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]
-                        Include *only* these object attributes in output.
-  --exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]
-                        Exclude these object attributes from output.
-  --laparams LAPARAMS
-  --precision PRECISION
-  --pages PAGES [PAGES ...]
-  --indent INDENT       Indent level for JSON pretty-printing., etc.
--   ****: Initializes the Supabase client. Updated with new Supabase project ID and anon key.
--   ****: Handles user registration.
-    -   Modified to include password and re-enter password fields with validation.
-    -   Integrated hCaptcha.
-    -   Auto-calculates age from Date of Birth.
-    -   Includes a link to the Login page.
--   ****: New page created for user login using email and password.
--   ****: Updated to include a Login button.
--   ****: Displays available test levels.
-    -   Checks user authentication status to retrieve .
-    -   Displays level completion status and disables completed levels.
--   ****: The main test interface. This file was heavily refactored.
-    -   Manages multi-question navigation (Previous/Next buttons).
-    -   Handles per-question answer submission and final test submission.
-    -   Integrates a timer for each level.
-    -   Includes robust error handling for question generation and submission.
--   ****: Displays test outcomes.
-    -   Shows overall score and average of 6 evaluation criteria.
-    -   Displays timeout messages and email sending status.
-    -   Dynamically shows Back to Home or Back to Levels button based on completion.
--   ****: Wraps the  component with  for dark mode.
--   ****: New component for managing theme state.
--   ****: New component for toggling dark/light mode.
--   ****: New component created for visual password strength feedback, intended for integration.
--   ****: Updated to ignore  and  files.
+/profile/resultsPasswordStrength.tsx/levels
 </code_architecture>
 
 <pending_tasks>
--   **Complete Password Robustness:** Integrate the  component into the  page to provide visual feedback for password strength and matching.
--   **Resolve Git Secrets Issue:** Address the  failure caused by sensitive environment variables being present in git history. This requires cleaning the history or allowing the secrets explicitly on GitHub.
+-   **Complete Profile Page:** Implement display for personal details, full edit functionality for phone number, and the Change Password feature.
+-   **Forgot Password:** Implement Forgot Password functionality on the Login page, linking to the password reset flow.
+-   **Database Update for Profile Edits:** Ensure all profile edits (e.g., phone number) are correctly persisted in the Supabase database.
 </pending_tasks>
 
 <current_work>
-Immediately before this summary request, the AI engineer was working on enhancing password robustness for the registration page.
-1.  **Password Strength Component Creation:** A new React component, , was created to encapsulate the logic and UI for validating password strength (8 characters, special character, capital letter) and displaying real-time visual feedback, including confirmation of matching passwords.
-2.  **Git Push Issue Encountered:** While attempting to push the newly created  and other related changes, the git operation failed due to Secret push protection on GitHub. The error explicitly identified various API keys (Langchain, Google OAuth Client ID/Secret/Refresh Token) present in the  file within the commit history.
-3.  **Attempt to Fix Git Issue:** The AI engineer tried to fix this by updating the  file to include  and , aiming to prevent future  files from being committed. However, this action alone did not resolve the problem, as the issue stems from secrets already existing in the repository's history across multiple commits.
-4.  **Current Stance:** The AI engineer recognized that the issue is due to secrets in the git history and stated the plan to remove them and create example files. This git problem is currently blocking the integration of the  component and any further code changes from being pushed.
+Immediately before this summary, the AI engineer was implementing the **Profile Page** and related functionalities.
+1.  **Backend Endpoint:** A new FastAPI endpoint () was added to  to allow authenticated users to update their phone numbers in the database.
+2.  **Frontend Profile Page:** A new React component, , was created as a placeholder for the user's profile details.
+3.  **Frontend Routing:** A new route  was added to  to enable navigation to the profile page.
+4.  **Navigation Link:** A Profile button was integrated into the  page, positioned alongside the Logout button, allowing users to access their profile.
 
-The application is currently functional with all previously implemented features (Supabase, Gemini AI, hCaptcha, RAG, timer, dark mode, basic JWT login) but the latest code changes related to robust password validation are pending a successful git push.
+This work is partially completed. The user explicitly requested to verify the changes manually, meaning these newly added features (Profile page, phone update endpoint, password change/reset integration) are **implemented but untested** by the AI engineer. The Change password feature within the Profile page and the Forgot password flow from the Login page are conceptual and not yet implemented in code beyond the skeletal profile page.
 </current_work>
 
 <optional_next_step>
-Resolve the git push failure by removing  files from git history, then integrate the  component.
+Implement the Change Password feature within the Profile page and the Forgot Password flow from the Login page, linking them.
 </optional_next_step>

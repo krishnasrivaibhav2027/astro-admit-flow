@@ -804,7 +804,7 @@ async def send_confirmation_email(request: SendConfirmationEmailRequest):
         client_id = os.environ.get('GMAIL_CLIENT_ID')
         client_secret = os.environ.get('GMAIL_CLIENT_SECRET')
         refresh_token = os.environ.get('GMAIL_REFRESH_TOKEN')
-        frontend_url = os.environ.get('FRONTEND_URL', 'https://physics-rai.preview.emergentagent.com')
+        frontend_url = os.environ.get('FRONTEND_URL', 'https://ai-admissions-1.preview.emergentagent.com')
         
         if not all([client_id, client_secret, refresh_token]):
             logging.warning("Gmail credentials not configured")
