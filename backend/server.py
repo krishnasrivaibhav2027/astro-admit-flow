@@ -874,6 +874,66 @@ Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT' foll
         raise HTTPException(status_code=500, detail=f"Review error: {str(e)}")
 
 
+# ===== AI REVIEW ENDPOINT =====
+class AIReviewRequest(BaseModel):
+    question: str
+    correct_answer: str
+    student_answer: str
+    level: str
+
+@api_router.post("/ai-review")
+async def generate_ai_review(request: AIReviewRequest, current_user: Dict = Depends(get_current_user)):
+    """Generate detailed AI review comparing student answer with correct answer - Firebase Auth Protected"""
+    try:
+        logging.info(f"🔒 Authenticated AI review request from: {current_user['email']}")
+        
+        # Get context from RAG system
+        context_docs = get_physics_context(request.question, k=3)
+        context = "\n\n".join(context_docs) if context_docs else "General physics concepts"
+        
+        # Create detailed review prompt
+        review_prompt = f"""You are an experienced physics teacher providing detailed feedback to a student.
+
+Question: {request.question}
+
+Correct Answer: {correct_answer}
+
+Student's Answer: {request.student_answer}
+
+Context from Physics Textbook:
+{context[:1500]}
+
+Please provide a comprehensive review that includes:
+1. **Comparison Analysis**: Compare the student's answer with the correct answer. Identify what the student got right and what was incorrect or missing.
+
+2. **Concept Explanation**: Explain the underlying physics concepts involved in this question. Help the student understand WHY the correct answer is right.
+
+3. **Common Misconceptions**: If the student's answer shows any misconceptions, address them specifically.
+
+4. **Learning Points**: Highlight key takeaways and what the student should focus on to improve their understanding.
+
+5. **Encouragement**: End with constructive feedback that encourages the student.
+
+Provide a detailed, educational review (200-300 words) that helps the student learn from their mistake or reinforces their understanding if they were close to correct.
+"""
+        
+        # Generate AI review
+        response = llm.invoke(review_prompt)
+        review_text = response.content.strip()
+        
+        logging.info(f"✅ AI review generated successfully")
+        
+        return {
+            "review": review_text,
+            "success": True
+        }
+        
+    except Exception as e:
+        logging.error(f"Error generating AI review: {e}")
+        logging.error(f"Traceback: ", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"AI review error: {str(e)}")
+
+
 # ===== EMAIL NOTIFICATION =====
 @api_router.post("/send-notification")
 async def send_notification(request: NotificationEmailRequest, current_user: Dict = Depends(get_current_user)):
