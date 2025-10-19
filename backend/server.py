@@ -131,6 +131,10 @@ class SendConfirmationEmailRequest(BaseModel):
     user_id: str
 
 
+class SendPasswordResetEmailRequest(BaseModel):
+    to_email: str
+
+
 # ===== PASSWORD HASHING FUNCTIONS =====
 def hash_password(password: str) -> str:
     """Hash password using SHA256 with salt"""
