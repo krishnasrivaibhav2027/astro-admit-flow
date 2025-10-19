@@ -896,7 +896,7 @@ async def generate_ai_review(request: AIReviewRequest, current_user: Dict = Depe
 
 Question: {request.question}
 
-Correct Answer: {correct_answer}
+Correct Answer: {request.correct_answer}
 
 Student's Answer: {request.student_answer}
 
