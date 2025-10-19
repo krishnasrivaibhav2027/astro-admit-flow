@@ -85,19 +85,9 @@ const Registration = () => {
         );
       } catch (firebaseError: any) {
         if (firebaseError.code === 'auth/email-already-in-use') {
-          // Email exists in Firebase, try to sign in instead
-          console.log("Email exists in Firebase, attempting to sign in...");
-          try {
-            const { signInWithEmailAndPassword } = await import("firebase/auth");
-            userCredential = await signInWithEmailAndPassword(
-              auth,
-              validated.email,
-              validated.password
-            );
-            isNewUser = false;
-          } catch (signInError: any) {
-            throw new Error("Email already registered with a different password. Please login instead.");
-          }
+          // Email exists in Firebase
+          // Show user-friendly message to use login instead
+          throw new Error("This email is already registered. Please use the Login page instead, or click 'Forgot Password' if you don't remember your password.");
         } else {
           throw firebaseError;
         }
@@ -144,17 +134,10 @@ const Registration = () => {
       console.log("Registration successful with Firebase, UID:", user.uid);
       console.log("Student created with ID:", studentId);
 
-      if (isNewUser) {
-        toast({
-          title: "Registration Successful!",
-          description: "Welcome! You can now proceed to the test.",
-        });
-      } else {
-        toast({
-          title: "Welcome Back!",
-          description: "Your account was found. Proceeding to test.",
-        });
-      }
+      toast({
+        title: "Registration Successful!",
+        description: "Welcome! You can now proceed to the test.",
+      });
 
       navigate("/levels", { state: { studentId: studentId } });
     } catch (error: any) {
