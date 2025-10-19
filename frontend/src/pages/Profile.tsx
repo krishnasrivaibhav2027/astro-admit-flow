@@ -118,22 +118,7 @@ const Profile = () => {
         throw new Error('Email not found');
       }
 
-      const backendUrl = import.meta.env.VITE_BACKEND_URL;
-      const response = await fetch(`${backendUrl}/api/send-password-reset-email`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          to_email: email
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to send password reset email');
-      }
+      await sendPasswordResetEmail(auth, email);
 
       toast({
         title: "Password Reset Email Sent!",
