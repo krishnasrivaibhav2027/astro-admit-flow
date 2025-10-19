@@ -144,10 +144,10 @@ const Registration = () => {
       console.error("Registration error:", error);
       
       let errorMessage = "Please check your information and try again.";
-      if (error.code === 'auth/email-already-in-use') {
-        errorMessage = "Email already registered. Please login instead.";
-      } else if (error.code === 'auth/weak-password') {
-        errorMessage = "Password is too weak. Use at least 6 characters.";
+      if (error.code === 'auth/weak-password') {
+        errorMessage = "Password is too weak. Use at least 8 characters with uppercase and special characters.";
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = "Invalid email address format.";
       } else if (error.message) {
         errorMessage = error.message;
       }
