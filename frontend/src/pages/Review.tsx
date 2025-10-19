@@ -349,8 +349,14 @@ const Review = () => {
                           <Lightbulb className="w-5 h-5 text-purple-600 animate-pulse" />
                           AI Detailed Review:
                         </p>
-                        <div className="text-foreground whitespace-pre-wrap">
-                          {aiReviews[question.id]?.content}
+                        <div className="text-foreground leading-relaxed">
+                          {aiReviews[question.id]?.content.split('\n').map((paragraph, idx) => (
+                            paragraph.trim() && (
+                              <p key={idx} className="mb-3">
+                                {paragraph}
+                              </p>
+                            )
+                          ))}
                           {aiReviews[question.id]?.loading && (
                             <span className="inline-block w-2 h-4 ml-1 bg-purple-600 animate-pulse"></span>
                           )}
