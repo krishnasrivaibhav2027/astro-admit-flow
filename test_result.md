@@ -378,7 +378,9 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Firebase Authentication Integration"
+    - "Profile Page with Personal Details Display and Phone Editing"
+    - "Forgot Password Functionality on Login Page"
+    - "Account Dropdown Menu on Levels Page"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
