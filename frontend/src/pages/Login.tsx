@@ -177,6 +177,16 @@ const Login = () => {
                 </div>
               </div>
 
+              <div className="text-right">
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="text-sm text-primary hover:underline font-medium"
+                >
+                  Forgot Password?
+                </button>
+              </div>
+
               <Button 
                 type="submit" 
                 className="w-full" 
