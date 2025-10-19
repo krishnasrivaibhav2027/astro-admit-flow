@@ -411,6 +411,34 @@ async def get_student_by_email(email: str, current_user: Dict = Depends(get_curr
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@api_router.put("/students/{student_id}/phone")
+async def update_student_phone(student_id: str, request: UpdatePhoneRequest, current_user: Dict = Depends(get_current_user)):
+    """Update student phone number - Firebase Auth Protected"""
+    try:
+        logging.info(f"🔒 Authenticated request from: {current_user['email']}")
+        
+        # Verify user is updating their own data
+        if student_id != request.student_id:
+            raise HTTPException(status_code=400, detail="Student ID mismatch")
+        
+        # Update phone number in Supabase
+        response = supabase.table("students").update({
+            "phone": request.phone
+        }).eq("id", student_id).execute()
+        
+        if not response.data or len(response.data) == 0:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        logging.info(f"✅ Phone updated for student: {student_id}")
+        return {"success": True, "message": "Phone number updated successfully", "student": response.data[0]}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error updating phone: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @api_router.get("/students/{student_id}")
 async def get_student(student_id: str, current_user: Dict = Depends(get_current_user)):
     """Get student by ID - JWT Protected"""
