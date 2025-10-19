@@ -70,6 +70,7 @@ const Levels = () => {
     }
   ]);
   const [testCompleted, setTestCompleted] = useState(false);
+  const [latestResultData, setLatestResultData] = useState<any>(null);
 
   useEffect(() => {
     const checkAuthAndLoadData = async () => {
