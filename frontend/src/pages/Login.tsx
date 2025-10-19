@@ -50,27 +50,17 @@ const Login = () => {
         }
       });
 
-      let studentId;
-      let studentData;
-
       if (!studentResponse.ok) {
-        // Student record doesn't exist in database but Firebase user exists
-        // This happens when Firebase user was created but student record creation failed
-        // Let's create the student record now
-        console.log("Student record not found, creating new record for existing Firebase user...");
-        
-        toast({
-          title: "Account Setup",
-          description: "Setting up your account profile...",
-        });
-
-        // We need to prompt user for missing information or use default values
-        // For now, we'll redirect to a profile completion page or create with minimal data
-        throw new Error('Your account exists but profile is incomplete. Please contact support or register again with your email.');
+        if (studentResponse.status === 404) {
+          // Student record doesn't exist but Firebase user does
+          // This means user's Firebase account exists but profile was never created
+          throw new Error('Your account exists but profile is incomplete. Please use "Register" to complete your profile with this email.');
+        }
+        throw new Error('Failed to get student information. Please try again.');
       }
 
-      studentData = await studentResponse.json();
-      studentId = studentData.id;
+      const studentData = await studentResponse.json();
+      const studentId = studentData.id;
 
       // Store student info in session
       sessionStorage.setItem('studentId', studentId);
