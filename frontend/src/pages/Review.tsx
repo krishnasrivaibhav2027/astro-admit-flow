@@ -16,6 +16,14 @@ interface Question {
   is_correct?: boolean;
 }
 
+interface AIReviewState {
+  [key: string]: {
+    expanded: boolean;
+    content: string;
+    loading: boolean;
+  };
+}
+
 const Review = () => {
   const navigate = useNavigate();
   const { level } = useParams<{ level: string }>();
@@ -23,6 +31,7 @@ const Review = () => {
   const [loading, setLoading] = useState(true);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [levelAttempted, setLevelAttempted] = useState(false);
+  const [aiReviews, setAiReviews] = useState<AIReviewState>({});
 
   useEffect(() => {
     loadReviewData();
