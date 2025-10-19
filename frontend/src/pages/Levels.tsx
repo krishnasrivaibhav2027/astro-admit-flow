@@ -414,6 +414,36 @@ const Levels = () => {
             </p>
           </div>
 
+          {/* Go to Results Button - Only shown when test is completed */}
+          {testCompleted && (
+            <div className="mb-6">
+              <Card className="border-2 border-primary bg-gradient-to-r from-primary/10 to-purple-500/10">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-semibold mb-1">Test Completed! 🎉</h3>
+                      <p className="text-muted-foreground">
+                        View your final results and performance summary
+                      </p>
+                    </div>
+                    <Button
+                      size="lg"
+                      variant="glow"
+                      onClick={() => {
+                        const studentId = sessionStorage.getItem('studentId');
+                        // Get the last completed level's result
+                        navigate("/results", { state: { studentId, fromLevels: true } });
+                      }}
+                    >
+                      <Trophy className="w-5 h-5 mr-2" />
+                      Go to Results
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           <div className="space-y-6">
             {levels.map((level, index) => {
               const Icon = level.icon;
