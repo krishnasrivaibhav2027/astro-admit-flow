@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import Levels from "./pages/Levels";
 import Test from "./pages/Test";
 import Results from "./pages/Results";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/levels" element={<Levels />} />
           <Route path="/test" element={<Test />} />
           <Route path="/results" element={<Results />} />
+          <Route path="/profile" element={<Profile />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
