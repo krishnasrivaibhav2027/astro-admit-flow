@@ -310,70 +310,26 @@ const Results = () => {
             </CardContent>
           </Card>
 
-          {/* Action Buttons */}
+          {/* Action Buttons - Simplified */}
           <div className="flex flex-col sm:flex-row gap-4">
-            {isPassed && level !== "hard" ? (
-              <Button
-                size="lg"
-                variant="glow"
-                className="flex-1"
-                onClick={() => navigate("/levels", { state: { studentId } })}
-              >
-                Continue to Next Level
-                <Trophy className="w-5 h-5 ml-2" />
-              </Button>
-            ) : !isPassed && level !== "easy" && currentAttempts < maxAttempts ? (
-              <Button
-                size="lg"
-                variant="glow"
-                className="flex-1"
-                onClick={handleRetryLevel}
-              >
-                <RotateCcw className="w-5 h-5 mr-2" />
-                Retry Level (Attempt {currentAttempts + 1}/{maxAttempts})
-              </Button>
-            ) : null}
-            
-            {/* Show Logout button if test is completed, otherwise show Back to Levels/Home */}
-            {isTestCompleted || (isPassed && level === "hard") || (currentAttempts >= maxAttempts && !isPassed) ? (
-              <Button
-                size="lg"
-                variant="outline"
-                className="flex-1"
-                onClick={handleLogout}
-              >
-                <LogOut className="w-5 h-5 mr-2" />
-                Logout
-              </Button>
-            ) : (
-              <Button
-                size="lg"
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  if (level === "easy" && !isPassed) {
-                    navigate("/");
-                  } else {
-                    navigate("/levels", { state: { studentId } });
-                  }
-                }}
-              >
-                <Home className="w-5 h-5 mr-2" />
-                {level === "easy" && !isPassed ? "Back to Home" : "Back to Levels"}
-              </Button>
-            )}
-          </div>
-
-          {/* Detailed Analysis Button */}
-          <div className="mt-4">
             <Button
               size="lg"
-              variant="secondary"
-              className="w-full"
-              onClick={() => navigate(`/review/${level}`)}
+              variant="outline"
+              className="flex-1"
+              onClick={handleLogout}
+            >
+              <Home className="w-5 h-5 mr-2" />
+              Home
+            </Button>
+            
+            <Button
+              size="lg"
+              variant="glow"
+              className="flex-1"
+              onClick={() => navigate("/levels", { state: { studentId } })}
             >
               <TrendingUp className="w-5 h-5 mr-2" />
-              View Detailed Analysis
+              Detailed Analysis
             </Button>
           </div>
         </div>
