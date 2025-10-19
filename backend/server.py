@@ -732,6 +732,148 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
         raise HTTPException(status_code=500, detail=f"Evaluation error: {str(e)}")
 
 
+# ===== REVIEW ENDPOINT =====
+@api_router.get("/review/{level}/{student_id}")
+async def get_review_data(level: str, student_id: str, current_user: Dict = Depends(get_current_user)):
+    """Get review data for a specific level - Firebase Auth Protected"""
+    try:
+        logging.info(f"🔒 Authenticated request from: {current_user['email']}")
+        
+        # Verify user is requesting their own data
+        student_response = supabase.table("students").select("email").eq("id", student_id).execute()
+        if not student_response.data or student_response.data[0]['email'] != current_user.get('email'):
+            raise HTTPException(status_code=403, detail="Cannot access other users' data")
+        
+        # Find the result for this level and student
+        results_response = supabase.table("results").select("*").eq("student_id", student_id).eq("level", level).order("created_at", desc=True).limit(1).execute()
+        
+        attempted = False
+        result_id = None
+        
+        if results_response.data and len(results_response.data) > 0:
+            attempted = True
+            result_id = results_response.data[0]['id']
+        
+        # Get questions for this level (either from the test or generate new ones for review)
+        if result_id:
+            # Get questions that were used in the test
+            questions_response = supabase.table("questions").select("id, question_text, correct_answer").eq("result_id", result_id).order("created_at").execute()
+            
+            if not questions_response.data:
+                raise HTTPException(status_code=404, detail="No questions found for this test")
+            
+            questions_data = []
+            for q in questions_response.data:
+                # Get student's answer if exists
+                answer_response = supabase.table("student_answers").select("student_answer").eq("question_id", q['id']).execute()
+                
+                student_answer = None
+                if answer_response.data and len(answer_response.data) > 0:
+                    student_answer = answer_response.data[0]['student_answer']
+                
+                # Generate AI explanation if answer is wrong
+                explanation = None
+                is_correct = False
+                
+                if student_answer:
+                    # Simple check for correctness (you can enhance this)
+                    # For now, we'll use AI to evaluate
+                    try:
+                        context_docs = get_physics_context(q['question_text'], k=2)
+                        context = "\n\n".join(context_docs) if context_docs else ""
+                        
+                        # Create evaluation prompt
+                        eval_prompt = f"""
+Question: {q['question_text']}
+Correct Answer: {q['correct_answer']}
+Student Answer: {student_answer}
+
+Context: {context[:1000]}
+
+Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT' followed by a detailed explanation of why it's correct or what's wrong.
+"""
+                        
+                        response = llm.invoke(eval_prompt)
+                        ai_response = response.content.strip()
+                        
+                        is_correct = ai_response.upper().startswith('CORRECT')
+                        
+                        if not is_correct:
+                            # Extract explanation (everything after INCORRECT)
+                            explanation = ai_response.replace('INCORRECT', '').strip()
+                            if not explanation:
+                                explanation = "Your answer doesn't match the expected solution. Please review the correct answer above."
+                    except Exception as e:
+                        logging.error(f"Error generating explanation: {e}")
+                        is_correct = False
+                        explanation = "Unable to generate explanation at this time."
+                
+                questions_data.append({
+                    "id": q['id'],
+                    "question_text": q['question_text'],
+                    "correct_answer": q['correct_answer'],
+                    "student_answer": student_answer,
+                    "explanation": explanation,
+                    "is_correct": is_correct
+                })
+            
+            return {
+                "attempted": attempted,
+                "questions": questions_data
+            }
+        else:
+            # Level not attempted - generate sample questions to show correct answers
+            # Get number of questions based on level
+            num_questions = {"easy": 5, "medium": 3, "hard": 2}.get(level, 5)
+            
+            # Generate questions
+            query = f"Physics {level} level questions concepts topics"
+            context_docs = get_physics_context(query, k=3)
+            context = "\n\n".join(context_docs) if context_docs else "General physics concepts"
+            
+            prompt = generate_questions_prompt.format_messages(
+                context=context[:2000],
+                num_questions=num_questions,
+                level=level
+            )
+            
+            response = llm.invoke(prompt)
+            response_text = response.content.strip()
+            
+            # Clean up response
+            if response_text.startswith('```'):
+                response_text = response_text.split('```')[1]
+                if response_text.startswith('json'):
+                    response_text = response_text[4:]
+                response_text = response_text.strip()
+            
+            # Parse JSON
+            generated_questions = json.loads(response_text)
+            
+            questions_data = []
+            for q in generated_questions:
+                questions_data.append({
+                    "id": f"sample-{len(questions_data)}",
+                    "question_text": q.get("question", ""),
+                    "correct_answer": q.get("answer", ""),
+                    "student_answer": None,
+                    "explanation": None,
+                    "is_correct": False
+                })
+            
+            return {
+                "attempted": False,
+                "questions": questions_data
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error getting review data: {e}")
+        logging.error(f"Traceback: ", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Review error: {str(e)}")
+
+
 # ===== EMAIL NOTIFICATION =====
 @api_router.post("/send-notification")
 async def send_notification(request: NotificationEmailRequest, current_user: Dict = Depends(get_current_user)):
