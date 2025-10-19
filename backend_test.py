@@ -9,10 +9,18 @@ import json
 import sys
 from datetime import datetime
 import uuid
+import os
 
 # Configuration
 BASE_URL = "https://ai-admissions-1.preview.emergentagent.com/api"
 TIMEOUT = 30
+
+# Firebase configuration for authentication testing
+FIREBASE_CONFIG = {
+    "apiKey": "AIzaSyDxDFMOm6UR87WTzVtG2XSUMY6mxQM6SrA",
+    "authDomain": "ai-admission-26c27.firebaseapp.com",
+    "projectId": "ai-admission-26c27"
+}
 
 class BackendTester:
     def __init__(self):
