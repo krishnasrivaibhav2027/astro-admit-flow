@@ -126,6 +126,10 @@ const Levels = () => {
       const mediumFailed = mediumAttempts >= 2 && !mediumPassed;
       const hardFailed = hardAttempts >= 2 && !hardPassed;
       
+      // Check if test is completed (any result exists means at least one level attempted)
+      const isCompleted = allLevelsPassed || easyFailed || (mediumFailed && easyPassed) || (hardFailed && mediumPassed);
+      setTestCompleted(isCompleted);
+      
       // If all levels passed, redirect to results with final score
       if (allLevelsPassed) {
         const hardResult = data.find(r => r.level === "hard" && r.result === "pass");
