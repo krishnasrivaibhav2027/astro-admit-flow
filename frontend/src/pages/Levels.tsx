@@ -296,13 +296,23 @@ const Levels = () => {
       <div className="absolute top-20 left-10 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-float" />
       <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
 
-      {/* Theme Toggle and Logout */}
+      {/* Theme Toggle, Profile, and Logout */}
       <div className="absolute top-4 right-4 z-50 flex gap-2">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => navigate("/profile")}
+          className="bg-background/80 backdrop-blur-sm"
+          title="Profile"
+        >
+          <User className="h-[1.2rem] w-[1.2rem]" />
+        </Button>
         <Button
           variant="outline"
           size="icon"
           onClick={handleLogout}
           className="bg-background/80 backdrop-blur-sm"
+          title="Logout"
         >
           <LogOut className="h-[1.2rem] w-[1.2rem]" />
         </Button>
