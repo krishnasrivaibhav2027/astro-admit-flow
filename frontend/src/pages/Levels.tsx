@@ -430,7 +430,7 @@ const Levels = () => {
           </div>
 
           {/* Go to Results Button - Only shown when test is completed */}
-          {testCompleted && (
+          {testCompleted && latestResultData && (
             <div className="mb-6">
               <Card className="border-2 border-primary bg-gradient-to-r from-primary/10 to-purple-500/10">
                 <CardContent className="p-6">
@@ -446,8 +446,17 @@ const Levels = () => {
                       variant="glow"
                       onClick={() => {
                         const studentId = sessionStorage.getItem('studentId');
-                        // Get the last completed level's result
-                        navigate("/results", { state: { studentId, fromLevels: true } });
+                        navigate("/results", { 
+                          state: { 
+                            studentId,
+                            score: latestResultData.score || 0,
+                            result: latestResultData.result || 'fail',
+                            level: latestResultData.level || 'easy',
+                            criteria: latestResultData.criteria || {},
+                            emailSent: true,
+                            completed: true
+                          } 
+                        });
                       }}
                     >
                       <Trophy className="w-5 h-5 mr-2" />
