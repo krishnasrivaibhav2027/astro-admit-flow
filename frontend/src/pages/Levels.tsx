@@ -132,6 +132,20 @@ const Levels = () => {
       const isCompleted = allLevelsPassed || easyFailed || (mediumFailed && easyPassed) || (hardFailed && mediumPassed);
       setTestCompleted(isCompleted);
       
+      // Store latest result data for "Go to Results" button
+      if (isCompleted) {
+        // Find the last completed level result to show
+        let resultToShow = latestResult;
+        if (hardPassed) {
+          resultToShow = data.find(r => r.level === "hard" && r.result === "pass") || latestResult;
+        } else if (mediumPassed) {
+          resultToShow = data.find(r => r.level === "medium") || latestResult;
+        } else {
+          resultToShow = data.find(r => r.level === "easy") || latestResult;
+        }
+        setLatestResultData(resultToShow);
+      }
+      
       // Skip auto-redirect if user is coming from Results page to view reviews
       if (fromResults) {
         // Just set the levels and return, don't auto-redirect
