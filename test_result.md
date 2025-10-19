@@ -339,6 +339,42 @@ metadata:
       - working: true
         agent: "testing"
         comment: "✅ FIREBASE AUTHENTICATION INTEGRATION FULLY TESTED AND WORKING: Conducted comprehensive testing of complete Firebase authentication flow. REGISTRATION FLOW: ✅ Firebase user creation successful with UID generation (rwIBHYFE8dMsFG5Z1R9L31eYKWh1), Firebase token stored in localStorage, student record created in backend via /api/students (200 status), sessionStorage properly stores studentId and email, successful redirect to /levels page, age auto-calculation working (DOB 1998-07-20 → Age 27), password strength indicators show all green checkmarks. LOGIN FLOW: ✅ Firebase authentication successful with same UID, password visibility toggle working perfectly (text ↔ password), Firebase token stored after login, sessionStorage properly populated, successful redirect to /levels page, cleared storage simulation working correctly. PROTECTED API ACCESS: ✅ Firebase token sent in Authorization header to backend APIs, /api/generate-questions endpoint returns 200 status, backend accepts Firebase token for authentication, successful navigation to /test page, no authentication errors detected. LOGOUT FUNCTIONALITY: ✅ Firebase token cleared from localStorage, sessionStorage cleared completely, successful redirect to login page, protected pages correctly redirect to login after logout, authentication security working properly. Firebase configuration working correctly with proper API key and project settings. Complete Firebase authentication integration verified and operational."
+  
+  - task: "Profile Page with Personal Details Display and Phone Editing"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/Profile.tsx, backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented Profile page displaying Name, Email, Age, DOB (all non-editable) and Phone (editable). Backend endpoint PUT /api/students/{student_id}/phone allows authenticated users to update phone numbers. Page includes 'Change Password' button that triggers Firebase password reset email. Need to test profile data display, phone editing, and password reset functionality."
+  
+  - task: "Forgot Password Functionality on Login Page"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/Login.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added 'Forgot Password?' link on Login page below password field. When clicked, triggers Firebase sendPasswordResetEmail() to send password reset email to the entered email address. Includes proper error handling for missing email, user not found, and invalid email. Need to test forgot password flow."
+  
+  - task: "Account Dropdown Menu on Levels Page"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/Levels.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Replaced individual Profile button with Account dropdown menu containing 'Profile' (navigates to /profile) and 'Change Password' (triggers Firebase password reset email) options. Logout button kept separate. Account menu uses shadcn/ui DropdownMenu component with proper icons. Need to test dropdown functionality, profile navigation, and change password trigger."
 
 test_plan:
   current_focus:
