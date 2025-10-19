@@ -15,8 +15,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { sendPasswordResetEmail } from "firebase/auth";
-import { auth } from "@/config/firebase";
 
 type LevelStatus = "locked" | "current" | "completed";
 
