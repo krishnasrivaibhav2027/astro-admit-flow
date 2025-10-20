@@ -123,6 +123,8 @@ class NotificationEmailRequest(BaseModel):
     student_name: str
     result: str
     score: float
+    student_id: str
+    level: str
 
 
 class SendConfirmationEmailRequest(BaseModel):
