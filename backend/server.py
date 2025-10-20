@@ -749,10 +749,27 @@ async def get_review_data(level: str, student_id: str, current_user: Dict = Depe
         
         attempted = False
         result_id = None
+        can_retake = False
+        current_attempts = 0
+        max_attempts = {"easy": 1, "medium": 2, "hard": 2}.get(level, 1)
+        last_result = None
         
         if results_response.data and len(results_response.data) > 0:
             attempted = True
-            result_id = results_response.data[0]['id']
+            last_result = results_response.data[0]
+            result_id = last_result['id']
+            
+            # Get current attempts for this level
+            if level == "easy":
+                current_attempts = last_result.get("attempts_easy", 0)
+            elif level == "medium":
+                current_attempts = last_result.get("attempts_medium", 0)
+            elif level == "hard":
+                current_attempts = last_result.get("attempts_hard", 0)
+            
+            # Check if can retake: failed (not passed) AND has attempts remaining
+            level_passed = last_result.get("result") == "pass"
+            can_retake = not level_passed and current_attempts < max_attempts
         
         # Get questions for this level (either from the test or generate new ones for review)
         if result_id:
