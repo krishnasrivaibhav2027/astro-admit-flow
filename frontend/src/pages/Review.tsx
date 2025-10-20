@@ -235,7 +235,7 @@ const Review = () => {
         <div className="flex gap-4 mb-6">
           <Button
             variant="ghost"
-            onClick={() => navigate("/levels", { state: { studentId: sessionStorage.getItem('studentId') } })}
+            onClick={() => navigate("/levels", { state: { studentId: sessionStorage.getItem('studentId'), fromResults: true } })}
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Levels
