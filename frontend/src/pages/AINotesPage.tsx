@@ -58,10 +58,26 @@ const AINotesPage = () => {
       }
 
       const data = await response.json();
-      setTopicNotes(data.topic_notes);
+      
+      // Clean markdown and prepare for typing animation
+      const cleanedNotes = data.topic_notes.map((note: any) => ({
+        ...note,
+        notes: note.notes
+          .replace(/\*\*/g, '') // Remove bold markdown
+          .replace(/\*/g, '')   // Remove italic markdown
+          .replace(/###\s*/g, '\n') // Convert headers
+          .replace(/##\s*/g, '\n')
+          .replace(/\n{3,}/g, '\n\n'), // Remove excessive newlines
+        displayedNotes: '',
+        isTyping: false
+      }));
+      
+      setTopicNotes(cleanedNotes);
       setIncorrectCount(data.incorrect_count);
       setLoading(false);
-      setGenerating(false);
+      
+      // Start typing animation for each note sequentially
+      animateNotes(cleanedNotes);
     } catch (error: any) {
       console.error('Error generating notes:', error);
       toast({
@@ -72,6 +88,39 @@ const AINotesPage = () => {
       setLoading(false);
       setGenerating(false);
     }
+  };
+
+  const animateNotes = async (notes: TopicNote[]) => {
+    for (let i = 0; i < notes.length; i++) {
+      const note = notes[i];
+      
+      // Mark as typing
+      setTopicNotes(prev => 
+        prev.map((n, idx) => idx === i ? { ...n, isTyping: true } : n)
+      );
+      
+      // Animate word by word
+      const words = note.notes.split(' ');
+      let displayedText = '';
+      
+      for (let j = 0; j < words.length; j++) {
+        displayedText += (j > 0 ? ' ' : '') + words[j];
+        
+        setTopicNotes(prev =>
+          prev.map((n, idx) => idx === i ? { ...n, displayedNotes: displayedText } : n)
+        );
+        
+        // Delay between words (faster for better UX)
+        await new Promise(resolve => setTimeout(resolve, 30));
+      }
+      
+      // Mark as done typing
+      setTopicNotes(prev =>
+        prev.map((n, idx) => idx === i ? { ...n, isTyping: false, displayedNotes: note.notes } : n)
+      );
+    }
+    
+    setGenerating(false);
   };
 
   const getLevelTitle = () => {
