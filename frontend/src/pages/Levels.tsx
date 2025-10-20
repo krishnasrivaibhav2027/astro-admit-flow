@@ -526,7 +526,12 @@ const Levels = () => {
                         </div>
                       </div>
 
-                      {testCompleted ? (
+                      {/* Button Logic:
+                          - If coming from Results (fromResults flag), show Review for completed levels
+                          - If level is completed (pass or fail), and coming from Results, show Review
+                          - Otherwise show Start Test/Completed/Locked as usual
+                      */}
+                      {fromResults && (isCompleted || level.attempts > 0) ? (
                         <Button
                           size="lg"
                           variant="secondary"
