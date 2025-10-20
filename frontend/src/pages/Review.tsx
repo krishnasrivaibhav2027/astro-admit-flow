@@ -69,6 +69,9 @@ const Review = () => {
       const data = await response.json();
       setQuestions(data.questions);
       setLevelAttempted(data.attempted);
+      setCanRetake(data.can_retake || false);
+      setCurrentAttempts(data.current_attempts || 0);
+      setMaxAttempts(data.max_attempts || 1);
       setLoading(false);
     } catch (error: any) {
       console.error('Error loading review:', error);
