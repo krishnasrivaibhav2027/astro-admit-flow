@@ -250,13 +250,16 @@ const AINotesPage = () => {
               </CardHeader>
               <CardContent className="pt-6">
                 <div className="prose prose-sm max-w-none dark:prose-invert">
-                  {topicNote.notes.split('\n\n').map((paragraph, pIdx) => (
+                  {(topicNote.displayedNotes || topicNote.notes).split('\n\n').map((paragraph, pIdx) => (
                     paragraph.trim() && (
                       <p key={pIdx} className="mb-4 leading-relaxed text-foreground">
                         {paragraph}
                       </p>
                     )
                   ))}
+                  {topicNote.isTyping && (
+                    <span className="inline-block w-2 h-4 ml-1 bg-purple-600 animate-pulse"></span>
+                  )}
                 </div>
               </CardContent>
             </Card>
