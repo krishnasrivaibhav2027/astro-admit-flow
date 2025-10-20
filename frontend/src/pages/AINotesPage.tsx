@@ -224,15 +224,21 @@ const AINotesPage = () => {
         {/* Topic Notes */}
         <div className="space-y-6">
           {topicNotes.map((topicNote, index) => (
-            <Card key={index} className="border-2 hover:shadow-xl transition-shadow">
+            <Card key={index} className={`border-2 hover:shadow-xl transition-shadow ${topicNote.isTyping ? 'ring-2 ring-purple-500 ring-opacity-50' : ''}`}>
               <CardHeader className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-3">
-                      <div className="w-10 h-10 rounded-lg bg-purple-500 flex items-center justify-center">
+                      <div className={`w-10 h-10 rounded-lg bg-purple-500 flex items-center justify-center ${topicNote.isTyping ? 'animate-pulse' : ''}`}>
                         <BookOpen className="w-5 h-5 text-white" />
                       </div>
                       <CardTitle className="text-2xl">{topicNote.topic}</CardTitle>
+                      {topicNote.isTyping && (
+                        <Badge variant="secondary" className="animate-pulse">
+                          <Sparkles className="w-3 h-3 mr-1" />
+                          AI is typing...
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {topicNote.related_questions.map((question, qIdx) => (
