@@ -11,6 +11,8 @@ interface TopicNote {
   topic: string;
   related_questions: string[];
   notes: string;
+  displayedNotes?: string;
+  isTyping?: boolean;
 }
 
 const AINotesPage = () => {
