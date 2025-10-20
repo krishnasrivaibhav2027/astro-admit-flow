@@ -363,11 +363,12 @@ const Test = () => {
         testResult = evaluationData.result || 'fail';
       }
 
-      // Update result with incremented attempts
+      // Update result with incremented attempts and time taken
       await supabase
         .from("results")
         .update({
-          [attemptsField]: newAttemptCount
+          [attemptsField]: newAttemptCount,
+          time_taken: timeElapsed
         })
         .eq("id", resultId);
 
