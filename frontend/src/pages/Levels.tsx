@@ -405,6 +405,19 @@ const Levels = () => {
       <div className="absolute top-20 left-10 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-float" />
       <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
 
+      {/* Leaderboard Button - Top Left */}
+      <div className="absolute top-4 left-4 z-50">
+        <Button
+          variant="outline"
+          size="lg"
+          onClick={() => navigate("/leaderboard")}
+          className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white border-0 hover:from-yellow-600 hover:to-orange-600"
+        >
+          <Trophy className="w-5 h-5 mr-2" />
+          Leaderboard
+        </Button>
+      </div>
+
       {/* Theme Toggle, Account Menu, and Logout */}
       <div className="absolute top-4 right-4 z-50 flex gap-2">
         <DropdownMenu>
