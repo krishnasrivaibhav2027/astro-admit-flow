@@ -962,7 +962,7 @@ Provide a detailed, educational review (200-300 words) that helps the student le
 # ===== EMAIL NOTIFICATION =====
 @api_router.post("/send-notification")
 async def send_notification(request: NotificationEmailRequest, current_user: Dict = Depends(get_current_user)):
-    """Send email notification - JWT Protected"""
+    """Send email notification - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         from email.mime.text import MIMEText
@@ -979,6 +979,105 @@ async def send_notification(request: NotificationEmailRequest, current_user: Dic
             logging.warning("Gmail credentials not configured")
             return {"success": False, "message": "Gmail not configured"}
         
+        # Check all test results for this student to determine admission status
+        results_response = supabase.table("results").select("*").eq("student_id", request.student_id).order("created_at", desc=True).execute()
+        
+        admission_message = ""
+        email_subject = "AdmitAI Test Results"
+        
+        if results_response.data and len(results_response.data) > 0:
+            # Get the latest result to check level statuses
+            latest_result = results_response.data[0]
+            all_results = results_response.data
+            
+            # Check which levels were passed
+            easy_passed = any(r.get('level') == 'easy' and r.get('result') == 'pass' for r in all_results)
+            medium_passed = any(r.get('level') == 'medium' and r.get('result') == 'pass' for r in all_results)
+            hard_passed = any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in all_results)
+            
+            # Determine admission status and fee concession
+            if easy_passed and medium_passed and hard_passed:
+                # Passed all levels - 50% fee concession
+                admission_message = """
+🎉 Congratulations! We are thrilled to inform you that you have successfully passed all test levels!
+
+✨ ADMISSION GRANTED ✨
+
+You have been accepted into our prestigious institution with a remarkable 50% FEE CONCESSION!
+
+This outstanding achievement reflects your exceptional understanding of physics concepts and problem-solving abilities. We are excited to welcome you to our academic community.
+
+Next Steps:
+- You will receive detailed admission instructions shortly
+- Please prepare the required documents for enrollment
+- Our admissions team will contact you within 2-3 business days
+
+We look forward to supporting your academic journey!
+"""
+                email_subject = "🎉 Congratulations! Admission Granted with 50% Fee Concession - AdmitAI"
+                
+            elif easy_passed and medium_passed and not hard_passed:
+                # Passed medium but failed hard - 30% fee concession
+                admission_message = """
+🎊 Congratulations! We are pleased to inform you that you have demonstrated strong performance in your admission test!
+
+✨ ADMISSION GRANTED ✨
+
+You have been accepted into our prestigious institution with a 30% FEE CONCESSION!
+
+Your solid grasp of fundamental and intermediate physics concepts showcases your academic potential. We believe you will thrive in our academic environment.
+
+Next Steps:
+- You will receive detailed admission instructions shortly
+- Please prepare the required documents for enrollment
+- Our admissions team will contact you within 2-3 business days
+
+We are excited to have you join our institution!
+"""
+                email_subject = "🎊 Congratulations! Admission Granted with 30% Fee Concession - AdmitAI"
+                
+            elif easy_passed:
+                # Passed only easy level
+                admission_message = """
+Thank you for completing the AdmitAI admission test.
+
+While you have demonstrated understanding of basic physics concepts, we encourage you to strengthen your knowledge in advanced topics for better opportunities.
+
+You may retake the test to improve your results and qualify for fee concessions:
+- Pass Medium & Hard levels: 50% fee concession
+- Pass Medium level: 30% fee concession
+
+We believe in your potential and encourage you to try again!
+"""
+                email_subject = "AdmitAI Test Results - Keep Improving!"
+                
+            else:
+                # Did not pass or failed
+                admission_message = """
+Thank you for taking the AdmitAI admission test.
+
+We appreciate your effort and interest in our institution. While your current results don't qualify for admission at this time, we encourage you to review the concepts and retake the test.
+
+Our test review feature provides detailed explanations to help you improve. You can access it from your dashboard.
+
+Don't give up! With dedication and practice, we're confident you can achieve better results.
+"""
+                email_subject = "AdmitAI Test Results - Try Again!"
+        else:
+            # Fallback message if no results found
+            admission_message = f"""
+Dear {request.student_name},
+
+Thank you for completing your AdmitAI admission test.
+
+Result: {request.result.upper()}
+
+Please log in to your dashboard to view detailed results and next steps.
+
+Best regards,
+AdmitAI Team
+"""
+        
         creds = Credentials(
             None,
             refresh_token=refresh_token,
@@ -994,18 +1093,13 @@ async def send_notification(request: NotificationEmailRequest, current_user: Dic
         message = MIMEText(f"""
 Dear {request.student_name},
 
-Your AdmitAI admission test results:
-
-Result: {request.result.upper()}
-Score: {request.score:.1f} / 10
-
-{'Congratulations! You have passed.' if request.result == 'pass' else 'Please review your results and try again.'}
+{admission_message}
 
 Best regards,
-AdmitAI Team
+The AdmitAI Team
         """)
         message['to'] = request.to_email
-        message['subject'] = f"AdmitAI Test Results - {request.result.upper()}"
+        message['subject'] = email_subject
         
         raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
         service.users().messages().send(userId="me", body={'raw': raw}).execute()
