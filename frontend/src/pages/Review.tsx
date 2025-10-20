@@ -374,7 +374,7 @@ const Review = () => {
         <div className="mt-8 flex justify-center">
           <Button
             size="lg"
-            onClick={() => navigate("/levels", { state: { studentId: sessionStorage.getItem('studentId'), fromResults: true } })}
+            onClick={() => navigate("/levels", { state: { studentId: sessionStorage.getItem('studentId') } })}
             className="px-8"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
