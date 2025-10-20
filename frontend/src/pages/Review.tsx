@@ -232,14 +232,26 @@ const Review = () => {
 
       {/* Content */}
       <div className="relative z-10 container max-w-6xl mx-auto px-4 py-12">
-        <Button
-          variant="ghost"
-          onClick={() => navigate("/levels", { state: { studentId: sessionStorage.getItem('studentId') } })}
-          className="mb-6"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Levels
-        </Button>
+        <div className="flex gap-4 mb-6">
+          <Button
+            variant="ghost"
+            onClick={() => navigate("/levels", { state: { studentId: sessionStorage.getItem('studentId') } })}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Levels
+          </Button>
+          
+          {levelAttempted && (
+            <Button
+              variant="default"
+              onClick={() => navigate(`/ai-notes/${level}`)}
+              className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
+            >
+              <Brain className="w-4 h-4 mr-2" />
+              AI Study Notes
+            </Button>
+          )}
+        </div>
 
         {/* Header */}
         <Card className="mb-8 border-2">
