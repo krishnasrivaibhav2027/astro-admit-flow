@@ -263,12 +263,25 @@ const Review = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">
-              {levelAttempted 
-                ? `Review your answers and learn from AI-generated explanations.`
-                : `This level was not attempted. Review the correct answers below.`
-              }
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-muted-foreground">
+                {levelAttempted 
+                  ? `Review your answers and learn from AI-generated explanations.`
+                  : `This level was not attempted. Review the correct answers below.`
+                }
+              </p>
+              {canRetake && (
+                <Button
+                  size="lg"
+                  variant="default"
+                  onClick={handleRetakeTest}
+                  className="ml-4"
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Retake Test (Attempt {currentAttempts + 1}/{maxAttempts})
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
 
