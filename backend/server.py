@@ -883,7 +883,10 @@ Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT' foll
             
             return {
                 "attempted": False,
-                "questions": questions_data
+                "questions": questions_data,
+                "can_retake": False,
+                "current_attempts": 0,
+                "max_attempts": max_attempts
             }
         
     except HTTPException:
