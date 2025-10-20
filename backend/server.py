@@ -1146,6 +1146,132 @@ Respond in this JSON format:
         raise HTTPException(status_code=500, detail=f"AI notes error: {str(e)}")
 
 
+# ===== LEADERBOARD =====
+@api_router.get("/leaderboard")
+async def get_leaderboard():
+    """Get leaderboard data for all students"""
+    try:
+        # Get all test results
+        all_results = supabase.table("results").select("*").order("created_at", desc=False).execute()
+        
+        if not all_results.data:
+            return {"hard_leaderboard": [], "medium_leaderboard": []}
+        
+        # Group results by student
+        student_results = {}
+        for result in all_results.data:
+            student_id = result['student_id']
+            if student_id not in student_results:
+                student_results[student_id] = {
+                    'easy': None,
+                    'medium': None,
+                    'hard': None
+                }
+            
+            level = result['level']
+            # Keep only the passed result or latest attempt
+            if student_results[student_id][level] is None or result['result'] == 'pass':
+                student_results[student_id][level] = result
+        
+        # Get student details
+        students_response = supabase.table("students").select("id, first_name, last_name, email").execute()
+        students_map = {s['id']: s for s in students_response.data}
+        
+        hard_leaderboard = []
+        medium_leaderboard = []
+        
+        for student_id, results in student_results.items():
+            if student_id not in students_map:
+                continue
+            
+            student_info = students_map[student_id]
+            student_name = f"{student_info['first_name']} {student_info['last_name']}"
+            
+            # Check if passed hard level
+            hard_result = results['hard']
+            if hard_result and hard_result['result'] == 'pass':
+                # Calculate total score and time for all levels
+                total_score = 0
+                total_time = 0
+                levels_completed = 0
+                
+                for level in ['easy', 'medium', 'hard']:
+                    if results[level] and results[level]['result'] == 'pass':
+                        total_score += results[level].get('score', 0)
+                        # Time taken = timer duration - time remaining (if available)
+                        # For now, we'll use a simple calculation
+                        levels_completed += 1
+                
+                # Calculate total time from all level attempts
+                # Assuming each level stores time_taken or we calculate from created_at timestamps
+                easy_time = results['easy'].get('time_taken', 0) if results['easy'] else 0
+                medium_time = results['medium'].get('time_taken', 0) if results['medium'] else 0
+                hard_time = hard_result.get('time_taken', 0)
+                
+                total_time = easy_time + medium_time + hard_time
+                avg_score = total_score / levels_completed if levels_completed > 0 else 0
+                
+                hard_leaderboard.append({
+                    'rank': 0,  # Will be set after sorting
+                    'student_name': student_name,
+                    'total_score': round(avg_score, 2),
+                    'total_time_minutes': round(total_time / 60, 1) if total_time > 0 else 0,
+                    'levels_passed': levels_completed,
+                    'email': student_info['email']
+                })
+            
+            # Check if passed medium but not hard
+            medium_result = results['medium']
+            if medium_result and medium_result['result'] == 'pass' and (not hard_result or hard_result['result'] != 'pass'):
+                # Calculate score and time for easy + medium
+                total_score = 0
+                total_time = 0
+                levels_completed = 0
+                
+                for level in ['easy', 'medium']:
+                    if results[level] and results[level]['result'] == 'pass':
+                        total_score += results[level].get('score', 0)
+                        levels_completed += 1
+                
+                easy_time = results['easy'].get('time_taken', 0) if results['easy'] else 0
+                medium_time = medium_result.get('time_taken', 0)
+                
+                total_time = easy_time + medium_time
+                avg_score = total_score / levels_completed if levels_completed > 0 else 0
+                
+                medium_leaderboard.append({
+                    'rank': 0,
+                    'student_name': student_name,
+                    'total_score': round(avg_score, 2),
+                    'total_time_minutes': round(total_time / 60, 1) if total_time > 0 else 0,
+                    'levels_passed': levels_completed,
+                    'email': student_info['email']
+                })
+        
+        # Sort leaderboards: by score (desc), then by time (asc)
+        hard_leaderboard.sort(key=lambda x: (-x['total_score'], x['total_time_minutes']))
+        medium_leaderboard.sort(key=lambda x: (-x['total_score'], x['total_time_minutes']))
+        
+        # Assign ranks
+        for idx, entry in enumerate(hard_leaderboard):
+            entry['rank'] = idx + 1
+        
+        for idx, entry in enumerate(medium_leaderboard):
+            entry['rank'] = idx + 1
+        
+        logging.info(f"✅ Leaderboard generated: {len(hard_leaderboard)} hard, {len(medium_leaderboard)} medium")
+        
+        return {
+            "hard_leaderboard": hard_leaderboard,
+            "medium_leaderboard": medium_leaderboard
+        }
+        
+    except Exception as e:
+        logging.error(f"Error generating leaderboard: {e}")
+        logging.error(f"Traceback: ", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Leaderboard error: {str(e)}")
+
+
 # ===== EMAIL NOTIFICATION =====
 @api_router.post("/send-notification")
 async def send_notification(request: NotificationEmailRequest, current_user: Dict = Depends(get_current_user)):
