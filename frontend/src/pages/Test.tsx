@@ -275,6 +275,10 @@ const Test = () => {
     setSubmitting(true);
     setTimerActive(false); // Stop timer
     
+    // Calculate time taken (in seconds)
+    const timeElapsed = Math.floor((Date.now() - startTime) / 1000);
+    setTotalTimeTaken(timeElapsed);
+    
     try {
       if (!resultId) {
         throw new Error("No test result ID found");
