@@ -122,10 +122,11 @@ const Test = () => {
       setAnswers(new Array(data.questions.length).fill(""));
       setSubmittedQuestions(new Array(data.questions.length).fill(false));
       
-      // Start timer
+      // Start timer and track start time
       const duration = TIMER_DURATIONS[level as keyof typeof TIMER_DURATIONS];
       setTimeRemaining(duration);
       setTimerActive(true);
+      setStartTime(Date.now()); // Track when test started
       
       // Get previous attempts from Supabase
       const { data: previousResults, error: fetchError } = await supabase
