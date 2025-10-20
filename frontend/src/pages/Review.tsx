@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, CheckCircle2, XCircle, AlertCircle, Lightbulb } from "lucide-react";
+import { ArrowLeft, CheckCircle2, XCircle, AlertCircle, Lightbulb, RotateCcw } from "lucide-react";
 import { ModeToggle } from "@/components/mode-toggle";
 
 interface Question {
