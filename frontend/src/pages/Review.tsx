@@ -32,6 +32,9 @@ const Review = () => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [levelAttempted, setLevelAttempted] = useState(false);
   const [aiReviews, setAiReviews] = useState<AIReviewState>({});
+  const [canRetake, setCanRetake] = useState(false);
+  const [currentAttempts, setCurrentAttempts] = useState(0);
+  const [maxAttempts, setMaxAttempts] = useState(1);
 
   useEffect(() => {
     loadReviewData();
