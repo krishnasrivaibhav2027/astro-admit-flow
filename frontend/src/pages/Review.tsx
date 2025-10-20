@@ -102,6 +102,17 @@ const Review = () => {
     return colors[level || 'easy'] || "from-gray-500 to-gray-600";
   };
 
+  const handleRetakeTest = () => {
+    const studentId = sessionStorage.getItem('studentId');
+    navigate("/test", { 
+      state: { 
+        level,
+        studentId,
+        retake: true
+      } 
+    });
+  };
+
   const handleAIReview = async (question: Question) => {
     if (!question.student_answer) return;
 
