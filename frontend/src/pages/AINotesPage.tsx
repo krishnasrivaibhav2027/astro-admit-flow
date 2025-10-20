@@ -274,18 +274,27 @@ const AINotesPage = () => {
                 </div>
               </CardHeader>
               <CardContent className="pt-6">
-                <div className="prose prose-sm max-w-none dark:prose-invert">
-                  {(topicNote.displayedNotes || topicNote.notes).split('\n\n').map((paragraph, pIdx) => (
-                    paragraph.trim() && (
-                      <p key={pIdx} className="mb-4 leading-relaxed text-foreground">
-                        {paragraph}
-                      </p>
-                    )
-                  ))}
-                  {topicNote.isTyping && (
-                    <span className="inline-block w-2 h-4 ml-1 bg-purple-600 animate-pulse"></span>
-                  )}
-                </div>
+                {topicNote.displayedNotes ? (
+                  <div className="prose prose-sm max-w-none dark:prose-invert">
+                    {topicNote.displayedNotes.split('\n\n').map((paragraph, pIdx) => (
+                      paragraph.trim() && (
+                        <p key={pIdx} className="mb-4 leading-relaxed text-foreground">
+                          {paragraph}
+                        </p>
+                      )
+                    ))}
+                    {topicNote.isTyping && (
+                      <span className="inline-block w-2 h-4 ml-1 bg-purple-600 animate-pulse"></span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-500"></div>
+                      <span>Waiting to generate...</span>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
