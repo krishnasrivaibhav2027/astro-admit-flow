@@ -59,6 +59,15 @@ const AINotesPage = () => {
 
       const data = await response.json();
       
+      // If no incorrect answers, just set empty and finish
+      if (!data.topic_notes || data.topic_notes.length === 0) {
+        setTopicNotes([]);
+        setIncorrectCount(0);
+        setLoading(false);
+        setGenerating(false);
+        return;
+      }
+      
       // Clean markdown and prepare for typing animation
       const cleanedNotes = data.topic_notes.map((note: any) => ({
         ...note,
@@ -80,9 +89,19 @@ const AINotesPage = () => {
       animateNotes(cleanedNotes);
     } catch (error: any) {
       console.error('Error generating notes:', error);
+      
+      // Don't show error if it's just no incorrect questions
+      if (error.message && error.message.includes('No questions found')) {
+        setTopicNotes([]);
+        setIncorrectCount(0);
+        setLoading(false);
+        setGenerating(false);
+        return;
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to generate AI notes.",
+        description: "Failed to generate AI notes. Please try again.",
         variant: "destructive"
       });
       setLoading(false);
