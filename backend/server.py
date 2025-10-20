@@ -790,13 +790,18 @@ async def get_review_data(level: str, student_id: str, current_user: Dict = Depe
                 if answer_response.data and len(answer_response.data) > 0:
                     student_answer = answer_response.data[0]['student_answer']
                 
-                # Generate AI explanation if answer is wrong
+                # Check if review is cached
+                cached_review = supabase.table("question_reviews").select("is_correct, explanation").eq("question_id", q['id']).execute()
+                
                 explanation = None
                 is_correct = False
                 
-                if student_answer:
-                    # Simple check for correctness (you can enhance this)
-                    # For now, we'll use AI to evaluate
+                if cached_review.data and len(cached_review.data) > 0:
+                    # Use cached data
+                    is_correct = cached_review.data[0]['is_correct']
+                    explanation = cached_review.data[0]['explanation']
+                elif student_answer:
+                    # Generate and cache evaluation
                     try:
                         context_docs = get_physics_context(q['question_text'], k=2)
                         context = "\n\n".join(context_docs) if context_docs else ""
@@ -822,6 +827,19 @@ Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT' foll
                             explanation = ai_response.replace('INCORRECT', '').strip()
                             if not explanation:
                                 explanation = "Your answer doesn't match the expected solution. Please review the correct answer above."
+                        
+                        # Cache the review
+                        try:
+                            supabase.table("question_reviews").insert({
+                                "question_id": q['id'],
+                                "result_id": result_id,
+                                "student_id": student_id,
+                                "is_correct": is_correct,
+                                "explanation": explanation
+                            }).execute()
+                        except Exception as cache_error:
+                            logging.warning(f"Failed to cache review: {cache_error}")
+                            
                     except Exception as e:
                         logging.error(f"Error generating explanation: {e}")
                         is_correct = False
