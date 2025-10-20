@@ -11,6 +11,7 @@ import Test from "./pages/Test";
 import Results from "./pages/Results";
 import Profile from "./pages/Profile";
 import Review from "./pages/Review";
+import AINotesPage from "./pages/AINotesPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
