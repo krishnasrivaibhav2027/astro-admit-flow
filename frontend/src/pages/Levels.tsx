@@ -527,11 +527,11 @@ const Levels = () => {
                       </div>
 
                       {/* Button Logic:
-                          - If coming from Results (fromResults flag), show Review for completed levels
-                          - If level is completed (pass or fail), and coming from Results, show Review
-                          - Otherwise show Start Test/Completed/Locked as usual
+                          - If level is completed (has attempts) → Show "Review" button
+                          - If level is current and not attempted → Show "Start Test" button
+                          - If level is locked → Show "Locked" button
                       */}
-                      {fromResults && (isCompleted || level.attempts > 0) ? (
+                      {(isCompleted || level.attempts > 0) ? (
                         <Button
                           size="lg"
                           variant="secondary"
@@ -544,24 +544,14 @@ const Levels = () => {
                         <Button
                           size="lg"
                           variant={isCurrent ? "glow" : "outline"}
-                          disabled={isLocked || isCompleted}
+                          disabled={isLocked}
                           onClick={() => handleStartLevel(level)}
                           className="ml-4"
                         >
-                          {isCompleted ? (
-                            <>
-                              <CheckCircle2 className="w-4 h-4 mr-2" />
-                              Completed
-                            </>
-                          ) : isLocked ? (
+                          {isLocked ? (
                             <>
                               <Lock className="w-4 h-4 mr-2" />
                               Locked
-                            </>
-                          ) : level.attempts >= level.maxAttempts ? (
-                            <>
-                              <CheckCircle2 className="w-4 h-4 mr-2" />
-                              Completed
                             </>
                           ) : (
                             "Start Test"
