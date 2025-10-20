@@ -41,6 +41,8 @@ const Test = () => {
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [timerActive, setTimerActive] = useState(false);
   const [timeOut, setTimeOut] = useState(false);
+  const [startTime, setStartTime] = useState<number>(0);
+  const [totalTimeTaken, setTotalTimeTaken] = useState<number>(0);
 
   useEffect(() => {
     if (!studentId || !level) {
