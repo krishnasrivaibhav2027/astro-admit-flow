@@ -1,0 +1,231 @@
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { ArrowLeft, BookOpen, Lightbulb, Brain, Sparkles } from "lucide-react";
+import { ModeToggle } from "@/components/mode-toggle";
+
+interface TopicNote {
+  topic: string;
+  related_questions: string[];
+  notes: string;
+}
+
+const AINotesPage = () => {
+  const navigate = useNavigate();
+  const { level } = useParams<{ level: string }>();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [topicNotes, setTopicNotes] = useState<TopicNote[]>([]);
+  const [incorrectCount, setIncorrectCount] = useState(0);
+
+  useEffect(() => {
+    generateNotes();
+  }, [level]);
+
+  const generateNotes = async () => {
+    try {
+      setLoading(true);
+      setGenerating(true);
+
+      const studentId = sessionStorage.getItem('studentId');
+      const token = localStorage.getItem('firebase_token');
+
+      if (!studentId || !token) {
+        toast({
+          title: "Authentication Required",
+          description: "Please login to generate notes.",
+          variant: "destructive"
+        });
+        navigate("/login");
+        return;
+      }
+
+      const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      const response = await fetch(`${backendUrl}/api/ai-notes/${level}/${studentId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate AI notes');
+      }
+
+      const data = await response.json();
+      setTopicNotes(data.topic_notes);
+      setIncorrectCount(data.incorrect_count);
+      setLoading(false);
+      setGenerating(false);
+    } catch (error: any) {
+      console.error('Error generating notes:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate AI notes.",
+        variant: "destructive"
+      });
+      setLoading(false);
+      setGenerating(false);
+    }
+  };
+
+  const getLevelTitle = () => {
+    const titles: { [key: string]: string } = {
+      easy: "Easy Level",
+      medium: "Medium Level",
+      hard: "Hard Level"
+    };
+    return titles[level || 'easy'] || "Test Notes";
+  };
+
+  const getLevelColor = () => {
+    const colors: { [key: string]: string } = {
+      easy: "from-green-500 to-emerald-500",
+      medium: "from-blue-500 to-cyan-500",
+      hard: "from-purple-500 to-pink-500"
+    };
+    return colors[level || 'easy'] || "from-gray-500 to-gray-600";
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-primary mx-auto"></div>
+          <div className="space-y-2">
+            <p className="text-xl font-semibold flex items-center justify-center gap-2">
+              <Brain className="w-6 h-6 animate-pulse" />
+              AI is analyzing your weak areas...
+            </p>
+            <p className="text-muted-foreground">Generating personalized study notes</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen relative overflow-hidden">
+      {/* Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-background via-purple-50 to-blue-50 dark:from-background dark:via-purple-950/20 dark:to-blue-950/20" />
+      
+      {/* Theme Toggle */}
+      <div className="absolute top-4 right-4 z-50">
+        <ModeToggle />
+      </div>
+
+      {/* Content */}
+      <div className="relative z-10 container max-w-6xl mx-auto px-4 py-12">
+        <Button
+          variant="ghost"
+          onClick={() => navigate(`/review/${level}`, { state: { studentId: sessionStorage.getItem('studentId') } })}
+          className="mb-6"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Review
+        </Button>
+
+        {/* Header */}
+        <Card className="mb-8 border-2 border-purple-200 dark:border-purple-800">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-3xl flex items-center gap-3">
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${getLevelColor()} flex items-center justify-center`}>
+                    <Brain className="w-6 h-6 text-white" />
+                  </div>
+                  {getLevelTitle()} - AI Study Notes
+                </CardTitle>
+              </div>
+              <Badge variant="secondary" className="text-lg px-4 py-2">
+                <Sparkles className="w-4 h-4 mr-2" />
+                {incorrectCount} Topics to Review
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">
+              AI has analyzed your incorrect answers and generated personalized notes to help you improve in your weak areas.
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* No incorrect answers */}
+        {topicNotes.length === 0 && (
+          <Card className="border-2 border-green-200 dark:border-green-800">
+            <CardContent className="p-12 text-center">
+              <div className="space-y-4">
+                <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900 mx-auto flex items-center justify-center">
+                  <Sparkles className="w-10 h-10 text-green-600" />
+                </div>
+                <h3 className="text-2xl font-bold">Perfect Performance! 🎉</h3>
+                <p className="text-muted-foreground">
+                  You answered all questions correctly. No weak areas identified!
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Topic Notes */}
+        <div className="space-y-6">
+          {topicNotes.map((topicNote, index) => (
+            <Card key={index} className="border-2 hover:shadow-xl transition-shadow">
+              <CardHeader className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-lg bg-purple-500 flex items-center justify-center">
+                        <BookOpen className="w-5 h-5 text-white" />
+                      </div>
+                      <CardTitle className="text-2xl">{topicNote.topic}</CardTitle>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {topicNote.related_questions.map((question, qIdx) => (
+                        <Badge key={qIdx} variant="outline" className="text-xs">
+                          {question}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="flex items-center gap-1">
+                    <Lightbulb className="w-3 h-3" />
+                    {topicNote.related_questions.length} Question{topicNote.related_questions.length > 1 ? 's' : ''}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="prose prose-sm max-w-none dark:prose-invert">
+                  {topicNote.notes.split('\n\n').map((paragraph, pIdx) => (
+                    paragraph.trim() && (
+                      <p key={pIdx} className="mb-4 leading-relaxed text-foreground">
+                        {paragraph}
+                      </p>
+                    )
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Back Button */}
+        <div className="mt-8 flex justify-center">
+          <Button
+            size="lg"
+            onClick={() => navigate(`/review/${level}`, { state: { studentId: sessionStorage.getItem('studentId') } })}
+            className="px-8"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Review
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AINotesPage;
