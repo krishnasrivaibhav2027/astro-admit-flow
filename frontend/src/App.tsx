@@ -12,6 +12,7 @@ import Results from "./pages/Results";
 import Profile from "./pages/Profile";
 import Review from "./pages/Review";
 import AINotesPage from "./pages/AINotesPage";
+import Leaderboard from "./pages/Leaderboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
