@@ -68,7 +68,10 @@ const AINotesPage = () => {
         return;
       }
       
-      // Clean markdown and prepare for typing animation
+      // Check if notes are cached
+      const isCached = data.cached === true;
+      
+      // Clean markdown
       const cleanedNotes = data.topic_notes.map((note: any) => ({
         ...note,
         notes: note.notes
@@ -77,7 +80,7 @@ const AINotesPage = () => {
           .replace(/###\s*/g, '\n') // Convert headers
           .replace(/##\s*/g, '\n')
           .replace(/\n{3,}/g, '\n\n'), // Remove excessive newlines
-        displayedNotes: '',
+        displayedNotes: isCached ? note.notes.replace(/\*\*/g, '').replace(/\*/g, '').replace(/###\s*/g, '\n').replace(/##\s*/g, '\n').replace(/\n{3,}/g, '\n\n') : '',
         isTyping: false
       }));
       
@@ -85,8 +88,13 @@ const AINotesPage = () => {
       setIncorrectCount(data.incorrect_count);
       setLoading(false);
       
-      // Start typing animation for each note sequentially
-      animateNotes(cleanedNotes);
+      if (isCached) {
+        // Cached notes - show immediately without animation
+        setGenerating(false);
+      } else {
+        // New notes - start typing animation
+        animateNotes(cleanedNotes);
+      }
     } catch (error: any) {
       console.error('Error generating notes:', error);
       
