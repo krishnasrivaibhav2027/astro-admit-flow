@@ -959,6 +959,141 @@ Provide a detailed, educational review (200-300 words) that helps the student le
         raise HTTPException(status_code=500, detail=f"AI review error: {str(e)}")
 
 
+# ===== AI NOTES GENERATION =====
+@api_router.get("/ai-notes/{level}/{student_id}")
+async def generate_ai_notes(level: str, student_id: str, current_user: Dict = Depends(get_current_user)):
+    """Generate AI study notes based on incorrect answers - Firebase Auth Protected"""
+    try:
+        logging.info(f"🔒 Authenticated AI notes request from: {current_user['email']}")
+        
+        # Verify user is requesting their own data
+        student_response = supabase.table("students").select("email").eq("id", student_id).execute()
+        if not student_response.data or student_response.data[0]['email'] != current_user.get('email'):
+            raise HTTPException(status_code=403, detail="Cannot access other users' data")
+        
+        # Find the result for this level and student
+        results_response = supabase.table("results").select("*").eq("student_id", student_id).eq("level", level).order("created_at", desc=True).limit(1).execute()
+        
+        if not results_response.data or len(results_response.data) == 0:
+            return {"topic_notes": [], "incorrect_count": 0}
+        
+        result_id = results_response.data[0]['id']
+        
+        # Get all questions for this test
+        questions_response = supabase.table("questions").select("id, question_text, correct_answer").eq("result_id", result_id).order("created_at").execute()
+        
+        if not questions_response.data:
+            return {"topic_notes": [], "incorrect_count": 0}
+        
+        # Get student answers and identify incorrect ones
+        incorrect_questions = []
+        
+        for q in questions_response.data:
+            answer_response = supabase.table("student_answers").select("student_answer").eq("question_id", q['id']).execute()
+            
+            if answer_response.data and len(answer_response.data) > 0:
+                student_answer = answer_response.data[0]['student_answer']
+                
+                # Check if answer is incorrect using AI
+                context_docs = get_physics_context(q['question_text'], k=2)
+                context = "\n\n".join(context_docs) if context_docs else ""
+                
+                eval_prompt = f"""
+Question: {q['question_text']}
+Correct Answer: {q['correct_answer']}
+Student Answer: {student_answer}
+
+Context: {context[:1000]}
+
+Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT'.
+"""
+                
+                response = llm.invoke(eval_prompt)
+                ai_response = response.content.strip()
+                
+                is_correct = ai_response.upper().startswith('CORRECT')
+                
+                if not is_correct:
+                    incorrect_questions.append({
+                        "question": q['question_text'],
+                        "correct_answer": q['correct_answer'],
+                        "student_answer": student_answer
+                    })
+        
+        if len(incorrect_questions) == 0:
+            return {"topic_notes": [], "incorrect_count": 0}
+        
+        # Generate consolidated notes for all incorrect questions
+        questions_summary = "\n\n".join([
+            f"Question: {iq['question']}\nCorrect Answer: {iq['correct_answer']}\nStudent's Answer: {iq['student_answer']}"
+            for iq in incorrect_questions
+        ])
+        
+        # Get comprehensive context
+        all_questions_text = " ".join([iq['question'] for iq in incorrect_questions])
+        context_docs = get_physics_context(all_questions_text, k=5)
+        context = "\n\n".join(context_docs) if context_docs else "General physics concepts"
+        
+        # Generate topic identification and notes
+        notes_prompt = f"""You are an expert physics teacher creating personalized study notes.
+
+The student answered the following questions incorrectly:
+
+{questions_summary}
+
+Context from Physics Textbook:
+{context[:3000]}
+
+Your task:
+1. Identify the main physics topics/concepts these questions relate to
+2. Group questions by topic (if multiple questions relate to the same topic, group them together)
+3. For each topic, generate comprehensive study notes (300-500 words) that:
+   - Explain the core concept clearly
+   - Provide key formulas and definitions
+   - Include practical examples
+   - Address common misconceptions
+   - Give tips for solving similar problems
+
+Respond in this JSON format:
+{{
+  "topic_notes": [
+    {{
+      "topic": "Topic Name",
+      "related_questions": ["Question 1 (first 50 chars)...", "Question 2..."],
+      "notes": "Detailed explanation and study notes..."
+    }}
+  ]
+}}
+"""
+        
+        response = llm.invoke(notes_prompt)
+        response_text = response.content.strip()
+        
+        # Clean up response
+        if response_text.startswith('```'):
+            response_text = response_text.split('```')[1]
+            if response_text.startswith('json'):
+                response_text = response_text[4:]
+            response_text = response_text.strip()
+        
+        # Parse JSON
+        notes_data = json.loads(response_text)
+        
+        logging.info(f"✅ AI notes generated for {len(incorrect_questions)} incorrect questions")
+        
+        return {
+            "topic_notes": notes_data.get("topic_notes", []),
+            "incorrect_count": len(incorrect_questions)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error generating AI notes: {e}")
+        logging.error(f"Traceback: ", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"AI notes error: {str(e)}")
+
+
 # ===== EMAIL NOTIFICATION =====
 @api_router.post("/send-notification")
 async def send_notification(request: NotificationEmailRequest, current_user: Dict = Depends(get_current_user)):
