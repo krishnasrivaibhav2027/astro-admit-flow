@@ -508,7 +508,9 @@ const Test = () => {
           to_email: studentData.email,
           student_name: `${studentData.first_name} ${studentData.last_name}`,
           result: result,
-          score: score
+          score: score,
+          student_id: studentId,
+          level: level
         })
       });
     } catch (error) {
