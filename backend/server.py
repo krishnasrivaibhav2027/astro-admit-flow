@@ -836,7 +836,10 @@ Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT' foll
             
             return {
                 "attempted": attempted,
-                "questions": questions_data
+                "questions": questions_data,
+                "can_retake": can_retake,
+                "current_attempts": current_attempts,
+                "max_attempts": max_attempts
             }
         else:
             # Level not attempted - generate sample questions to show correct answers
