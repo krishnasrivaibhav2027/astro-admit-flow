@@ -975,15 +975,29 @@ async def generate_ai_notes(level: str, student_id: str, current_user: Dict = De
         results_response = supabase.table("results").select("*").eq("student_id", student_id).eq("level", level).order("created_at", desc=True).limit(1).execute()
         
         if not results_response.data or len(results_response.data) == 0:
-            return {"topic_notes": [], "incorrect_count": 0}
+            return {"topic_notes": [], "incorrect_count": 0, "cached": False}
         
         result_id = results_response.data[0]['id']
         
+        # Check if AI notes already exist for this result
+        existing_notes = supabase.table("ai_notes").select("*").eq("result_id", result_id).execute()
+        
+        if existing_notes.data and len(existing_notes.data) > 0:
+            # Return cached notes
+            cached_data = existing_notes.data[0]
+            logging.info(f"✅ Returning cached AI notes for result {result_id}")
+            return {
+                "topic_notes": cached_data.get("topic_notes", []),
+                "incorrect_count": cached_data.get("incorrect_count", 0),
+                "cached": True
+            }
+        
+        # Generate new notes if not cached
         # Get all questions for this test
         questions_response = supabase.table("questions").select("id, question_text, correct_answer").eq("result_id", result_id).order("created_at").execute()
         
         if not questions_response.data:
-            return {"topic_notes": [], "incorrect_count": 0}
+            return {"topic_notes": [], "incorrect_count": 0, "cached": False}
         
         # Get student answers and identify incorrect ones
         incorrect_questions = []
@@ -1021,7 +1035,16 @@ Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT'.
                     })
         
         if len(incorrect_questions) == 0:
-            return {"topic_notes": [], "incorrect_count": 0}
+            # Store empty result in cache
+            supabase.table("ai_notes").insert({
+                "result_id": result_id,
+                "student_id": student_id,
+                "level": level,
+                "topic_notes": [],
+                "incorrect_count": 0
+            }).execute()
+            
+            return {"topic_notes": [], "incorrect_count": 0, "cached": False}
         
         # Generate consolidated notes for all incorrect questions
         questions_summary = "\n\n".join([
@@ -1078,12 +1101,23 @@ Respond in this JSON format:
         
         # Parse JSON
         notes_data = json.loads(response_text)
+        topic_notes = notes_data.get("topic_notes", [])
         
-        logging.info(f"✅ AI notes generated for {len(incorrect_questions)} incorrect questions")
+        # Store in database for caching
+        supabase.table("ai_notes").insert({
+            "result_id": result_id,
+            "student_id": student_id,
+            "level": level,
+            "topic_notes": topic_notes,
+            "incorrect_count": len(incorrect_questions)
+        }).execute()
+        
+        logging.info(f"✅ AI notes generated and cached for {len(incorrect_questions)} incorrect questions")
         
         return {
-            "topic_notes": notes_data.get("topic_notes", []),
-            "incorrect_count": len(incorrect_questions)
+            "topic_notes": topic_notes,
+            "incorrect_count": len(incorrect_questions),
+            "cached": False
         }
         
     except HTTPException:
