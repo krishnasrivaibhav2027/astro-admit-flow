@@ -217,7 +217,7 @@ const Review = () => {
       <div className="relative z-10 container max-w-6xl mx-auto px-4 py-12">
         <Button
           variant="ghost"
-          onClick={() => navigate("/levels", { state: { studentId: sessionStorage.getItem('studentId'), fromResults: true } })}
+          onClick={() => navigate("/levels", { state: { studentId: sessionStorage.getItem('studentId') } })}
           className="mb-6"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
