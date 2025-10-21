@@ -759,6 +759,13 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
         # Calculate concession based on levels passed
         concession = 0
         try:
+            # First, get the current result to find student_id
+            current_result = supabase.table("results").select("student_id").eq("id", result_id).single().execute()
+            student_id = current_result.data.get("student_id") if current_result.data else None
+            
+            if not student_id:
+                raise ValueError("Student ID not found in result")
+            
             # Get all results for this student to determine concession
             all_results = supabase.table("results").select("*").eq("student_id", student_id).execute()
             
