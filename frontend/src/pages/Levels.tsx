@@ -121,90 +121,70 @@ const Levels = () => {
       const mediumAttempts = latestResult.attempts_medium || 0;
       const hardAttempts = latestResult.attempts_hard || 0;
       
-      // Determine if each level has failed (exhausted attempts without passing)
-      const easyFailed = easyAttempts >= 1 && !easyPassed;
-      const mediumFailed = mediumAttempts >= 2 && !mediumPassed;
-      const hardFailed = hardAttempts >= 2 && !hardPassed;
-      
-      // Test is completed ONLY when cannot progress further:
-      // 1. All three levels passed, OR
-      // 2. Failed Easy (blocks all progress), OR  
-      // 3. Passed Easy but failed Medium (blocks Hard), OR
-      // 4. Passed Easy & Medium but failed Hard (test complete)
-      const allLevelsPassed = easyPassed && mediumPassed && hardPassed;
-      const testIsComplete = allLevelsPassed ||                  
-                             easyFailed ||                        
-                             (easyPassed && mediumFailed) ||      
-                             (easyPassed && mediumPassed && hardFailed);
-      
-      // Debug logging for troubleshooting
-      console.log("🔍 Level Status Check:", {
-        easyPassed, mediumPassed, hardPassed,
-        easyFailed, mediumFailed, hardFailed,
-        testIsComplete
-      });
-      
-      // Set test completion state
-      setTestCompleted(testIsComplete);
-      
-      // Store latest result data for "Go to Results" button if test is complete
-      if (testIsComplete) {
-        let resultToShow = latestResult;
-        if (hardPassed) {
-          resultToShow = data.find(r => r.level === "hard" && r.result === "pass") || latestResult;
-        } else if (mediumPassed) {
-          resultToShow = data.find(r => r.level === "medium") || latestResult;
-        } else {
-          resultToShow = data.find(r => r.level === "easy") || latestResult;
-        }
-        setLatestResultData(resultToShow);
-      } else {
-        // CRITICAL: Clear result data if test is NOT complete to prevent stale data
-        setLatestResultData(null);
-      }
-      
-      // ALWAYS update level statuses first before any redirects
+      // Update level statuses FIRST - This is the PRIMARY function
       const newLevels = [...levels];
-      
-      // Update attempts from latest result
       newLevels[0].attempts = easyAttempts;
       newLevels[1].attempts = mediumAttempts;
       newLevels[2].attempts = hardAttempts;
       
-      // Determine level statuses based on pass/fail and attempts
-      const easyAttemptsExhausted = easyAttempts >= 1;
-      const mediumAttemptsExhausted = mediumAttempts >= 2;
-      const hardAttemptsExhausted = hardAttempts >= 2;
-      
-      // Easy level status
-      if (easyPassed || easyAttemptsExhausted) {
+      // SIMPLIFIED LOGIC: Set level statuses based on pass/fail ONLY
+      // Easy Level
+      if (easyPassed || easyAttempts >= 1) {
         newLevels[0].status = "completed";
       } else {
         newLevels[0].status = "current";
       }
       
-      // Medium level status - UNLOCKS when Easy is passed
-      if (mediumPassed || (easyPassed && mediumAttemptsExhausted)) {
+      // Medium Level - UNLOCKS when Easy is PASSED
+      if (mediumPassed || (easyPassed && mediumAttempts >= 2)) {
         newLevels[1].status = "completed";
       } else if (easyPassed) {
-        newLevels[1].status = "current"; // UNLOCK Medium after Easy pass
+        newLevels[1].status = "current"; // KEY FIX: Unlock when Easy passed
       } else {
         newLevels[1].status = "locked";
       }
       
-      // Hard level status - UNLOCKS when Medium is passed
-      if (hardPassed || (mediumPassed && hardAttemptsExhausted)) {
+      // Hard Level - UNLOCKS when Medium is PASSED
+      if (hardPassed || (mediumPassed && hardAttempts >= 2)) {
         newLevels[2].status = "completed";
       } else if (mediumPassed) {
-        newLevels[2].status = "current"; // UNLOCK Hard after Medium pass
+        newLevels[2].status = "current"; // Unlock when Medium passed
       } else {
         newLevels[2].status = "locked";
       }
       
-      // Update levels state
+      // Update levels state IMMEDIATELY
       setLevels(newLevels);
       
-      // Skip auto-redirect if user is coming from Results/Review pages
+      // Determine if ENTIRE test sequence is complete
+      // ONLY true when ALL 3 levels are passed
+      const allThreeLevelsPassed = easyPassed && mediumPassed && hardPassed;
+      
+      // OR when failed a level and exhausted all attempts (cannot continue)
+      const easyFailedCompletely = easyAttempts >= 1 && !easyPassed;
+      const mediumFailedCompletely = easyPassed && mediumAttempts >= 2 && !mediumPassed;
+      const hardFailedCompletely = mediumPassed && hardAttempts >= 2 && !hardPassed;
+      
+      const testFullyComplete = allThreeLevelsPassed || easyFailedCompletely || mediumFailedCompletely || hardFailedCompletely;
+      
+      console.log("🔍 DEBUG:", {
+        easyPassed, mediumPassed, hardPassed,
+        easyAttempts, mediumAttempts, hardAttempts,
+        testFullyComplete,
+        mediumStatus: newLevels[1].status
+      });
+      
+      // Set test completion state
+      setTestCompleted(testFullyComplete);
+      
+      // Set result data only if test is fully complete
+      if (testFullyComplete) {
+        setLatestResultData(latestResult);
+      } else {
+        setLatestResultData(null);
+      }
+      
+      // Skip auto-redirect if coming from Results/Review
       if (fromResults) {
         return;
       }
