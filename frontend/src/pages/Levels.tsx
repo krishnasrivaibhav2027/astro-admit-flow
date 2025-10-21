@@ -128,8 +128,13 @@ const Levels = () => {
       const mediumFailed = mediumAttempts >= 2 && !mediumPassed;
       const hardFailed = hardAttempts >= 2 && !hardPassed;
       
-      // Check if test is completed (any result exists means at least one level attempted)
-      const isCompleted = allLevelsPassed || easyFailed || (mediumFailed && easyPassed) || (hardFailed && mediumPassed);
+      // Check if test is FULLY completed (cannot progress further)
+      const isCompleted = allLevelsPassed || // All 3 levels passed
+                          easyFailed ||       // Failed easy (can't continue)
+                          (mediumFailed && easyPassed) || // Failed medium after passing easy
+                          (hardFailed && mediumPassed);   // Failed hard after passing medium
+      
+      // Only set testCompleted if truly finished
       setTestCompleted(isCompleted);
       
       // Store latest result data for "Go to Results" button
