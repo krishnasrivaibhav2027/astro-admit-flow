@@ -706,12 +706,34 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
         }
         
         # Update result in Supabase with score out of 10
+        # Calculate concession based on levels passed
+        concession = 0
         try:
+            # Get all results for this student to determine concession
+            all_results = supabase.table("results").select("*").eq("student_id", student_id).execute()
+            
+            if all_results.data:
+                # Check which levels are passed
+                easy_passed = any(r.get('level') == 'easy' and r.get('result') == 'pass' for r in all_results.data)
+                medium_passed = any(r.get('level') == 'medium' and r.get('result') == 'pass' for r in all_results.data)
+                hard_passed = any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in all_results.data)
+                
+                # Calculate concession
+                if easy_passed and medium_passed and hard_passed:
+                    concession = 50  # All levels passed = 50% concession
+                elif easy_passed and medium_passed:
+                    concession = 30  # Easy + Medium passed = 30% concession
+                else:
+                    concession = 0   # No concession
+            
             supabase.table("results").update({
                 "score": score_out_of_10,
                 "result": result_status,
+                "concession": concession,
                 "updated_at": datetime.utcnow().isoformat()
             }).eq("id", result_id).execute()
+            
+            logging.info(f"✅ Concession calculated: {concession}%")
         except Exception as e:
             logging.error(f"Error updating result: {e}")
             # Continue even if update fails
