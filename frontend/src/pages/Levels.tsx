@@ -111,36 +111,34 @@ const Levels = () => {
     if (data && data.length > 0) {
       const latestResult = data[0];
       
-      // Check if test is completed (passed all levels OR failed completely)
+      // Check pass status for each level
       const easyPassed = data.some(r => r.level === "easy" && r.result === "pass");
       const mediumPassed = data.some(r => r.level === "medium" && r.result === "pass");
       const hardPassed = data.some(r => r.level === "hard" && r.result === "pass");
       
+      // Get attempt counts from latest result
       const easyAttempts = latestResult.attempts_easy || 0;
       const mediumAttempts = latestResult.attempts_medium || 0;
       const hardAttempts = latestResult.attempts_hard || 0;
       
-      // Check if user completed all levels (passed all OR exhausted attempts)
-      const allLevelsPassed = easyPassed && mediumPassed && hardPassed;
-      
-      // Check if user failed completely (exhausted all attempts without passing)
+      // Determine if each level has failed (exhausted attempts without passing)
       const easyFailed = easyAttempts >= 1 && !easyPassed;
       const mediumFailed = mediumAttempts >= 2 && !mediumPassed;
       const hardFailed = hardAttempts >= 2 && !hardPassed;
       
-      // Check if test is FULLY completed (cannot progress further)
-      // Test is completed ONLY when:
-      // 1. All three levels are passed (complete success), OR
-      // 2. User failed Easy and can't continue (no next level access), OR
-      // 3. User passed Easy but failed Medium completely (can't access Hard), OR
-      // 4. User passed Easy and Medium but failed Hard (test sequence complete)
-      const isCompleted = allLevelsPassed ||                  // All 3 levels passed
-                          easyFailed ||                        // Failed easy (can't continue)
-                          (easyPassed && mediumFailed) ||      // Passed easy but failed medium completely
-                          (easyPassed && mediumPassed && hardFailed); // Passed easy & medium but failed hard
+      // Test is completed ONLY when cannot progress further:
+      // 1. All three levels passed, OR
+      // 2. Failed Easy (blocks all progress), OR  
+      // 3. Passed Easy but failed Medium (blocks Hard), OR
+      // 4. Passed Easy & Medium but failed Hard (test complete)
+      const allLevelsPassed = easyPassed && mediumPassed && hardPassed;
+      const testIsComplete = allLevelsPassed ||                  
+                             easyFailed ||                        
+                             (easyPassed && mediumFailed) ||      
+                             (easyPassed && mediumPassed && hardFailed);
       
-      // Only set testCompleted if truly finished
-      setTestCompleted(isCompleted);
+      // Set test completion state
+      setTestCompleted(testIsComplete);
       
       // Store latest result data for "Go to Results" button
       if (isCompleted) {
