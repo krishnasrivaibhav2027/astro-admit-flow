@@ -44,6 +44,40 @@ const Test = () => {
   const [startTime, setStartTime] = useState<number>(0);
   const [totalTimeTaken, setTotalTimeTaken] = useState<number>(0);
 
+  // Prevent navigation away from test
+  useEffect(() => {
+    // Block browser back/forward buttons
+    const handlePopState = (e: PopStateEvent) => {
+      e.preventDefault();
+      window.history.pushState(null, '', window.location.pathname);
+      toast({
+        title: "Navigation Blocked",
+        description: "Please complete or exit the test using the Exit button.",
+        variant: "destructive"
+      });
+    };
+
+    // Block page refresh/close
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (timerActive) {
+        e.preventDefault();
+        e.returnValue = 'You have an active test. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    // Push initial state to prevent back navigation
+    window.history.pushState(null, '', window.location.pathname);
+    
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [timerActive, toast]);
+
   useEffect(() => {
     if (!studentId || !level) {
       navigate("/registration");
