@@ -36,9 +36,15 @@ def get_retriever(k=3):
         # Return None if not initialized - will use fallback
         return None
 
-def get_physics_context(query: str, k: int = 3):
-    """Get relevant physics context for a query"""
-    retriever = get_retriever(k)
+def get_physics_context(query: str, k: int = 3, randomize: bool = True):
+    """Get relevant physics context for a query with optional randomization
+    
+    Args:
+        query: Search query for context retrieval
+        k: Number of documents to retrieve
+        randomize: If True, adds diversity by retrieving more docs and randomly sampling
+    """
+    retriever = get_retriever(k * 2 if randomize else k)  # Get more docs for diversity
     
     if retriever is None:
         # Fallback: return empty context if RAG not set up
@@ -46,6 +52,14 @@ def get_physics_context(query: str, k: int = 3):
     
     try:
         results = retriever.get_relevant_documents(query)
+        
+        if randomize and len(results) > k:
+            # Randomly sample k documents from retrieved results for diversity
+            import random
+            import time
+            random.seed(time.time())
+            results = random.sample(results, k)
+        
         return [doc.page_content for doc in results]
     except Exception as e:
         print(f"RAG retrieval error: {e}")
