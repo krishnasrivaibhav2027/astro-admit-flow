@@ -414,15 +414,18 @@ test_plan:
 
   - task: "Question Uniqueness & Diversity - Prevent Repetitive Questions"
     implemented: true
-    working: "NA"
+    working: true
     file: "backend/server.py, backend/rag_module.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "CRITICAL ANTI-MALPRACTICE FEATURE: Implemented comprehensive question uniqueness system to prevent students from getting repetitive questions. ROOT CAUSE: RAG query was static (always 'Physics easy level questions concepts topics'), causing same k=3 chunks to be retrieved every time, leading to same questions. SOLUTION IMPLEMENTED: 1) Added 20 diverse physics topics list, 2) Random topic selection (3-5 topics per test), 3) Unique seed generation using MD5 hash of (user_email + level + timestamp) ensuring different students AND different attempts get different questions, 4) Enhanced RAG retrieval with randomization (k=5 with random sampling from k=10), 5) Updated prompt to explicitly require DIVERSE and UNIQUE questions covering different concepts. This multi-layered approach ensures maximum question diversity for academic integrity. Ready for testing."
+      - working: true
+        agent: "testing"
+        comment: "✅ QUESTION DIVERSITY SYSTEM FULLY TESTED AND WORKING: Conducted comprehensive testing of the new anti-malpractice question generation system. TEST RESULTS: 1) Generated 5 easy questions in first attempt covering topics: alternating current generation, material resistivity classification, work definition, law of reflection, First Law of Thermodynamics. 2) Generated 5 completely different questions in second attempt covering: Coulomb vs gravitational forces, velocity/acceleration definitions, heat transfer methods, light dispersion through prism, quark electric charges. 3) CRITICAL SUCCESS: 100% unique questions between attempts (0 identical questions out of 10 total). 4) Backend logs confirm randomization working: 'Selected topics: [kinetic theory of gases, wave motion and sound, thermodynamics and heat transfer]' vs 'Selected topics: [optics and light, electric circuits and current, wave motion and sound, electromagnetic induction and Faraday's law]' showing different topic selections per request. 5) Diversity percentage: 100.0% - excellent anti-malpractice protection. The multi-layered randomization system (MD5 seeding + topic randomization + RAG sampling) is preventing repetitive questions effectively. Academic integrity protection is now fully operational."
 
 agent_communication:
   - agent: "main"
