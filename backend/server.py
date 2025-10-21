@@ -550,6 +550,7 @@ async def generate_questions(request: GenerateQuestionsRequest, current_user: Di
         # Generate unique questions by using diverse physics topics with randomization
         import random
         import time
+        import hashlib
         
         # Diverse physics topics to prevent repetitive questions
         physics_topics = [
@@ -567,12 +568,25 @@ async def generate_questions(request: GenerateQuestionsRequest, current_user: Di
             "atomic structure and spectra",
             "radioactivity and nuclear physics",
             "mechanical properties of matter",
-            "fluid mechanics and pressure"
+            "fluid mechanics and pressure",
+            "kinetic theory of gases",
+            "simple harmonic motion",
+            "rotational dynamics",
+            "interference and diffraction",
+            "semiconductors and devices"
         ]
         
-        # Randomly select topics for diversity (different for each attempt)
-        random.seed(time.time())  # Use current time as seed for uniqueness
-        selected_topics = random.sample(physics_topics, min(3, len(physics_topics)))
+        # Create unique seed combining user email, timestamp, and level for maximum diversity
+        # This ensures different students AND different attempts get different questions
+        user_identifier = current_user.get('email', 'anonymous')
+        seed_string = f"{user_identifier}-{level}-{int(time.time())}"
+        seed_value = int(hashlib.md5(seed_string.encode()).hexdigest(), 16) % (10 ** 8)
+        
+        random.seed(seed_value)  # Unique seed per student per attempt
+        
+        # Randomly select 3-5 diverse topics for this test attempt
+        num_topics = random.randint(3, 5)
+        selected_topics = random.sample(physics_topics, min(num_topics, len(physics_topics)))
         
         # Create diverse query with randomized topics
         query = f"Physics {level} level: {', '.join(selected_topics)}"
