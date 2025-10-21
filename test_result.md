@@ -412,7 +412,21 @@ test_plan:
         agent: "testing"
         comment: "❌ UNABLE TO FULLY TEST BUG FIX: Critical authentication system issues prevent complete testing of the Levels page bug fix. AUTHENTICATION ANALYSIS: ✅ Authentication guards working correctly - unauthenticated users properly redirected to login page. ✅ UI components loading correctly - registration form shows password strength validation (green checkmarks, 'Strong password ✓', 'Passwords match ✓'), login page shows password visibility toggle and 'Forgot Password?' link. ❌ CRITICAL ISSUE: Firebase authentication failing - both registration and login operations fail silently, redirecting back to home page without error messages. ROOT CAUSE ANALYSIS: Most likely Firebase Email/Password authentication is not enabled in Firebase Console (common error: auth/operation-not-allowed). RECOMMENDATION: Main agent should verify Firebase Console → Authentication → Sign-in method → Email/Password is enabled. CODE ANALYSIS: The bug fix implementation in Levels.tsx lines 137-140 appears correct - isCompleted logic now properly checks full sequence (easyPassed && mediumPassed && hardFailed) instead of partial condition. However, cannot verify actual behavior without working authentication. PARTIAL SUCCESS: ✅ Password visibility toggle working ✅ Forgot Password link present ✅ Account dropdown structure ready ✅ Authentication routing working. Need Firebase configuration fix to complete testing."
 
+  - task: "Question Uniqueness & Diversity - Prevent Repetitive Questions"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py, backend/rag_module.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "CRITICAL ANTI-MALPRACTICE FEATURE: Implemented comprehensive question uniqueness system to prevent students from getting repetitive questions. ROOT CAUSE: RAG query was static (always 'Physics easy level questions concepts topics'), causing same k=3 chunks to be retrieved every time, leading to same questions. SOLUTION IMPLEMENTED: 1) Added 20 diverse physics topics list, 2) Random topic selection (3-5 topics per test), 3) Unique seed generation using MD5 hash of (user_email + level + timestamp) ensuring different students AND different attempts get different questions, 4) Enhanced RAG retrieval with randomization (k=5 with random sampling from k=10), 5) Updated prompt to explicitly require DIVERSE and UNIQUE questions covering different concepts. This multi-layered approach ensures maximum question diversity for academic integrity. Ready for testing."
+
 agent_communication:
+  - agent: "main"
+    message: "CRITICAL ANTI-MALPRACTICE FEATURE IMPLEMENTED: Fixed repetitive question issue to prevent academic malpractice. Users were getting same concept questions (e.g., electromagnetic induction) every attempt. Implemented multi-layered solution: 1) Randomized topic selection from 20 diverse physics topics, 2) Unique seeding per student per attempt using MD5(email+level+timestamp), 3) RAG retrieval randomization (retrieve k=10, randomly sample k=5), 4) Enhanced AI prompt requiring diverse concepts. Now each student gets unique questions on different topics for every attempt. Ready for testing to verify question diversity."
   - agent: "main"
     message: "CRITICAL BUG FIX IMPLEMENTED: Fixed the Levels page bug where 'Test Completed' message appeared prematurely after passing a level. The isCompleted logic in loadProgress function was checking '(hardFailed && mediumPassed)' which could trigger even if Easy wasn't passed. Updated to '(easyPassed && mediumPassed && hardFailed)' to ensure full sequence validation. Now when a user passes Easy, Medium will show 'Start Test' button instead of showing 'Test Completed'. Ready for backend and frontend testing."
   - agent: "main"
