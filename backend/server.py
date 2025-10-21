@@ -577,12 +577,13 @@ async def generate_questions(request: GenerateQuestionsRequest, current_user: Di
         # Create diverse query with randomized topics
         query = f"Physics {level} level: {', '.join(selected_topics)}"
         
-        # Retrieve more diverse chunks (k=5 instead of k=3)
-        context_docs = get_physics_context(query, k=5)
+        # Retrieve diverse chunks with randomization enabled (k=5 for more content diversity)
+        context_docs = get_physics_context(query, k=5, randomize=True)
         context = "\n\n".join(context_docs) if context_docs else "General physics concepts"
         
         logging.info(f"🔮 Generating {num_questions} UNIQUE questions at {level} level")
         logging.info(f"📚 Selected topics: {selected_topics}")
+        logging.info(f"📖 Retrieved {len(context_docs)} diverse context chunks")
         
         # Generate questions using LangChain prompt
         prompt = generate_questions_prompt.format_messages(
