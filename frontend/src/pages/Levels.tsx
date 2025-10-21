@@ -137,6 +137,13 @@ const Levels = () => {
                              (easyPassed && mediumFailed) ||      
                              (easyPassed && mediumPassed && hardFailed);
       
+      // Debug logging for troubleshooting
+      console.log("🔍 Level Status Check:", {
+        easyPassed, mediumPassed, hardPassed,
+        easyFailed, mediumFailed, hardFailed,
+        testIsComplete
+      });
+      
       // Set test completion state
       setTestCompleted(testIsComplete);
       
