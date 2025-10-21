@@ -25,6 +25,20 @@ const Leaderboard = () => {
   const [mediumLeaderboard, setMediumLeaderboard] = useState<LeaderboardEntry[]>([]);
 
   useEffect(() => {
+    // Check authentication first
+    const token = localStorage.getItem('firebase_token');
+    const studentId = sessionStorage.getItem('studentId');
+    
+    if (!token || !studentId) {
+      toast({
+        title: "Authentication Required",
+        description: "Please login to view the leaderboard.",
+        variant: "destructive"
+      });
+      navigate("/login");
+      return;
+    }
+    
     loadLeaderboard();
   }, []);
 
