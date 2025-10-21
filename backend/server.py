@@ -200,7 +200,12 @@ generate_questions_prompt = ChatPromptTemplate.from_messages([
     ("system", "You are an expert Physics exam question generator. Use the provided context from NCERT Physics textbook. Return ONLY valid JSON."),
     ("human",
      "Context from physics textbook:\n{context}\n\n"
-     "Generate {num_questions} UNIQUE physics questions at {level} difficulty level.\n\n"
+     "Generate {num_questions} COMPLETELY UNIQUE and DIVERSE physics questions at {level} difficulty level.\n\n"
+     "CRITICAL REQUIREMENTS:\n"
+     "- Each question MUST cover DIFFERENT physics concepts (electromagnetic induction, mechanics, thermodynamics, waves, optics, etc.)\n"
+     "- Questions MUST be UNIQUE and NOT repetitive\n"
+     "- Use VARIED question formats (conceptual, numerical, experimental observation, comparison, etc.)\n"
+     "- Ensure questions are suitable for preventing academic malpractice\n\n"
      "Difficulty guidelines:\n"
      "- easy: Fundamental concepts, basic applications, definitions\n"
      "- medium: Problem-solving, application of multiple concepts\n"
