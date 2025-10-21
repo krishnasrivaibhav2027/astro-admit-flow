@@ -296,51 +296,7 @@ const Levels = () => {
         }
       }
       
-      // If test is not completed, continue with normal level display
-      const newLevels = [...levels];
-      
-      // Update attempts from latest result
-      newLevels[0].attempts = latestResult.attempts_easy || 0;
-      newLevels[1].attempts = latestResult.attempts_medium || 0;
-      newLevels[2].attempts = latestResult.attempts_hard || 0;
-      
-      // Check individual level statuses
-      const easyAttemptsExhausted = newLevels[0].attempts >= 1;
-      const mediumAttemptsExhausted = newLevels[1].attempts >= 2;
-      const hardAttemptsExhausted = newLevels[2].attempts >= 2;
-      
-      // Easy level
-      if (easyPassed) {
-        newLevels[0].status = "completed";
-      } else if (easyAttemptsExhausted) {
-        newLevels[0].status = "completed"; // Failed but exhausted attempts
-      } else {
-        newLevels[0].status = "current";
-      }
-      
-      // Medium level
-      if (mediumPassed) {
-        newLevels[1].status = "completed";
-      } else if (easyPassed && mediumAttemptsExhausted) {
-        newLevels[1].status = "completed"; // Failed but exhausted attempts
-      } else if (easyPassed) {
-        newLevels[1].status = "current";
-      } else {
-        newLevels[1].status = "locked";
-      }
-      
-      // Hard level
-      if (hardPassed) {
-        newLevels[2].status = "completed";
-      } else if (mediumPassed && hardAttemptsExhausted) {
-        newLevels[2].status = "completed"; // Failed but exhausted attempts
-      } else if (mediumPassed) {
-        newLevels[2].status = "current";
-      } else {
-        newLevels[2].status = "locked";
-      }
-      
-      setLevels(newLevels);
+      // Level statuses have already been set above, so we're done
     }
   };
 
