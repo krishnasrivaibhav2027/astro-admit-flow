@@ -385,7 +385,21 @@ test_plan:
   test_all: false
   test_priority: "high_first"
 
+  - task: "Levels Page Bug Fix - Premature Test Completion"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/Levels.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "CRITICAL BUG FIX: Fixed premature 'Test Completed' message on Levels page. Issue: After passing a level (e.g., Easy), the page showed 'Test Completed' and 'Go to Results' button instead of enabling the next level with 'Start Test' button. Root cause: The isCompleted logic was incorrectly determining test completion. Changed condition from '(hardFailed && mediumPassed)' to '(easyPassed && mediumPassed && hardFailed)' to ensure the FULL sequence is checked before marking test as completed. Now isCompleted is only true when: 1) All three levels passed, 2) Failed Easy (can't continue), 3) Passed Easy but failed Medium completely, 4) Passed Easy and Medium but failed Hard. This ensures next level is properly enabled after passing current level. Ready for testing."
+
 agent_communication:
+  - agent: "main"
+    message: "CRITICAL BUG FIX IMPLEMENTED: Fixed the Levels page bug where 'Test Completed' message appeared prematurely after passing a level. The isCompleted logic in loadProgress function was checking '(hardFailed && mediumPassed)' which could trigger even if Easy wasn't passed. Updated to '(easyPassed && mediumPassed && hardFailed)' to ensure full sequence validation. Now when a user passes Easy, Medium will show 'Start Test' button instead of showing 'Test Completed'. Ready for backend and frontend testing."
   - agent: "main"
     message: "Completed git history cleanup to remove committed .env files with secrets. Integrated PasswordStrength and PasswordMatch components into Registration.tsx with enhanced validation (8 chars, uppercase, special char). Ready for comprehensive backend testing first, then frontend testing after user confirmation."
   - agent: "testing"
