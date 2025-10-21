@@ -140,9 +140,8 @@ const Levels = () => {
       // Set test completion state
       setTestCompleted(testIsComplete);
       
-      // Store latest result data for "Go to Results" button
-      if (isCompleted) {
-        // Find the last completed level result to show
+      // Store latest result data for "Go to Results" button if test is complete
+      if (testIsComplete) {
         let resultToShow = latestResult;
         if (hardPassed) {
           resultToShow = data.find(r => r.level === "hard" && r.result === "pass") || latestResult;
@@ -154,53 +153,49 @@ const Levels = () => {
         setLatestResultData(resultToShow);
       }
       
-      // Skip auto-redirect if user is coming from Results page to view reviews
+      // ALWAYS update level statuses first before any redirects
+      const newLevels = [...levels];
+      
+      // Update attempts from latest result
+      newLevels[0].attempts = easyAttempts;
+      newLevels[1].attempts = mediumAttempts;
+      newLevels[2].attempts = hardAttempts;
+      
+      // Determine level statuses based on pass/fail and attempts
+      const easyAttemptsExhausted = easyAttempts >= 1;
+      const mediumAttemptsExhausted = mediumAttempts >= 2;
+      const hardAttemptsExhausted = hardAttempts >= 2;
+      
+      // Easy level status
+      if (easyPassed || easyAttemptsExhausted) {
+        newLevels[0].status = "completed";
+      } else {
+        newLevels[0].status = "current";
+      }
+      
+      // Medium level status - UNLOCKS when Easy is passed
+      if (mediumPassed || (easyPassed && mediumAttemptsExhausted)) {
+        newLevels[1].status = "completed";
+      } else if (easyPassed) {
+        newLevels[1].status = "current"; // UNLOCK Medium after Easy pass
+      } else {
+        newLevels[1].status = "locked";
+      }
+      
+      // Hard level status - UNLOCKS when Medium is passed
+      if (hardPassed || (mediumPassed && hardAttemptsExhausted)) {
+        newLevels[2].status = "completed";
+      } else if (mediumPassed) {
+        newLevels[2].status = "current"; // UNLOCK Hard after Medium pass
+      } else {
+        newLevels[2].status = "locked";
+      }
+      
+      // Update levels state
+      setLevels(newLevels);
+      
+      // Skip auto-redirect if user is coming from Results/Review pages
       if (fromResults) {
-        // Just set the levels and return, don't auto-redirect
-        const newLevels = [...levels];
-        
-        // Update attempts from latest result
-        newLevels[0].attempts = latestResult.attempts_easy || 0;
-        newLevels[1].attempts = latestResult.attempts_medium || 0;
-        newLevels[2].attempts = latestResult.attempts_hard || 0;
-        
-        // Check individual level statuses (same logic as below)
-        const easyAttemptsExhausted = newLevels[0].attempts >= 1;
-        const mediumAttemptsExhausted = newLevels[1].attempts >= 2;
-        const hardAttemptsExhausted = newLevels[2].attempts >= 2;
-        
-        // Easy level
-        if (easyPassed) {
-          newLevels[0].status = "completed";
-        } else if (easyAttemptsExhausted) {
-          newLevels[0].status = "completed"; // Failed but exhausted attempts
-        } else {
-          newLevels[0].status = "current";
-        }
-        
-        // Medium level
-        if (mediumPassed) {
-          newLevels[1].status = "completed";
-        } else if (easyPassed && mediumAttemptsExhausted) {
-          newLevels[1].status = "completed"; // Failed but exhausted attempts
-        } else if (easyPassed) {
-          newLevels[1].status = "current";
-        } else {
-          newLevels[1].status = "locked";
-        }
-        
-        // Hard level
-        if (hardPassed) {
-          newLevels[2].status = "completed";
-        } else if (mediumPassed && hardAttemptsExhausted) {
-          newLevels[2].status = "completed"; // Failed but exhausted attempts
-        } else if (mediumPassed) {
-          newLevels[2].status = "current";
-        } else {
-          newLevels[2].status = "locked";
-        }
-        
-        setLevels(newLevels);
         return;
       }
       
