@@ -151,6 +151,9 @@ const Levels = () => {
           resultToShow = data.find(r => r.level === "easy") || latestResult;
         }
         setLatestResultData(resultToShow);
+      } else {
+        // CRITICAL: Clear result data if test is NOT complete to prevent stale data
+        setLatestResultData(null);
       }
       
       // ALWAYS update level statuses first before any redirects
