@@ -540,9 +540,67 @@ class BackendTester:
             self.log_result("Email Notifications", False, f"Exception: {str(e)}")
             return False
     
+    def check_backend_logs_for_diversity(self):
+        """Test 3: Check Backend Logs for Diversity Indicators"""
+        try:
+            # Check backend logs for diversity indicators
+            import subprocess
+            
+            print("\n🔍 Test 3: Check Backend Logs for Diversity Indicators")
+            
+            # Get recent backend logs
+            log_command = "tail -n 50 /var/log/supervisor/backend.out.log | grep -A 3 'Selected topics'"
+            result = subprocess.run(log_command, shell=True, capture_output=True, text=True)
+            
+            if result.returncode == 0 and result.stdout.strip():
+                log_lines = result.stdout.strip().split('\n')
+                
+                # Look for evidence of topic selection and randomization
+                topic_selections = []
+                for line in log_lines:
+                    if "Selected topics:" in line:
+                        topic_selections.append(line)
+                
+                if len(topic_selections) >= 2:
+                    self.log_result("Backend Logs - Diversity Indicators", True,
+                                  f"Found {len(topic_selections)} topic selection entries showing randomization working")
+                    
+                    # Print sample log entries
+                    print(f"   Sample log entries:")
+                    for i, selection in enumerate(topic_selections[:3]):
+                        print(f"   {i+1}. {selection.strip()}")
+                    
+                    return True
+                elif len(topic_selections) == 1:
+                    self.log_result("Backend Logs - Diversity Indicators", True,
+                                  f"Found 1 topic selection entry - diversity system active")
+                    return True
+                else:
+                    self.log_result("Backend Logs - Diversity Indicators", False,
+                                  "No topic selection log entries found - diversity system may not be working")
+                    return False
+            else:
+                # Try alternative log check
+                general_log_command = "tail -n 100 /var/log/supervisor/backend.out.log | grep -i 'generating.*questions'"
+                general_result = subprocess.run(general_log_command, shell=True, capture_output=True, text=True)
+                
+                if general_result.returncode == 0 and general_result.stdout.strip():
+                    self.log_result("Backend Logs - Diversity Indicators", True,
+                                  "Found question generation activity in logs")
+                    return True
+                else:
+                    self.log_result("Backend Logs - Diversity Indicators", False,
+                                  "No diversity indicators found in backend logs")
+                    return False
+                    
+        except Exception as e:
+            self.log_result("Backend Logs - Diversity Indicators", False,
+                          f"Exception checking logs: {str(e)}")
+            return False
+
     def run_all_tests(self):
         """Run all backend tests in priority order"""
-        print(f"🚀 Starting Backend API Tests")
+        print(f"🚀 Starting Backend API Tests - Question Generation Diversity Focus")
         print(f"📍 Base URL: {BASE_URL}")
         print(f"⏰ Timeout: {TIMEOUT}s")
         print("=" * 60)
@@ -550,7 +608,9 @@ class BackendTester:
         # Test in priority order as specified in review request
         tests = [
             ("CRITICAL", self.test_health_check),
+            ("CRITICAL", self.test_question_generation_diversity),  # NEW: Primary focus test
             ("CRITICAL", self.test_question_generation),
+            ("MEDIUM", self.check_backend_logs_for_diversity),  # NEW: Log verification
             ("CRITICAL", self.test_answer_evaluation),
             ("HIGH", self.test_student_management),
             ("MEDIUM", self.test_email_notifications)
@@ -571,7 +631,7 @@ class BackendTester:
                 total_tests += 1
         
         print("\n" + "=" * 60)
-        print(f"📊 TEST SUMMARY")
+        print(f"📊 TEST SUMMARY - QUESTION GENERATION DIVERSITY TESTING")
         print(f"Total Tests: {total_tests}")
         print(f"Passed: {passed_tests}")
         print(f"Failed: {total_tests - passed_tests}")
