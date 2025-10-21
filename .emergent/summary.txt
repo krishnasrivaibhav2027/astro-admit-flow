@@ -1,49 +1,47 @@
 <analysis>
-The previous AI engineer meticulously developed the AI Admission Test application through several significant iterations. Starting with core features like RAG-based question generation, Supabase integration, and hCaptcha, the work evolved based on user feedback and evolving requirements. Key phases involved resolving git secret issues, integrating password strength UI, and a substantial migration from Supabase/custom JWT authentication to Firebase Authentication. The engineer systematically addressed critical bugs related to hCaptcha verification, login/registration navigation, Supabase Row Level Security (RLS) by shifting operations to backend APIs, refining test timeout and pass/fail logic, and enhancing the dynamic display of test level statuses. The trajectory concluded with the initiation of a user profile page and associated backend functionality for phone number updates, aligning with the user's latest request for personal detail management and password reset features.
+The previous AI engineer successfully brought the AI Admission Test application from MVP to a feature-rich state. Initial work focused on Firebase authentication migration, resolving hCaptcha, and improving core test flow. Significant effort was then directed towards enhancing the user experience with a Profile page, custom password reset (later rolled back to Firebase default), and comprehensive test analytics. This included a Review page with AI-powered feedback, streaming AI explanations, and a caching mechanism for both review data and AI notes to improve performance. Navigation inconsistencies, particularly related to redirects and level status after reviews, were iteratively fixed. A leaderboard and time tracking were integrated. Finally, a crucial bug regarding premature test completed messaging on the Levels page, impacting next level enablement, was identified and is currently being addressed. Database integrity was also improved by adding cascade delete and a concession column.
 </analysis>
 
 <product_requirements>
-The AI-powered admission test application dynamically generates and evaluates physics questions using Gemini AI and a RAG system.
-**Key functional requirements include:**
--   **Authentication:** Firebase (Email/Password) for user registration/login, replacing prior Supabase and custom JWT solutions. This includes a Profile page for viewing/editing personal details (e.g., phone number) and changing passwords, alongside a Forgot Password flow on the login page leading to the same password reset mechanism.
--   **Test Flow:** Multi-level (easy, medium, hard) with distinct timers, multi-question navigation, and per-question answer submission.
--   **Results:** Detailed evaluation (score out of 10, average of 6 criteria), refined pass/fail logic (5.0 threshold), and dynamic result display after test completion. Timeout handling ensures fair pass/fail based on score.
--   **UI/UX:** Dark mode, logout functionality, password strength feedback on registration, password visibility toggle on login, age auto-calculation, and dynamic display of level statuses (completed, locked, start test).
--   **Backend:** Supabase PostgreSQL for data storage (after migrating from MongoDB) and a robust FastAPI backend managing AI, RAG, and custom data operations (e.g., test result creation, question saving).
--   **Security:** Ensure secure handling of credentials and clean git history.
+The AI-powered admission test application generates and evaluates physics questions using Gemini AI and a RAG system.
+**Key Features:**
+*   **Authentication:** Firebase (Email/Password) for user registration/login. A Profile page for viewing/editing personal details (phone editable, others non-editable), and password reset (Forgot Password) via Firebase's built-in . Account dropdown on Levels page for Profile/Change Password.
+*   **Test Flow:** Multi-level (easy, medium, hard) with distinct timers (easy set to 10 mins), multi-question navigation. Retake Test button on Review page if level failed and attempts remain.
+*   **Results & Review:** Detailed evaluation (score, criteria). Results page has Home (logout) and Detailed Analysis (to Levels). Levels page shows Review buttons for all *completed* levels (pass/fail). Review page offers question-by-question analysis, AI explanation for wrong answers (streaming text, clean format), and AI Study Notes (streaming, cached). Go to Results button on Levels only if all tests completed.
+*   **Leaderboard:** Displays students who passed Medium/Hard levels, ranked by completion time and scores, with separate tabs for each level. Button on Levels page (top-left). Requires time tracking.
+*   **UI/UX:** Dark mode, logout, password strength, password visibility, age auto-calculation, dynamic level status (completed, locked, start test). Test page has navigation blocking.
+*   **Backend:** FastAPI, Supabase PostgreSQL for data (including test results, AI notes, question reviews), AI/RAG. Enhanced email notification for admission/concession.
+*   **Security/Data:** Secure password handling via Firebase (not stored in app DB),  and  tables with .  table includes  percentage.
+*   **Navigation Protection:** Results and Leaderboard pages protected by authentication.
 </product_requirements>
 
 <key_technical_concepts>
--   **Firebase Authentication:** Primary authentication and user management.
--   **FastAPI:** Python web framework for the backend.
+-   **Firebase Authentication:** Primary user authentication and management.
+-   **FastAPI:** Python web framework for backend APIs.
 -   **React/Vite:** Frontend framework with fast build tools.
--   **Gemini AI:** Google's LLM for dynamic question generation and answer evaluation.
--   **LangGraph/LangChain:** Frameworks for building LLM applications and RAG.
+-   **Gemini AI:** Google's LLM for question generation, answer evaluation, AI review, and notes.
+-   **LangGraph/LangChain:** For building LLM applications and RAG.
 -   **ChromaDB:** Vector database for RAG context storage.
--   **Supabase:** Backend-as-a-Service for PostgreSQL database.
--   **Tailwind CSS:** Utility-first CSS framework for UI development.
+-   **Supabase:** Backend-as-a-Service for PostgreSQL database, main data store.
+-   **Tailwind CSS:** Utility-first CSS framework for UI.
+-   **Email Integration:** Gmail API for custom email notifications.
 </key_technical_concepts>
 
 <code_architecture>
-/profile/resultsPasswordStrength.tsx/levels
+/api/send-password-reset-email/api/review/{level}/{student_id}/api/generate-ai-notes/{level}/{student_id}/api/leaderboard/{level}/api/send-confirmation-emailstudent_idlevelevaluate_answersconcession/profile/review/:level/ai-notes/:level/leaderboardloadProgresssendPasswordResetEmail()fromResultsfromResultshandleFinalSubmitstudent_idlevelstartTimetime_takentime_takenfromResultsai_notesai_notesquestion_reviewstime_takenresultsconcessionresults
 </code_architecture>
 
 <pending_tasks>
--   **Complete Profile Page:** Implement display for personal details, full edit functionality for phone number, and the Change Password feature.
--   **Forgot Password:** Implement Forgot Password functionality on the Login page, linking to the password reset flow.
--   **Database Update for Profile Edits:** Ensure all profile edits (e.g., phone number) are correctly persisted in the Supabase database.
+-   **Complete Profile Page:** Implement full edit functionality for phone number and the Change Password feature (link to Firebase reset).
+-   **Leaderboard Implementation:** Populate  with actual fetched data, implement the Hard/Medium level tabs, and sorting logic.
+-   **Database Migration Execution:** The SQL scripts (, , , , ) need to be *manually run* in Supabase.
+-   **Bug Fix:** The current trajectory ends with a bug where the  page incorrectly shows test completed and Go to Results after a level is passed, instead of enabling the next level.
 </pending_tasks>
 
 <current_work>
-Immediately before this summary, the AI engineer was implementing the **Profile Page** and related functionalities.
-1.  **Backend Endpoint:** A new FastAPI endpoint () was added to  to allow authenticated users to update their phone numbers in the database.
-2.  **Frontend Profile Page:** A new React component, , was created as a placeholder for the user's profile details.
-3.  **Frontend Routing:** A new route  was added to  to enable navigation to the profile page.
-4.  **Navigation Link:** A Profile button was integrated into the  page, positioned alongside the Logout button, allowing users to access their profile.
-
-This work is partially completed. The user explicitly requested to verify the changes manually, meaning these newly added features (Profile page, phone update endpoint, password change/reset integration) are **implemented but untested** by the AI engineer. The Change password feature within the Profile page and the Forgot password flow from the Login page are conceptual and not yet implemented in code beyond the skeletal profile page.
+Immediately before this summary request, the AI engineer was addressing a critical bug on the  page. When a user passes a level, instead of the next level being enabled with a Start Test button and the current level showing a Review button, the page incorrectly displays a Test Completed message and a Go to Results button. This indicates that the  state or the logic to update level statuses in the  function is triggering prematurely or is flawed. The AI's last action was to investigate the  function within  (specifically focusing on the  logic, which was identified as potentially incorrect, leading to the premature determination of test completion). The bug is related to how  is calculated, possibly considering partial completion as full completion. The fix is still in progress.
 </current_work>
 
 <optional_next_step>
-Implement the Change Password feature within the Profile page and the Forgot Password flow from the Login page, linking them.
+Investigate and fix the  logic in  function in  to correctly determine when all levels are completed, ensuring the next level is enabled and not showing test completed prematurely.
 </optional_next_step>
