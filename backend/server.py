@@ -542,12 +542,42 @@ async def generate_questions(request: GenerateQuestionsRequest, current_user: Di
         level = request.level
         num_questions = request.num_questions
         
-        # Get relevant context from RAG
-        query = f"Physics {level} level questions concepts topics"
-        context_docs = get_physics_context(query, k=3)
+        # Generate unique questions by using diverse physics topics with randomization
+        import random
+        import time
+        
+        # Diverse physics topics to prevent repetitive questions
+        physics_topics = [
+            "electromagnetic induction and Faraday's law",
+            "Newton's laws of motion and forces",
+            "thermodynamics and heat transfer",
+            "wave motion and sound",
+            "optics and light",
+            "electric circuits and current",
+            "magnetism and magnetic fields",
+            "gravitation and planetary motion",
+            "work energy and power",
+            "electrostatics and electric fields",
+            "quantum mechanics basics",
+            "atomic structure and spectra",
+            "radioactivity and nuclear physics",
+            "mechanical properties of matter",
+            "fluid mechanics and pressure"
+        ]
+        
+        # Randomly select topics for diversity (different for each attempt)
+        random.seed(time.time())  # Use current time as seed for uniqueness
+        selected_topics = random.sample(physics_topics, min(3, len(physics_topics)))
+        
+        # Create diverse query with randomized topics
+        query = f"Physics {level} level: {', '.join(selected_topics)}"
+        
+        # Retrieve more diverse chunks (k=5 instead of k=3)
+        context_docs = get_physics_context(query, k=5)
         context = "\n\n".join(context_docs) if context_docs else "General physics concepts"
         
-        logging.info(f"🔮 Generating {num_questions} questions at {level} level with RAG context")
+        logging.info(f"🔮 Generating {num_questions} UNIQUE questions at {level} level")
+        logging.info(f"📚 Selected topics: {selected_topics}")
         
         # Generate questions using LangChain prompt
         prompt = generate_questions_prompt.format_messages(
