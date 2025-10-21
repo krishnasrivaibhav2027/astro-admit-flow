@@ -21,8 +21,22 @@ const Results = () => {
   const [isTestCompleted, setIsTestCompleted] = useState<boolean>(completed || false);
 
   useEffect(() => {
+    // Check authentication first
+    const token = localStorage.getItem('firebase_token');
+    const sessionStudentId = sessionStorage.getItem('studentId');
+    
+    if (!token || !sessionStudentId) {
+      toast({
+        title: "Authentication Required",
+        description: "Please login to view results.",
+        variant: "destructive"
+      });
+      navigate("/login");
+      return;
+    }
+    
     if (!studentId || score === undefined) {
-      navigate("/registration");
+      navigate("/levels");
       return;
     }
     loadAttemptData();
