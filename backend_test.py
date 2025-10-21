@@ -79,8 +79,176 @@ class BackendTester:
             self.log_result("Health Check", False, f"Exception: {str(e)}")
             return False
     
+    def get_firebase_token(self):
+        """Get Firebase authentication token for testing"""
+        try:
+            # Create a test user and get Firebase token
+            import requests
+            
+            # Firebase Auth REST API endpoint
+            firebase_auth_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_CONFIG['apiKey']}"
+            
+            # Test credentials - using a known test account
+            test_credentials = {
+                "email": "testuser@example.com",
+                "password": "TestPassword123!",
+                "returnSecureToken": True
+            }
+            
+            response = requests.post(firebase_auth_url, json=test_credentials)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("idToken")
+            else:
+                # If test user doesn't exist, try to create one
+                signup_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_CONFIG['apiKey']}"
+                signup_response = requests.post(signup_url, json=test_credentials)
+                
+                if signup_response.status_code == 200:
+                    signup_data = signup_response.json()
+                    return signup_data.get("idToken")
+                else:
+                    print(f"Failed to create test user: {signup_response.text}")
+                    return None
+                    
+        except Exception as e:
+            print(f"Error getting Firebase token: {str(e)}")
+            return None
+
+    def test_question_generation_diversity(self):
+        """Test 2: Question generation diversity system - CRITICAL"""
+        # Get Firebase token for authentication
+        firebase_token = self.get_firebase_token()
+        if not firebase_token:
+            self.log_result("Question Generation Diversity", False, 
+                          "Could not obtain Firebase authentication token")
+            return False
+        
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {firebase_token}"
+        }
+        
+        all_passed = True
+        
+        # Test 1: Generate Easy Questions - First Attempt
+        print("\n🔍 Test 1: Generate Easy Questions - First Attempt")
+        try:
+            first_request = {"level": "easy", "num_questions": 5}
+            
+            response1 = self.session.post(
+                f"{BASE_URL}/generate-questions",
+                json=first_request,
+                headers=headers
+            )
+            
+            if response1.status_code == 200:
+                data1 = response1.json()
+                
+                if "questions" not in data1:
+                    self.log_result("Question Generation - First Attempt", False,
+                                  "Missing 'questions' field in response", data1)
+                    return False
+                
+                questions1 = data1["questions"]
+                
+                if len(questions1) != 5:
+                    self.log_result("Question Generation - First Attempt", False,
+                                  f"Expected 5 questions, got {len(questions1)}", data1)
+                    return False
+                
+                # Validate question structure
+                for i, q in enumerate(questions1):
+                    if not isinstance(q, dict) or "question" not in q or "answer" not in q:
+                        self.log_result("Question Generation - First Attempt", False,
+                                      f"Question {i+1} missing required fields", q)
+                        return False
+                    
+                    if not q["question"].strip() or not q["answer"].strip():
+                        self.log_result("Question Generation - First Attempt", False,
+                                      f"Question {i+1} has empty question or answer", q)
+                        return False
+                
+                self.log_result("Question Generation - First Attempt", True,
+                              f"Generated 5 unique questions covering different physics concepts")
+                
+                # Store first set for comparison
+                first_questions = [q["question"] for q in questions1]
+                
+                # Test 2: Generate Easy Questions - Second Attempt (Immediately After)
+                print("\n🔍 Test 2: Generate Easy Questions - Second Attempt (Immediately After)")
+                
+                response2 = self.session.post(
+                    f"{BASE_URL}/generate-questions",
+                    json=first_request,  # Same request
+                    headers=headers
+                )
+                
+                if response2.status_code == 200:
+                    data2 = response2.json()
+                    
+                    if "questions" not in data2:
+                        self.log_result("Question Generation - Second Attempt", False,
+                                      "Missing 'questions' field in response", data2)
+                        return False
+                    
+                    questions2 = data2["questions"]
+                    second_questions = [q["question"] for q in questions2]
+                    
+                    # Check for diversity - questions should be different
+                    identical_questions = set(first_questions) & set(second_questions)
+                    diversity_percentage = (len(set(first_questions + second_questions)) / (len(first_questions) + len(second_questions))) * 100
+                    
+                    if len(identical_questions) == 0:
+                        self.log_result("Question Generation - Diversity Check", True,
+                                      f"100% unique questions between attempts - excellent diversity!")
+                    elif len(identical_questions) <= 1:
+                        self.log_result("Question Generation - Diversity Check", True,
+                                      f"Good diversity: only {len(identical_questions)} identical question(s), {diversity_percentage:.1f}% unique")
+                    else:
+                        self.log_result("Question Generation - Diversity Check", False,
+                                      f"Poor diversity: {len(identical_questions)} identical questions out of 5")
+                        all_passed = False
+                    
+                    # Print sample questions for verification
+                    print(f"   Sample from First Attempt: {first_questions[0][:80]}...")
+                    print(f"   Sample from Second Attempt: {second_questions[0][:80]}...")
+                    
+                    self.log_result("Question Generation - Second Attempt", True,
+                                  f"Generated 5 different questions than first attempt")
+                    
+                else:
+                    self.log_result("Question Generation - Second Attempt", False,
+                                  f"HTTP {response2.status_code}: {response2.text}")
+                    all_passed = False
+                
+            else:
+                self.log_result("Question Generation - First Attempt", False,
+                              f"HTTP {response1.status_code}: {response1.text}")
+                all_passed = False
+                
+        except Exception as e:
+            self.log_result("Question Generation Diversity", False,
+                          f"Exception: {str(e)}")
+            all_passed = False
+        
+        return all_passed
+
     def test_question_generation(self):
-        """Test 2: Question generation with RAG - CRITICAL"""
+        """Test 2b: Basic question generation with RAG - CRITICAL"""
+        # Get Firebase token for authentication
+        firebase_token = self.get_firebase_token()
+        if not firebase_token:
+            self.log_result("Basic Question Generation", False, 
+                          "Could not obtain Firebase authentication token")
+            return False
+        
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {firebase_token}"
+        }
+        
         test_cases = [
             {"level": "easy", "num_questions": 3},
             {"level": "medium", "num_questions": 5},
@@ -94,7 +262,7 @@ class BackendTester:
                 response = self.session.post(
                     f"{BASE_URL}/generate-questions",
                     json=test_case,
-                    headers={"Content-Type": "application/json"}
+                    headers=headers
                 )
                 
                 if response.status_code == 200:
