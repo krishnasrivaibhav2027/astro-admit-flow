@@ -509,6 +509,25 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                 if q.get('student_answers') and len(q['student_answers']) > 0:
                     student_answer = q['student_answers'][0].get('student_answer', 'No answer provided')
                 
+                # Check if answer is empty or too short - automatic fail
+                if not student_answer or student_answer.strip() == "" or student_answer.strip().lower() == "no answer provided":
+                    logging.warning(f"Q{idx}: Empty answer - automatic fail")
+                    all_evaluations.append({
+                        "question_number": idx,
+                        "question": q.get('question_text', ''),
+                        "student_answer": student_answer,
+                        "scores": {
+                            "Relevance": 1.0,
+                            "Clarity": 1.0,
+                            "SubjectUnderstanding": 1.0,
+                            "Accuracy": 1.0,
+                            "Completeness": 1.0,
+                            "CriticalThinking": 1.0
+                        },
+                        "average": 1.0
+                    })
+                    continue
+                
                 # Get relevant context for this question
                 context_docs = get_physics_context(q.get('question_text', ''), k=2)
                 context = "\n\n".join(context_docs) if context_docs else ""
@@ -536,6 +555,18 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                     scores_json = json.loads(response_text)
                     evaluation = EvaluationCriteria(**scores_json)
                     
+                    # Double-check: if student answer looks like gibberish, override scores
+                    if len(student_answer.strip()) < 10 or student_answer.count('O') > len(student_answer) * 0.5:
+                        logging.warning(f"Q{idx}: Gibberish detected - overriding to fail scores")
+                        evaluation = EvaluationCriteria(
+                            Relevance=1.0,
+                            Clarity=1.0,
+                            SubjectUnderstanding=1.0,
+                            Accuracy=1.0,
+                            Completeness=1.0,
+                            CriticalThinking=1.0
+                        )
+                    
                     all_evaluations.append({
                         "question_number": idx,
                         "question": q.get('question_text', ''),
@@ -545,37 +576,38 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                     })
                 except (json.JSONDecodeError, Exception) as e:
                     logging.error(f"Error parsing evaluation for Q{idx}: {e}")
-                    # Fallback scores
+                    logging.error(f"Response was: {response_text}")
+                    # Fallback: Assume wrong answer if we can't parse (strict grading)
                     all_evaluations.append({
                         "question_number": idx,
                         "question": q.get('question_text', ''),
                         "student_answer": student_answer,
                         "scores": {
-                            "Relevance": 5.0,
-                            "Clarity": 5.0,
-                            "SubjectUnderstanding": 5.0,
-                            "Accuracy": 5.0,
-                            "Completeness": 5.0,
-                            "CriticalThinking": 5.0
+                            "Relevance": 1.0,
+                            "Clarity": 1.0,
+                            "SubjectUnderstanding": 1.0,
+                            "Accuracy": 1.0,
+                            "Completeness": 1.0,
+                            "CriticalThinking": 1.0
                         },
-                        "average": 5.0
+                        "average": 1.0
                     })
             except Exception as e:
                 logging.error(f"Error evaluating question {idx}: {e}")
-                # Continue with fallback
+                # Strict fallback: fail on error
                 all_evaluations.append({
                     "question_number": idx,
                     "question": "Error",
                     "student_answer": "",
                     "scores": {
-                        "Relevance": 5.0,
-                        "Clarity": 5.0,
-                        "SubjectUnderstanding": 5.0,
-                        "Accuracy": 5.0,
-                        "Completeness": 5.0,
-                        "CriticalThinking": 5.0
+                        "Relevance": 1.0,
+                        "Clarity": 1.0,
+                        "SubjectUnderstanding": 1.0,
+                        "Accuracy": 1.0,
+                        "Completeness": 1.0,
+                        "CriticalThinking": 1.0
                     },
-                    "average": 5.0
+                    "average": 1.0
                 })
         
         # Ensure we have evaluations
