@@ -28,6 +28,7 @@ google-auth-oauthlib>=1.2.0
 google-auth-httplib2>=0.2.0
 google-api-python-client>=2.100.0
 supabase>=2.0.0
+postgrest>=2.24.0
 httpx>=0.25.0
 langgraph>=0.2.0
 langchain>=0.3.0
