@@ -800,8 +800,8 @@ class AdmitAIBackendTester:
         return passed_tests, total_tests
 
 if __name__ == "__main__":
-    tester = BackendTester()
-    passed, total = tester.run_all_tests()
+    tester = AdmitAIBackendTester()
+    passed, total = tester.run_comprehensive_test()
     
     # Exit with appropriate code
     sys.exit(0 if passed == total else 1)
