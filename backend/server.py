@@ -1378,8 +1378,7 @@ async def send_notification(request: NotificationEmailRequest, current_user: Dic
         email_subject = "AdmitAI Test Results"
         
         if results_response.data and len(results_response.data) > 0:
-            # Get the latest result to check level statuses
-            latest_result = results_response.data[0]
+            # Get all results to check level statuses
             all_results = results_response.data
             
             # Check which levels were passed
