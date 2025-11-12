@@ -381,7 +381,7 @@ async def save_questions(request: SaveQuestionsRequest, current_user: Dict = Dep
 
 @api_router.post("/generate-questions")
 async def generate_questions(request: GenerateQuestionsRequest, current_user: Dict = Depends(get_current_user)):
-    """Generate questions - JWT Protected"""
+    """Generate questions - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         level = request.level
