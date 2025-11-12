@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-AdmitAI Backend API Testing - Comprehensive Review
-Tests all backend endpoints as requested in review:
-1. Health check endpoint (GET /api/health) - verify database connection and RAG status
-2. Registration endpoint (POST /api/register) - test with a new unique email
-3. Login endpoint (POST /api/login) - test with the registered credentials
-4. Question generation endpoint (POST /api/generate-questions) - test with JWT token from login, verify diverse questions are generated
-5. Verify all endpoints are accessible and returning proper responses
+AdmitAI Backend API Testing - Firebase Authentication Review
+Tests cleaned-up backend API as requested in review:
+1. Health Check - GET /api/health - verify database connection and RAG status
+2. Firebase Authentication - Verify that Firebase token-based authentication is working
+3. Student Management - Test POST /api/students endpoint with Firebase token
+4. Question Generation - Test POST /api/generate-questions with Firebase auth (Note: Gemini API key might have issues, that's expected)
+5. Verify removed endpoints - Confirm POST /api/register and POST /api/login return 404 Not Found
+6. All protected endpoints - Verify they require Firebase authentication
 """
 
 import requests
