@@ -137,11 +137,11 @@ backend:
   
   - task: "JWT Authentication with Supabase Auth"
     implemented: true
-    working: "NA"
+    working: false
     file: "backend/server.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
@@ -149,6 +149,9 @@ backend:
       - working: "NA"
         agent: "testing"
         comment: "⚠️ NOT TESTED: JWT authentication endpoints not found in backend API. This appears to be handled by frontend Supabase Auth integration. Backend has no JWT validation endpoints to test."
+      - working: false
+        agent: "testing"
+        comment: "❌ CRITICAL ISSUE: Custom authentication endpoints (/api/register, /api/login) failing due to missing 'password' column in Supabase students table. Database schema error: 'Could not find the password column of students in the schema cache'. However, ✅ Firebase authentication is working perfectly - Firebase user creation successful, backend accepts Firebase tokens, and student records created successfully via Firebase auth."
   
   - task: "Password validation with enhanced requirements"
     implemented: true
