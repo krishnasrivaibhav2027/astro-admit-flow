@@ -152,21 +152,27 @@ generate_questions_prompt = ChatPromptTemplate.from_messages([
 ])
 
 evaluate_answer_prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are an expert Physics examiner. Evaluate based on 6 criteria. Return ONLY valid JSON."),
+    ("system", "You are a STRICT Physics examiner. You must be harsh and accurate in your evaluation. Return ONLY valid JSON."),
     ("human",
      "Context from physics textbook:\n{context}\n\n"
      "Question: {question}\n"
      "Correct Answer: {correct_answer}\n"
      "Student Answer: {student_answer}\n\n"
+     "CRITICAL EVALUATION RULES:\n"
+     "1. If the student answer is gibberish, random text, empty, or completely wrong, give scores of 1.0 for ALL criteria\n"
+     "2. If the student answer shows NO understanding of physics concepts, give scores below 3.0\n"
+     "3. If the answer is partially correct but missing key elements, give scores 3.0-5.0\n"
+     "4. Only give scores above 7.0 if the answer demonstrates clear understanding and correct physics\n"
+     "5. Be STRICT - wrong answers must get low scores (1.0-2.0)\n\n"
      "Evaluate the student answer on these 6 criteria (1-10 scale):\n"
-     "1. Relevance - How relevant is the answer to the question\n"
-     "2. Clarity - How clear and understandable\n"
-     "3. SubjectUnderstanding - Depth of physics understanding shown\n"
-     "4. Accuracy - Factual correctness\n"
-     "5. Completeness - How complete the answer is\n"
-     "6. CriticalThinking - Analytical and critical thinking demonstrated\n\n"
+     "1. Relevance - How relevant is the answer to the question (1.0 if irrelevant or gibberish)\n"
+     "2. Clarity - How clear and understandable (1.0 if unclear or nonsense)\n"
+     "3. SubjectUnderstanding - Depth of physics understanding shown (1.0 if no understanding)\n"
+     "4. Accuracy - Factual correctness (1.0 if factually wrong or gibberish)\n"
+     "5. Completeness - How complete the answer is (1.0 if incomplete or wrong)\n"
+     "6. CriticalThinking - Analytical and critical thinking demonstrated (1.0 if no thinking shown)\n\n"
      "Return ONLY a JSON object (no markdown, no code blocks):\n"
-     "{{\"Relevance\": 8.5, \"Clarity\": 7.0, \"SubjectUnderstanding\": 9.0, \"Accuracy\": 8.0, \"Completeness\": 7.5, \"CriticalThinking\": 8.5}}")
+     "{{\"Relevance\": 1.0, \"Clarity\": 1.0, \"SubjectUnderstanding\": 1.0, \"Accuracy\": 1.0, \"Completeness\": 1.0, \"CriticalThinking\": 1.0}}")
 ])
 
 
