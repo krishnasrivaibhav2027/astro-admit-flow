@@ -234,8 +234,8 @@ class AdmitAIBackendTester:
         
         all_passed = True
         
-        # Test 4a: Generate Easy Questions - First Attempt
-        print("   🔍 4a: Generate Easy Questions - First Attempt")
+        # Test 5a: Generate Easy Questions - First Attempt
+        print("   🔍 5a: Generate Easy Questions - First Attempt")
         try:
             first_request = {"level": "easy", "num_questions": 5}
             
