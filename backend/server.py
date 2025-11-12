@@ -146,7 +146,7 @@ def verify_password(password: str, hashed: str) -> bool:
     try:
         salt, pwd_hash = hashed.split('$')
         return hashlib.sha256((password + salt).encode()).hexdigest() == pwd_hash
-    except:
+    except (ValueError, AttributeError):
         return False
 
 
