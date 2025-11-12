@@ -119,6 +119,9 @@ backend:
       - working: true
         agent: "testing"
         comment: "✅ TESTED: Health check shows database connected, all student CRUD operations working correctly. Created/retrieved students successfully, duplicate email handling works with 400 error."
+      - working: true
+        agent: "testing"
+        comment: "✅ CLEANED-UP BACKEND SUPABASE INTEGRATION VERIFIED: Health check endpoint (GET /api/health) working perfectly - returns 'healthy' status, 'connected' database, and 'rag_enabled: true'. Student management with Firebase authentication working correctly - created student record (ID: 3a4d7b12-9295-409f-9468-272fc1bdbf62) using Firebase token. All protected endpoints properly secured with Firebase authentication. Supabase integration fully operational with cleaned-up authentication system."
   
   - task: "Gemini AI question generation using RAG"
     implemented: true
