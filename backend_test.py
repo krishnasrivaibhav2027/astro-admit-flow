@@ -754,7 +754,7 @@ class AdmitAIBackendTester:
                 total_tests += 1
         
         print("\n" + "=" * 80)
-        print(f"📊 GEMINI AI QUESTION GENERATION TEST SUMMARY")
+        print(f"📊 ANSWER EVALUATION SYSTEM TEST SUMMARY")
         print(f"Total Tests: {total_tests}")
         print(f"Passed: {passed_tests}")
         print(f"Failed: {total_tests - passed_tests}")
@@ -770,19 +770,19 @@ class AdmitAIBackendTester:
         print(f"\n📝 SUMMARY FOR TEST_RESULT.MD:")
         critical_failures = [r for r in self.results if not r["success"] and "Health Check" in r["test"]]
         auth_failures = [r for r in self.results if not r["success"] and "Firebase Authentication" in r["test"]]
-        question_failures = [r for r in self.results if not r["success"] and "Question Generation" in r["test"]]
-        api_key_issues = [r for r in self.results if not r["success"] and "leaked" in r["details"].lower()]
+        evaluation_failures = [r for r in self.results if not r["success"] and "Evaluate" in r["test"]]
+        strict_grading_issues = [r for r in self.results if not r["success"] and "strict grading" in r["details"].lower()]
         
         if len(critical_failures) > 0:
             print("❌ CRITICAL: Backend health check failed - database or RAG issues")
         elif len(auth_failures) > 0:
             print("❌ CRITICAL: Firebase authentication system not working")
-        elif len(api_key_issues) > 0:
-            print("❌ CRITICAL: New Gemini API key still shows 'leaked' error - API key replacement failed")
-        elif len(question_failures) > 0:
-            print("❌ CRITICAL: Question generation system not working - unexpected AI/RAG integration issues")
+        elif len(strict_grading_issues) > 0:
+            print("❌ CRITICAL: Answer evaluation system is too lenient - wrong answers not being failed properly")
+        elif len(evaluation_failures) > 0:
+            print("❌ CRITICAL: Answer evaluation system not working - API or processing issues")
         elif passed_tests == total_tests:
-            print("✅ SUCCESS: Gemini AI question generation working perfectly with new API key - no 403 'API key leaked' errors, RAG system operational, questions are diverse and unique")
+            print("✅ SUCCESS: Answer evaluation system working correctly - wrong answers properly failed with low scores, strict grading verified")
         else:
             print("⚠️ PARTIAL SUCCESS: Some tests passed but issues remain - check detailed results above")
         
