@@ -403,11 +403,11 @@ class AdmitAIBackendTester:
         # Test in exact order as specified in review request
         tests = [
             ("1. Health Check", self.test_health_check),
-            ("2. Registration", self.test_registration),
-            ("3. Login", self.test_login),
-            ("3b. Firebase Authentication", self.test_firebase_authentication),
-            ("4. Question Generation", self.test_question_generation),
-            ("5. Endpoint Accessibility", self.test_endpoint_accessibility)
+            ("2. Firebase Authentication", self.test_firebase_authentication),
+            ("3. Student Management", self.test_student_management),
+            ("4. Removed Endpoints", self.test_removed_endpoints),
+            ("5. Question Generation", self.test_question_generation),
+            ("6. Protected Endpoints Auth", self.test_protected_endpoints_auth)
         ]
         
         total_tests = 0
