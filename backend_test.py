@@ -184,81 +184,39 @@ class AdmitAIBackendTester:
             self.log_result("Student Management", False, f"Exception: {str(e)}")
             return False
     
-    def test_firebase_authentication(self):
-        """Test Firebase Authentication Integration"""
-        print("\n🔍 Test 3b: Firebase Authentication Integration")
+    def test_removed_endpoints(self):
+        """Test 4: Verify removed endpoints - Confirm POST /api/register and POST /api/login return 404 Not Found"""
+        print("\n🔍 Test 4: Verify Removed Custom Authentication Endpoints")
         
-        try:
-            # Try to get a Firebase token using the Firebase REST API
-            firebase_api_key = "AIzaSyDxDFMOm6UR87WTzVtG2XSUMY6mxQM6SrA"  # From backend .env
-            
-            # Try to sign up a test user with Firebase
-            signup_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={firebase_api_key}"
-            
-            timestamp = int(time.time())
-            test_email = f"firebase_test_{timestamp}@gmail.com"
-            
-            signup_data = {
-                "email": test_email,
-                "password": self.test_user_password,
-                "returnSecureToken": True
-            }
-            
-            response = self.session.post(signup_url, json=signup_data)
-            
-            if response.status_code == 200:
-                data = response.json()
-                firebase_token = data.get("idToken")
+        removed_endpoints = [
+            ("/register", "Custom Registration"),
+            ("/login", "Custom Login")
+        ]
+        
+        all_passed = True
+        
+        for endpoint, description in removed_endpoints:
+            try:
+                response = self.session.post(
+                    f"{BASE_URL}{endpoint}",
+                    json={"email": "test@example.com", "password": "test123"},
+                    headers={"Content-Type": "application/json"}
+                )
                 
-                if firebase_token:
-                    self.jwt_token = firebase_token  # Use Firebase token for subsequent tests
-                    self.test_user_email = test_email
-                    
-                    self.log_result("Firebase Authentication", True, 
-                                  f"✅ Firebase user created successfully: {test_email}")
-                    
-                    # Test if backend accepts Firebase token
-                    headers = {
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {firebase_token}"
-                    }
-                    
-                    # Try to create a student record using Firebase auth
-                    student_data = {
-                        "first_name": "Firebase",
-                        "last_name": "TestUser",
-                        "age": 20,
-                        "dob": "2004-01-15",
-                        "email": test_email,
-                        "phone": "+1234567890"
-                    }
-                    
-                    student_response = self.session.post(
-                        f"{BASE_URL}/students",
-                        json=student_data,
-                        headers=headers
-                    )
-                    
-                    if student_response.status_code == 200:
-                        self.log_result("Firebase Backend Integration", True, 
-                                      f"✅ Backend accepts Firebase token and created student record")
-                        return True
-                    else:
-                        self.log_result("Firebase Backend Integration", False, 
-                                      f"Backend rejected Firebase token: {student_response.status_code} - {student_response.text}")
-                        return False
+                if response.status_code == 404:
+                    self.log_result(f"Removed Endpoint - {description}", True, 
+                                  f"✅ {endpoint} correctly returns 404 Not Found")
                 else:
-                    self.log_result("Firebase Authentication", False, 
-                                  "No Firebase token received", data)
-                    return False
-            else:
-                self.log_result("Firebase Authentication", False, 
-                              f"Firebase signup failed: {response.status_code} - {response.text}")
-                return False
-                
-        except Exception as e:
-            self.log_result("Firebase Authentication", False, f"Exception: {str(e)}")
-            return False
+                    self.log_result(f"Removed Endpoint - {description}", False, 
+                                  f"❌ {endpoint} still exists (HTTP {response.status_code})")
+                    all_passed = False
+                    
+            except Exception as e:
+                self.log_result(f"Removed Endpoint - {description}", False, 
+                              f"Exception testing {endpoint}: {str(e)}")
+                all_passed = False
+        
+        return all_passed
 
     def test_question_generation(self):
         """Test 4: Question generation endpoint (POST /api/generate-questions) - test with JWT token from login, verify diverse questions are generated"""
