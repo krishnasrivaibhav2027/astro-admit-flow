@@ -304,7 +304,7 @@ async def get_student(student_id: str, current_user: Dict = Depends(get_current_
 
 @api_router.get("/students")
 async def list_students(current_user: Dict = Depends(get_current_user)):
-    """List all students - JWT Protected"""
+    """List all students - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         response = supabase.table("students").select("*").order("created_at", desc=True).execute()
