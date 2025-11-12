@@ -408,9 +408,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Profile Page with Personal Details Display and Phone Editing"
-    - "Forgot Password Functionality on Login Page"
-    - "Account Dropdown Menu on Levels Page"
+    - "Answer Evaluation System - Strict Grading for Wrong Answers"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
