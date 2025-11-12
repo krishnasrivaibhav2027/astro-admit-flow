@@ -246,7 +246,7 @@ async def root():
 @api_router.get("/health")
 async def health_check():
     try:
-        response = supabase.table("students").select("id").limit(1).execute()
+        _ = supabase.table("students").select("id").limit(1).execute()
         return {
             "status": "healthy",
             "database": "connected",
