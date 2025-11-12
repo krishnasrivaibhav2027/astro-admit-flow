@@ -474,7 +474,7 @@ async def generate_questions(request: GenerateQuestionsRequest, current_user: Di
 # ===== AI-POWERED ANSWER EVALUATION WITH 6 CRITERIA =====
 @api_router.post("/evaluate-answers")
 async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict = Depends(get_current_user)):
-    """Evaluate student answers - JWT Protected"""
+    """Evaluate student answers - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         result_id = request.result_id
