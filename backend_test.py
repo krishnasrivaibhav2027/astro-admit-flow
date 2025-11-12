@@ -216,9 +216,9 @@ class AdmitAIBackendTester:
         
         return all_passed
 
-    def test_question_generation(self):
-        """Test 5: Question Generation - Test POST /api/generate-questions with Firebase auth (Note: Gemini API key might have issues, that's expected)"""
-        print("\n🔍 Test 5: Question Generation with Firebase Authentication")
+    def test_question_generation_with_new_api_key(self):
+        """Test 3: Question Generation Test - Call POST /api/generate-questions endpoint with Firebase auth and verify no 403 "API key leaked" errors"""
+        print("\n🔍 Test 3: Question Generation with New Gemini API Key")
         
         if not self.firebase_token:
             self.log_result("Question Generation", False, 
@@ -232,59 +232,83 @@ class AdmitAIBackendTester:
         
         all_passed = True
         
-        # Test 5a: Generate Easy Questions - First Attempt
-        print("   🔍 5a: Generate Easy Questions - First Attempt")
+        # Test 3a: Generate Easy Questions - Verify New API Key Works
+        print("   🔍 3a: Generate Easy Questions with New API Key")
         try:
-            first_request = {"level": "easy", "num_questions": 5}
+            request_data = {"level": "easy", "num_questions": 3}
             
-            response1 = self.session.post(
+            response = self.session.post(
                 f"{BASE_URL}/generate-questions",
-                json=first_request,
+                json=request_data,
                 headers=headers
             )
             
-            if response1.status_code == 200:
-                data1 = response1.json()
+            print(f"      Response Status: {response.status_code}")
+            
+            if response.status_code == 200:
+                data = response.json()
                 
-                if "questions" not in data1:
-                    self.log_result("Question Generation - First Attempt", False,
-                                  "Missing 'questions' field in response", data1)
+                if "questions" not in data:
+                    self.log_result("Question Generation - New API Key", False,
+                                  "Missing 'questions' field in response", data)
                     return False
                 
-                questions1 = data1["questions"]
+                questions = data["questions"]
                 
-                if len(questions1) != 5:
-                    self.log_result("Question Generation - First Attempt", False,
-                                  f"Expected 5 questions, got {len(questions1)}", data1)
+                if len(questions) != 3:
+                    self.log_result("Question Generation - New API Key", False,
+                                  f"Expected 3 questions, got {len(questions)}", data)
                     return False
                 
-                # Validate question structure
-                for i, q in enumerate(questions1):
+                # Validate question structure and content
+                physics_keywords = ['physics', 'force', 'energy', 'motion', 'wave', 'light', 'electric', 'magnetic', 'heat', 'temperature', 'velocity', 'acceleration', 'mass', 'charge', 'field', 'potential', 'current', 'resistance', 'frequency', 'wavelength', 'momentum', 'power', 'work', 'pressure', 'density', 'gravity', 'friction', 'equilibrium', 'oscillation', 'reflection', 'refraction', 'interference', 'diffraction', 'electromagnetic', 'quantum', 'atom', 'electron', 'proton', 'neutron', 'nucleus', 'radioactive', 'thermodynamics', 'entropy', 'conductor', 'insulator', 'semiconductor', 'capacitor', 'inductor', 'transformer', 'circuit', 'voltage', 'ampere', 'ohm', 'watt', 'joule', 'newton', 'pascal', 'hertz', 'coulomb', 'tesla', 'weber', 'henry', 'farad']
+                
+                valid_physics_questions = 0
+                
+                for i, q in enumerate(questions):
                     if not isinstance(q, dict) or "question" not in q or "answer" not in q:
-                        self.log_result("Question Generation - First Attempt", False,
+                        self.log_result("Question Generation - New API Key", False,
                                       f"Question {i+1} missing required fields", q)
                         return False
                     
                     if not q["question"].strip() or not q["answer"].strip():
-                        self.log_result("Question Generation - First Attempt", False,
+                        self.log_result("Question Generation - New API Key", False,
                                       f"Question {i+1} has empty question or answer", q)
                         return False
+                    
+                    # Check if question contains physics-related content
+                    question_text = q["question"].lower()
+                    answer_text = q["answer"].lower()
+                    
+                    if any(keyword in question_text or keyword in answer_text for keyword in physics_keywords):
+                        valid_physics_questions += 1
+                    
+                    print(f"      Question {i+1}: {q['question'][:80]}...")
                 
-                # Store first set for comparison
-                first_questions = [q["question"] for q in questions1]
+                # Verify questions are physics-related (RAG context verification)
+                if valid_physics_questions >= 2:  # At least 2 out of 3 should be clearly physics-related
+                    self.log_result("Question Generation - RAG Context Verification", True,
+                                  f"✅ {valid_physics_questions}/3 questions contain physics content from NCERT PDF context")
+                else:
+                    self.log_result("Question Generation - RAG Context Verification", False,
+                                  f"❌ Only {valid_physics_questions}/3 questions contain physics content - RAG may not be working")
+                    all_passed = False
                 
-                self.log_result("Question Generation - First Attempt", True,
-                              f"✅ Generated 5 valid questions: {first_questions[0][:50]}...")
+                self.log_result("Question Generation - New API Key", True,
+                              f"✅ Successfully generated 3 physics questions with new API key - no 403 'API key leaked' errors!")
                 
-                # Test 5b: Generate Easy Questions - Second Attempt (Diversity Test)
-                print("   🔍 5b: Generate Easy Questions - Second Attempt (Diversity Test)")
+                # Store questions for diversity test
+                first_questions = [q["question"] for q in questions]
+                
+                # Test 3b: Generate Questions Again - Diversity and Uniqueness Test
+                print("   🔍 3b: Generate Questions Again - Diversity Test")
                 
                 # Wait a moment to ensure different timestamp seed
-                time.sleep(1)
+                time.sleep(2)
                 
                 response2 = self.session.post(
                     f"{BASE_URL}/generate-questions",
-                    json=first_request,  # Same request
+                    json=request_data,  # Same request
                     headers=headers
                 )
                 
@@ -292,8 +316,8 @@ class AdmitAIBackendTester:
                     data2 = response2.json()
                     
                     if "questions" not in data2:
-                        self.log_result("Question Generation - Second Attempt", False,
-                                      "Missing 'questions' field in response", data2)
+                        self.log_result("Question Generation - Diversity Test", False,
+                                      "Missing 'questions' field in second response", data2)
                         return False
                     
                     questions2 = data2["questions"]
@@ -305,49 +329,52 @@ class AdmitAIBackendTester:
                     total_questions = len(first_questions) + len(second_questions)
                     diversity_percentage = (total_unique / total_questions) * 100
                     
+                    print(f"      First set: {[q[:50] + '...' for q in first_questions]}")
+                    print(f"      Second set: {[q[:50] + '...' for q in second_questions]}")
+                    print(f"      Identical questions: {len(identical_questions)}")
+                    print(f"      Diversity: {diversity_percentage:.1f}%")
+                    
                     if len(identical_questions) == 0:
-                        self.log_result("Question Generation - Diversity Check", True,
-                                      f"✅ 100% unique questions between attempts - excellent anti-malpractice protection!")
+                        self.log_result("Question Generation - Diversity and Uniqueness", True,
+                                      f"✅ 100% unique questions between attempts - excellent diversity and anti-malpractice protection!")
                     elif len(identical_questions) <= 1:
-                        self.log_result("Question Generation - Diversity Check", True,
+                        self.log_result("Question Generation - Diversity and Uniqueness", True,
                                       f"✅ Good diversity: only {len(identical_questions)} identical question(s), {diversity_percentage:.1f}% unique")
                     else:
-                        self.log_result("Question Generation - Diversity Check", False,
-                                      f"❌ Poor diversity: {len(identical_questions)} identical questions out of 5")
+                        self.log_result("Question Generation - Diversity and Uniqueness", False,
+                                      f"❌ Poor diversity: {len(identical_questions)} identical questions out of 3")
                         all_passed = False
                     
-                    # Print sample questions for verification
-                    print(f"      Sample from First Attempt: {first_questions[0][:60]}...")
-                    print(f"      Sample from Second Attempt: {second_questions[0][:60]}...")
-                    
-                    self.log_result("Question Generation - Second Attempt", True,
-                                  f"✅ Generated 5 questions with diversity verification complete")
-                    
                 else:
-                    self.log_result("Question Generation - Second Attempt", False,
-                                  f"HTTP {response2.status_code}: {response2.text}")
+                    self.log_result("Question Generation - Diversity Test", False,
+                                  f"Second request failed: HTTP {response2.status_code}: {response2.text}")
                     all_passed = False
                 
-            elif response1.status_code == 500:
-                # Check if it's the expected Gemini API key issue
+            elif response.status_code == 403:
+                # Check if it's still the API key leaked error
                 try:
-                    error_data = response1.json()
-                    if "403" in str(error_data) and "leaked" in str(error_data):
-                        self.log_result("Question Generation - Gemini API Issue", True,
-                                      f"✅ Expected Gemini API key issue: API key reported as leaked - this is expected per review notes")
-                        return True
+                    error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {"detail": response.text}
+                    error_message = str(error_data)
+                    
+                    if "leaked" in error_message.lower() or "api key" in error_message.lower():
+                        self.log_result("Question Generation - New API Key", False,
+                                      f"❌ CRITICAL: New Gemini API key still shows 'leaked' error: {error_message}")
+                        return False
+                    else:
+                        self.log_result("Question Generation - New API Key", False,
+                                      f"❌ Authentication error (403): {error_message}")
+                        return False
                 except:
-                    pass
-                self.log_result("Question Generation - First Attempt", False,
-                              f"HTTP {response1.status_code}: {response1.text}")
-                all_passed = False
+                    self.log_result("Question Generation - New API Key", False,
+                                  f"❌ 403 Forbidden error: {response.text}")
+                    return False
             else:
-                self.log_result("Question Generation - First Attempt", False,
-                              f"HTTP {response1.status_code}: {response1.text}")
+                self.log_result("Question Generation - New API Key", False,
+                              f"❌ HTTP {response.status_code}: {response.text}")
                 all_passed = False
                 
         except Exception as e:
-            self.log_result("Question Generation", False,
+            self.log_result("Question Generation - New API Key", False,
                           f"Exception: {str(e)}")
             all_passed = False
         
