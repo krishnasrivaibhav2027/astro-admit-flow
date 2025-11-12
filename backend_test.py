@@ -85,77 +85,47 @@ class AdmitAIBackendTester:
             self.log_result("Health Check", False, f"Exception: {str(e)}")
             return False
     
-    def test_registration(self):
-        """Test 2: Registration endpoint (POST /api/register) - test with a new unique email"""
-        print("\n🔍 Test 2: Registration Endpoint")
+    def test_firebase_authentication(self):
+        """Test 2: Firebase Authentication - Verify that Firebase token-based authentication is working"""
+        print("\n🔍 Test 2: Firebase Authentication")
         
-        # Based on the error, it seems the custom authentication with password column is not set up
-        # Let's test if the endpoint exists and handles the missing schema gracefully
         try:
-            # Generate unique email for testing
-            timestamp = int(time.time())
-            self.test_user_email = f"admitai_test_{timestamp}@gmail.com"
+            # Get Firebase API key from backend .env
+            firebase_api_key = "AIzaSyDxDFMOm6UR87WTzVtG2XSUMY6mxQM6SrA"
             
-            registration_data = {
-                "first_name": "AdmitAI",
-                "last_name": "TestUser",
-                "age": 20,
-                "dob": "2004-01-15",
+            # Create a test user with Firebase
+            signup_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={firebase_api_key}"
+            
+            timestamp = int(time.time())
+            self.test_user_email = f"firebase_test_{timestamp}@gmail.com"
+            
+            signup_data = {
                 "email": self.test_user_email,
-                "phone": "+1234567890",
-                "password": self.test_user_password
+                "password": self.test_user_password,
+                "returnSecureToken": True
             }
             
-            response = self.session.post(
-                f"{BASE_URL}/register",
-                json=registration_data,
-                headers={"Content-Type": "application/json"}
-            )
+            response = self.session.post(signup_url, json=signup_data)
             
             if response.status_code == 200:
                 data = response.json()
+                self.firebase_token = data.get("idToken")
                 
-                # Validate response structure
-                required_fields = ["success", "message", "token", "student_id", "student"]
-                missing_fields = [field for field in required_fields if field not in data]
-                
-                if missing_fields:
-                    self.log_result("Registration", False, 
-                                  f"Missing fields: {missing_fields}", data)
-                    return False
-                
-                if data.get("success") and data.get("token"):
-                    self.jwt_token = data["token"]  # Store JWT token for subsequent tests
-                    student_id = data.get("student_id")
-                    student_info = data.get("student", {})
-                    
-                    self.log_result("Registration", True, 
-                                  f"✅ User registered successfully with email {self.test_user_email}, student_id: {student_id}")
+                if self.firebase_token:
+                    self.log_result("Firebase Authentication", True, 
+                                  f"✅ Firebase user created successfully: {self.test_user_email}")
                     return True
                 else:
-                    self.log_result("Registration", False, 
-                                  f"Registration failed: {data.get('message', 'Unknown error')}", data)
+                    self.log_result("Firebase Authentication", False, 
+                                  "No Firebase token received", data)
                     return False
-            elif response.status_code == 500:
-                # Check if it's the password column issue
-                try:
-                    error_data = response.json()
-                    if "password" in str(error_data) and "column" in str(error_data):
-                        self.log_result("Registration", False, 
-                                      f"❌ CRITICAL: Database schema missing 'password' column - custom authentication not properly configured", error_data)
-                        return False
-                except:
-                    pass
-                self.log_result("Registration", False, 
-                              f"HTTP {response.status_code}: {response.text}")
-                return False
             else:
-                self.log_result("Registration", False, 
-                              f"HTTP {response.status_code}: {response.text}")
+                self.log_result("Firebase Authentication", False, 
+                              f"Firebase signup failed: {response.status_code} - {response.text}")
                 return False
                 
         except Exception as e:
-            self.log_result("Registration", False, f"Exception: {str(e)}")
+            self.log_result("Firebase Authentication", False, f"Exception: {str(e)}")
             return False
     
     def test_login(self):
