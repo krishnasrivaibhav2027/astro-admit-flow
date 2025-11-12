@@ -394,8 +394,8 @@ class AdmitAIBackendTester:
 
     def run_comprehensive_test(self):
         """Run comprehensive backend test as requested in review"""
-        print("🚀 AdmitAI Backend API Comprehensive Testing")
-        print("📋 Review Request: Test health check, registration, login, question generation, and endpoint accessibility")
+        print("🚀 AdmitAI Backend API Firebase Authentication Testing")
+        print("📋 Review Request: Test cleaned-up backend with Firebase auth, verify removed custom auth endpoints")
         print(f"📍 Base URL: {BASE_URL}")
         print(f"⏰ Timeout: {TIMEOUT}s")
         print("=" * 80)
