@@ -201,7 +201,7 @@ async def health_check():
 # ===== STUDENT ENDPOINTS =====
 @api_router.post("/students")
 async def create_student(student: StudentCreate, current_user: Dict = Depends(get_current_user)):
-    """Create student - JWT Protected"""
+    """Create student - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
