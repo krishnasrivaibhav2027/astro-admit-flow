@@ -721,9 +721,9 @@ class AdmitAIBackendTester:
             return False
 
     def run_comprehensive_test(self):
-        """Run comprehensive backend test as requested in review"""
-        print("🚀 AdmitAI Backend API - Gemini AI Question Generation Testing")
-        print("📋 Review Request: Test Gemini AI question generation functionality with newly updated API key")
+        """Run comprehensive backend test for answer evaluation system"""
+        print("🚀 AdmitAI Backend API - Answer Evaluation System Testing")
+        print("📋 Review Request: Test the improved answer evaluation system to verify it properly fails incorrect answers")
         print(f"📍 Base URL: {BASE_URL}")
         print(f"⏰ Timeout: {TIMEOUT}s")
         print("=" * 80)
@@ -732,7 +732,11 @@ class AdmitAIBackendTester:
         tests = [
             ("1. Health Check", self.test_health_check),
             ("2. Firebase Authentication", self.test_firebase_authentication),
-            ("3. Question Generation with New API Key", self.test_question_generation_with_new_api_key)
+            ("3. Student Management", self.test_student_management),
+            ("4. Create Test Result Entry", self.test_create_result_entry),
+            ("5. Generate and Save Questions", self.test_generate_and_save_questions),
+            ("6. Submit Wrong Answers", self.test_submit_wrong_answers),
+            ("7. Evaluate Wrong Answers", self.test_evaluate_wrong_answers)
         ]
         
         total_tests = 0
