@@ -21,11 +21,14 @@ import time
 BASE_URL = "https://repair-wizard-26.preview.emergentagent.com/api"
 TIMEOUT = 30
 
-class BackendTester:
+class AdmitAIBackendTester:
     def __init__(self):
         self.results = []
         self.session = requests.Session()
         self.session.timeout = TIMEOUT
+        self.jwt_token = None
+        self.test_user_email = None
+        self.test_user_password = "TestPassword123!"
         
     def log_result(self, test_name, success, details, response_data=None):
         """Log test result"""
@@ -43,7 +46,8 @@ class BackendTester:
             print(f"   Response: {response_data}")
         
     def test_health_check(self):
-        """Test 1: Health check endpoint - CRITICAL"""
+        """Test 1: Health check endpoint (GET /api/health) - verify database connection and RAG status"""
+        print("\n🔍 Test 1: Health Check Endpoint")
         try:
             response = self.session.get(f"{BASE_URL}/health")
             
@@ -61,8 +65,9 @@ class BackendTester:
                 
                 # Check values
                 if data.get("status") == "healthy" and data.get("database") == "connected":
+                    rag_status = "enabled" if data.get("rag_enabled") else "disabled"
                     self.log_result("Health Check", True, 
-                                  f"Status: {data['status']}, DB: {data['database']}, RAG: {data['rag_enabled']}", 
+                                  f"✅ Backend healthy, database connected, RAG {rag_status}", 
                                   data)
                     return True
                 else:
