@@ -83,42 +83,116 @@ class AdmitAIBackendTester:
             self.log_result("Health Check", False, f"Exception: {str(e)}")
             return False
     
-    def get_firebase_token(self):
-        """Get Firebase authentication token for testing"""
+    def test_registration(self):
+        """Test 2: Registration endpoint (POST /api/register) - test with a new unique email"""
+        print("\n🔍 Test 2: Registration Endpoint")
         try:
-            # Create a test user and get Firebase token
-            import requests
+            # Generate unique email for testing
+            timestamp = int(time.time())
+            self.test_user_email = f"admitai_test_{timestamp}@gmail.com"
             
-            # Firebase Auth REST API endpoint
-            firebase_auth_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_CONFIG['apiKey']}"
-            
-            # Test credentials - using a known test account
-            test_credentials = {
-                "email": "testuser@example.com",
-                "password": "TestPassword123!",
-                "returnSecureToken": True
+            registration_data = {
+                "first_name": "AdmitAI",
+                "last_name": "TestUser",
+                "age": 20,
+                "dob": "2004-01-15",
+                "email": self.test_user_email,
+                "phone": "+1234567890",
+                "password": self.test_user_password
             }
             
-            response = requests.post(firebase_auth_url, json=test_credentials)
+            response = self.session.post(
+                f"{BASE_URL}/register",
+                json=registration_data,
+                headers={"Content-Type": "application/json"}
+            )
             
             if response.status_code == 200:
                 data = response.json()
-                return data.get("idToken")
-            else:
-                # If test user doesn't exist, try to create one
-                signup_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_CONFIG['apiKey']}"
-                signup_response = requests.post(signup_url, json=test_credentials)
                 
-                if signup_response.status_code == 200:
-                    signup_data = signup_response.json()
-                    return signup_data.get("idToken")
-                else:
-                    print(f"Failed to create test user: {signup_response.text}")
-                    return None
+                # Validate response structure
+                required_fields = ["success", "message", "token", "student_id", "student"]
+                missing_fields = [field for field in required_fields if field not in data]
+                
+                if missing_fields:
+                    self.log_result("Registration", False, 
+                                  f"Missing fields: {missing_fields}", data)
+                    return False
+                
+                if data.get("success") and data.get("token"):
+                    self.jwt_token = data["token"]  # Store JWT token for subsequent tests
+                    student_id = data.get("student_id")
+                    student_info = data.get("student", {})
                     
+                    self.log_result("Registration", True, 
+                                  f"✅ User registered successfully with email {self.test_user_email}, student_id: {student_id}")
+                    return True
+                else:
+                    self.log_result("Registration", False, 
+                                  f"Registration failed: {data.get('message', 'Unknown error')}", data)
+                    return False
+            else:
+                self.log_result("Registration", False, 
+                              f"HTTP {response.status_code}: {response.text}")
+                return False
+                
         except Exception as e:
-            print(f"Error getting Firebase token: {str(e)}")
-            return None
+            self.log_result("Registration", False, f"Exception: {str(e)}")
+            return False
+    
+    def test_login(self):
+        """Test 3: Login endpoint (POST /api/login) - test with the registered credentials"""
+        print("\n🔍 Test 3: Login Endpoint")
+        
+        if not self.test_user_email:
+            self.log_result("Login", False, "No test user email available - registration may have failed")
+            return False
+        
+        try:
+            login_data = {
+                "email": self.test_user_email,
+                "password": self.test_user_password
+            }
+            
+            response = self.session.post(
+                f"{BASE_URL}/login",
+                json=login_data,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Validate response structure
+                required_fields = ["success", "message", "token", "student"]
+                missing_fields = [field for field in required_fields if field not in data]
+                
+                if missing_fields:
+                    self.log_result("Login", False, 
+                                  f"Missing fields: {missing_fields}", data)
+                    return False
+                
+                if data.get("success") and data.get("token"):
+                    # Update JWT token (should be same as registration, but good to refresh)
+                    self.jwt_token = data["token"]
+                    student_info = data.get("student", {})
+                    student_name = f"{student_info.get('first_name', '')} {student_info.get('last_name', '')}"
+                    
+                    self.log_result("Login", True, 
+                                  f"✅ User logged in successfully: {student_name} ({self.test_user_email})")
+                    return True
+                else:
+                    self.log_result("Login", False, 
+                                  f"Login failed: {data.get('message', 'Unknown error')}", data)
+                    return False
+            else:
+                self.log_result("Login", False, 
+                              f"HTTP {response.status_code}: {response.text}")
+                return False
+                
+        except Exception as e:
+            self.log_result("Login", False, f"Exception: {str(e)}")
+            return False
 
     def test_question_generation_diversity(self):
         """Test 2: Question generation diversity system - CRITICAL"""
