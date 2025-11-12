@@ -539,7 +539,7 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                 context_docs = get_physics_context(q.get('question_text', ''), k=2)
                 context = "\n\n".join(context_docs) if context_docs else ""
                 
-                # Evaluate using LangChain prompt
+                # Evaluate using LangChain prompt with strict evaluator LLM
                 prompt = evaluate_answer_prompt.format_messages(
                     context=context[:1500],
                     question=q.get('question_text', ''),
@@ -547,7 +547,7 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                     student_answer=student_answer
                 )
                 
-                response = llm.invoke(prompt)
+                response = evaluator_llm.invoke(prompt)
                 response_text = response.content.strip()
                 
                 # Clean up response
