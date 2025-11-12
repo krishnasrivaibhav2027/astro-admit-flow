@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-Backend API Testing for AI Admission Test Application
-Tests all backend endpoints with comprehensive validation
+AdmitAI Backend API Testing - Comprehensive Review
+Tests all backend endpoints as requested in review:
+1. Health check endpoint (GET /api/health) - verify database connection and RAG status
+2. Registration endpoint (POST /api/register) - test with a new unique email
+3. Login endpoint (POST /api/login) - test with the registered credentials
+4. Question generation endpoint (POST /api/generate-questions) - test with JWT token from login, verify diverse questions are generated
+5. Verify all endpoints are accessible and returning proper responses
 """
 
 import requests
@@ -10,17 +15,11 @@ import sys
 from datetime import datetime
 import uuid
 import os
+import time
 
 # Configuration
 BASE_URL = "https://repair-wizard-26.preview.emergentagent.com/api"
 TIMEOUT = 30
-
-# Firebase configuration for authentication testing
-FIREBASE_CONFIG = {
-    "apiKey": "AIzaSyDxDFMOm6UR87WTzVtG2XSUMY6mxQM6SrA",
-    "authDomain": "ai-admission-26c27.firebaseapp.com",
-    "projectId": "ai-admission-26c27"
-}
 
 class BackendTester:
     def __init__(self):
