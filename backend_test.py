@@ -12,7 +12,7 @@ import uuid
 import os
 
 # Configuration
-BASE_URL = "https://admitest-pro.preview.emergentagent.com/api"
+BASE_URL = "https://repair-wizard-26.preview.emergentagent.com/api"
 TIMEOUT = 30
 
 # Firebase configuration for authentication testing
