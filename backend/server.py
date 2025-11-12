@@ -288,7 +288,7 @@ async def update_student_phone(student_id: str, request: UpdatePhoneRequest, cur
 
 @api_router.get("/students/{student_id}")
 async def get_student(student_id: str, current_user: Dict = Depends(get_current_user)):
-    """Get student by ID - JWT Protected"""
+    """Get student by ID - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         response = supabase.table("students").select("*").eq("id", student_id).execute()
