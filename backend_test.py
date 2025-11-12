@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """
-AdmitAI Backend API Testing - Gemini AI Question Generation with New API Key
-Tests Gemini AI question generation functionality with newly updated API key as requested in review:
-1. Health Check - Verify backend is healthy with RAG enabled
-2. Firebase Authentication - Create a test Firebase user and get authentication token
-3. Question Generation Test - Call POST /api/generate-questions endpoint with Firebase auth and verify no 403 "API key leaked" errors
-4. RAG System Verification - Verify that generated questions use context from NCERT Physics PDF and are diverse/unique
+AdmitAI Backend API Testing - Answer Evaluation System Testing
+Tests the improved answer evaluation system to verify it properly fails incorrect answers:
+1. Create Firebase test user and authenticate
+2. Create a test result entry for "easy" level
+3. Generate 3 questions for easy level
+4. Save those questions to the result
+5. Submit intentionally wrong answers (gibberish, random text, empty)
+6. Call POST /api/evaluate-answers with the result_id
+7. Verify that all 3 questions get LOW scores (below 3.0 average)
+8. Verify the overall result is "fail" (not "pass")
+9. Verify the score is below 5.0/10
+10. Check that each evaluation criterion is low for wrong answers
 """
 
 import requests
