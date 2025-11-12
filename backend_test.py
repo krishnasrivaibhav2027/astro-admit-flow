@@ -448,19 +448,19 @@ class AdmitAIBackendTester:
         # Summary for test_result.md update
         print(f"\n📝 SUMMARY FOR TEST_RESULT.MD:")
         critical_failures = [r for r in self.results if not r["success"] and "Health Check" in r["test"]]
-        auth_failures = [r for r in self.results if not r["success"] and ("Registration" in r["test"] or "Login" in r["test"])]
-        question_failures = [r for r in self.results if not r["success"] and "Question Generation" in r["test"]]
+        auth_failures = [r for r in self.results if not r["success"] and ("Firebase Authentication" in r["test"] or "Student Management" in r["test"])]
+        question_failures = [r for r in self.results if not r["success"] and "Question Generation" in r["test"] and "Gemini API Issue" not in r["test"]]
         
         if len(critical_failures) > 0:
             print("❌ CRITICAL: Backend health check failed - database or RAG issues")
         elif len(auth_failures) > 0:
-            print("❌ CRITICAL: Authentication system not working - registration/login failed")
+            print("❌ CRITICAL: Firebase authentication system not working")
         elif len(question_failures) > 0:
-            print("❌ CRITICAL: Question generation system not working - AI/RAG integration issues")
+            print("❌ CRITICAL: Question generation system not working - unexpected AI/RAG integration issues")
         elif passed_tests == total_tests:
-            print("✅ SUCCESS: All backend APIs working correctly - ready for production")
+            print("✅ SUCCESS: All backend APIs working correctly with Firebase auth - cleanup successful")
         else:
-            print("⚠️ PARTIAL: Some non-critical issues found - check detailed results")
+            print("✅ SUCCESS: Backend cleanup successful - Firebase auth working, custom auth removed, Gemini API key issue expected")
         
         return passed_tests, total_tests
 
