@@ -128,58 +128,60 @@ class AdmitAIBackendTester:
             self.log_result("Firebase Authentication", False, f"Exception: {str(e)}")
             return False
     
-    def test_login(self):
-        """Test 3: Login endpoint (POST /api/login) - test with the registered credentials"""
-        print("\n🔍 Test 3: Login Endpoint")
+    def test_student_management(self):
+        """Test 3: Student Management - Test POST /api/students endpoint with Firebase token"""
+        print("\n🔍 Test 3: Student Management with Firebase Token")
         
-        if not self.test_user_email:
-            self.log_result("Login", False, "No test user email available - registration may have failed")
+        if not self.firebase_token:
+            self.log_result("Student Management", False, "No Firebase token available - Firebase auth may have failed")
             return False
         
         try:
-            login_data = {
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.firebase_token}"
+            }
+            
+            student_data = {
+                "first_name": "Firebase",
+                "last_name": "TestUser",
+                "age": 20,
+                "dob": "2004-01-15",
                 "email": self.test_user_email,
-                "password": self.test_user_password
+                "phone": "+1234567890"
             }
             
             response = self.session.post(
-                f"{BASE_URL}/login",
-                json=login_data,
-                headers={"Content-Type": "application/json"}
+                f"{BASE_URL}/students",
+                json=student_data,
+                headers=headers
             )
             
             if response.status_code == 200:
                 data = response.json()
                 
                 # Validate response structure
-                required_fields = ["success", "message", "token", "student"]
+                required_fields = ["id", "first_name", "last_name", "email"]
                 missing_fields = [field for field in required_fields if field not in data]
                 
                 if missing_fields:
-                    self.log_result("Login", False, 
+                    self.log_result("Student Management", False, 
                                   f"Missing fields: {missing_fields}", data)
                     return False
                 
-                if data.get("success") and data.get("token"):
-                    # Update JWT token (should be same as registration, but good to refresh)
-                    self.jwt_token = data["token"]
-                    student_info = data.get("student", {})
-                    student_name = f"{student_info.get('first_name', '')} {student_info.get('last_name', '')}"
-                    
-                    self.log_result("Login", True, 
-                                  f"✅ User logged in successfully: {student_name} ({self.test_user_email})")
-                    return True
-                else:
-                    self.log_result("Login", False, 
-                                  f"Login failed: {data.get('message', 'Unknown error')}", data)
-                    return False
+                self.student_id = data.get("id")
+                student_name = f"{data.get('first_name', '')} {data.get('last_name', '')}"
+                
+                self.log_result("Student Management", True, 
+                              f"✅ Student created successfully: {student_name} (ID: {self.student_id})")
+                return True
             else:
-                self.log_result("Login", False, 
+                self.log_result("Student Management", False, 
                               f"HTTP {response.status_code}: {response.text}")
                 return False
                 
         except Exception as e:
-            self.log_result("Login", False, f"Exception: {str(e)}")
+            self.log_result("Student Management", False, f"Exception: {str(e)}")
             return False
     
     def test_firebase_authentication(self):
