@@ -278,8 +278,8 @@ class AdmitAIBackendTester:
                 self.log_result("Question Generation - First Attempt", True,
                               f"✅ Generated 5 valid questions: {first_questions[0][:50]}...")
                 
-                # Test 4b: Generate Easy Questions - Second Attempt (Diversity Test)
-                print("   🔍 4b: Generate Easy Questions - Second Attempt (Diversity Test)")
+                # Test 5b: Generate Easy Questions - Second Attempt (Diversity Test)
+                print("   🔍 5b: Generate Easy Questions - Second Attempt (Diversity Test)")
                 
                 # Wait a moment to ensure different timestamp seed
                 time.sleep(1)
