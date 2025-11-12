@@ -681,50 +681,121 @@ class AdmitAIBackendTester:
                           f"Exception checking logs: {str(e)}")
             return False
 
-    def run_all_tests(self):
-        """Run all backend tests in priority order"""
-        print(f"🚀 Starting Backend API Tests - Question Generation Diversity Focus")
+    def test_endpoint_accessibility(self):
+        """Test 5: Verify all endpoints are accessible and returning proper responses"""
+        print("\n🔍 Test 5: Endpoint Accessibility Verification")
+        
+        endpoints_to_test = [
+            ("GET", "/", "Root endpoint"),
+            ("GET", "/health", "Health check"),
+            ("POST", "/register", "Registration"),
+            ("POST", "/login", "Login"),
+            ("POST", "/generate-questions", "Question generation"),
+        ]
+        
+        all_passed = True
+        
+        for method, endpoint, description in endpoints_to_test:
+            try:
+                url = f"{BASE_URL}{endpoint}"
+                
+                if method == "GET":
+                    response = self.session.get(url)
+                else:
+                    # For POST endpoints, send minimal valid data or expect proper error handling
+                    if endpoint == "/register":
+                        # Test with invalid data to check error handling
+                        response = self.session.post(url, json={}, headers={"Content-Type": "application/json"})
+                    elif endpoint == "/login":
+                        # Test with invalid data to check error handling
+                        response = self.session.post(url, json={}, headers={"Content-Type": "application/json"})
+                    elif endpoint == "/generate-questions":
+                        # Test without auth to check auth requirement
+                        response = self.session.post(url, json={"level": "easy", "num_questions": 5}, headers={"Content-Type": "application/json"})
+                    else:
+                        response = self.session.post(url, json={}, headers={"Content-Type": "application/json"})
+                
+                # Check if endpoint is accessible (not 404)
+                if response.status_code == 404:
+                    self.log_result(f"Endpoint Accessibility - {description}", False,
+                                  f"Endpoint {endpoint} not found (404)")
+                    all_passed = False
+                elif response.status_code >= 500:
+                    self.log_result(f"Endpoint Accessibility - {description}", False,
+                                  f"Server error {response.status_code} for {endpoint}")
+                    all_passed = False
+                else:
+                    # Endpoint is accessible (may return 400, 401, 422 etc. but that's expected for invalid data)
+                    self.log_result(f"Endpoint Accessibility - {description}", True,
+                                  f"✅ {endpoint} accessible (HTTP {response.status_code})")
+                    
+            except Exception as e:
+                self.log_result(f"Endpoint Accessibility - {description}", False,
+                              f"Exception accessing {endpoint}: {str(e)}")
+                all_passed = False
+        
+        return all_passed
+
+    def run_comprehensive_test(self):
+        """Run comprehensive backend test as requested in review"""
+        print("🚀 AdmitAI Backend API Comprehensive Testing")
+        print("📋 Review Request: Test health check, registration, login, question generation, and endpoint accessibility")
         print(f"📍 Base URL: {BASE_URL}")
         print(f"⏰ Timeout: {TIMEOUT}s")
-        print("=" * 60)
+        print("=" * 80)
         
-        # Test in priority order as specified in review request
+        # Test in exact order as specified in review request
         tests = [
-            ("CRITICAL", self.test_health_check),
-            ("CRITICAL", self.test_question_generation_diversity),  # NEW: Primary focus test
-            ("CRITICAL", self.test_question_generation),
-            ("MEDIUM", self.check_backend_logs_for_diversity),  # NEW: Log verification
-            ("CRITICAL", self.test_answer_evaluation),
-            ("HIGH", self.test_student_management),
-            ("MEDIUM", self.test_email_notifications)
+            ("1. Health Check", self.test_health_check),
+            ("2. Registration", self.test_registration),
+            ("3. Login", self.test_login),
+            ("4. Question Generation", self.test_question_generation),
+            ("5. Endpoint Accessibility", self.test_endpoint_accessibility)
         ]
         
         total_tests = 0
         passed_tests = 0
         
-        for priority, test_func in tests:
-            print(f"\n🔍 Running {priority} priority test: {test_func.__name__}")
+        for test_name, test_func in tests:
+            print(f"\n🔍 Running {test_name}")
             try:
                 result = test_func()
                 total_tests += 1
                 if result:
                     passed_tests += 1
             except Exception as e:
-                print(f"❌ Test {test_func.__name__} crashed: {str(e)}")
+                print(f"❌ Test {test_name} crashed: {str(e)}")
                 total_tests += 1
         
-        print("\n" + "=" * 60)
-        print(f"📊 TEST SUMMARY - QUESTION GENERATION DIVERSITY TESTING")
+        print("\n" + "=" * 80)
+        print(f"📊 ADMITAI BACKEND API TEST SUMMARY")
         print(f"Total Tests: {total_tests}")
         print(f"Passed: {passed_tests}")
         print(f"Failed: {total_tests - passed_tests}")
         print(f"Success Rate: {(passed_tests/total_tests)*100:.1f}%" if total_tests > 0 else "0%")
         
         # Print detailed results
-        print(f"\n📋 DETAILED RESULTS:")
+        print(f"\n📋 DETAILED TEST RESULTS:")
         for result in self.results:
             status = "✅" if result["success"] else "❌"
             print(f"{status} {result['test']}: {result['details']}")
+        
+        # Summary for test_result.md update
+        print(f"\n📝 SUMMARY FOR TEST_RESULT.MD:")
+        critical_failures = [r for r in self.results if not r["success"] and "Health Check" in r["test"]]
+        auth_failures = [r for r in self.results if not r["success"] and ("Registration" in r["test"] or "Login" in r["test"])]
+        question_failures = [r for r in self.results if not r["success"] and "Question Generation" in r["test"]]
+        
+        if len(critical_failures) > 0:
+            print("❌ CRITICAL: Backend health check failed - database or RAG issues")
+        elif len(auth_failures) > 0:
+            print("❌ CRITICAL: Authentication system not working - registration/login failed")
+        elif len(question_failures) > 0:
+            print("❌ CRITICAL: Question generation system not working - AI/RAG integration issues")
+        elif passed_tests == total_tests:
+            print("✅ SUCCESS: All backend APIs working correctly - ready for production")
+        else:
+            print("⚠️ PARTIAL: Some non-critical issues found - check detailed results")
         
         return passed_tests, total_tests
 
