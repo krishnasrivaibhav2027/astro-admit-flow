@@ -125,9 +125,9 @@ backend:
   
   - task: "Gemini AI question generation using RAG"
     implemented: true
-    working: false
+    working: true
     file: "backend/server.py, backend/rag_module.py"
-    stuck_count: 1
+    stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
@@ -143,6 +143,9 @@ backend:
       - working: false
         agent: "testing"
         comment: "✅ EXPECTED GEMINI API KEY ISSUE CONFIRMED: Tested question generation endpoint with Firebase authentication - endpoint properly requires Firebase token (403 without auth), but returns expected '403 Your API key was reported as leaked' error when authenticated. This confirms: 1) Firebase authentication integration working correctly, 2) RAG system and backend integration functional, 3) Only Gemini API key needs replacement as noted in review. Question generation system architecture is sound, just needs new API key."
+      - working: true
+        agent: "testing"
+        comment: "✅ NEW GEMINI API KEY WORKING PERFECTLY: Tested Gemini AI question generation functionality with newly updated API key as requested in review. COMPREHENSIVE TEST RESULTS: 1) ✅ Health Check: Backend healthy, database connected, RAG enabled. 2) ✅ Firebase Authentication: Successfully created test Firebase user (firebase_test_1762960188@gmail.com) and obtained authentication token. 3) ✅ Question Generation Test: Called POST /api/generate-questions endpoint with Firebase auth and request body {'level': 'easy', 'num_questions': 3} - successfully returned JSON with 3 physics questions, NO 403 'API key leaked' errors detected. 4) ✅ RAG System Verification: All 3/3 generated questions contain physics content from NCERT Physics PDF context (topics: longitudinal/transverse waves, magnetic materials, electric current SI units). 5) ✅ Question Diversity: Generated questions again immediately - achieved 100% unique questions between attempts with excellent anti-malpractice protection. Sample questions: 'Distinguish between a longitudinal wave and a transverse wave...', 'A certain material is observed to be slightly repelled when placed near a strong magnet...', 'What is the SI unit for electric current...'. CRITICAL SUCCESS: New Gemini API key completely resolves the previous 'leaked' error issue. Question generation system is now fully operational with RAG-powered contextual physics questions that are diverse and unique."
   
   - task: "Firebase Authentication Integration (Cleaned-up Backend)"
     implemented: true
