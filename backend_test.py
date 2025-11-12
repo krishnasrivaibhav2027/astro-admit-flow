@@ -347,57 +347,47 @@ class AdmitAIBackendTester:
         
         return all_passed
     
-    def test_endpoint_accessibility(self):
-        """Test 5: Verify all endpoints are accessible and returning proper responses"""
-        print("\n🔍 Test 5: Endpoint Accessibility Verification")
+    def test_protected_endpoints_auth(self):
+        """Test 6: All protected endpoints - Verify they require Firebase authentication"""
+        print("\n🔍 Test 6: Protected Endpoints Authentication Requirements")
         
-        endpoints_to_test = [
-            ("GET", "/", "Root endpoint"),
-            ("GET", "/health", "Health check"),
-            ("POST", "/register", "Registration"),
-            ("POST", "/login", "Login"),
+        protected_endpoints = [
+            ("POST", "/students", "Student creation"),
+            ("GET", "/students", "Student listing"),
             ("POST", "/generate-questions", "Question generation"),
+            ("POST", "/create-result", "Create test result"),
+            ("POST", "/save-questions", "Save questions"),
+            ("POST", "/evaluate-answers", "Evaluate answers"),
+            ("POST", "/send-notification", "Send notification")
         ]
         
         all_passed = True
         
-        for method, endpoint, description in endpoints_to_test:
+        for method, endpoint, description in protected_endpoints:
             try:
                 url = f"{BASE_URL}{endpoint}"
                 
+                # Test without authentication - should return 401/403
                 if method == "GET":
                     response = self.session.get(url)
                 else:
-                    # For POST endpoints, send minimal valid data or expect proper error handling
-                    if endpoint == "/register":
-                        # Test with invalid data to check error handling
-                        response = self.session.post(url, json={}, headers={"Content-Type": "application/json"})
-                    elif endpoint == "/login":
-                        # Test with invalid data to check error handling
-                        response = self.session.post(url, json={}, headers={"Content-Type": "application/json"})
-                    elif endpoint == "/generate-questions":
-                        # Test without auth to check auth requirement
-                        response = self.session.post(url, json={"level": "easy", "num_questions": 5}, headers={"Content-Type": "application/json"})
-                    else:
-                        response = self.session.post(url, json={}, headers={"Content-Type": "application/json"})
+                    response = self.session.post(url, json={}, headers={"Content-Type": "application/json"})
                 
-                # Check if endpoint is accessible (not 404)
-                if response.status_code == 404:
-                    self.log_result(f"Endpoint Accessibility - {description}", False,
-                                  f"Endpoint {endpoint} not found (404)")
-                    all_passed = False
-                elif response.status_code >= 500:
-                    self.log_result(f"Endpoint Accessibility - {description}", False,
-                                  f"Server error {response.status_code} for {endpoint}")
+                if response.status_code in [401, 403, 422]:  # 422 for missing auth header
+                    self.log_result(f"Protected Endpoint - {description}", True,
+                                  f"✅ {endpoint} correctly requires authentication (HTTP {response.status_code})")
+                elif response.status_code == 404:
+                    self.log_result(f"Protected Endpoint - {description}", False,
+                                  f"❌ {endpoint} not found (404) - endpoint may be missing")
                     all_passed = False
                 else:
-                    # Endpoint is accessible (may return 400, 401, 422 etc. but that's expected for invalid data)
-                    self.log_result(f"Endpoint Accessibility - {description}", True,
-                                  f"✅ {endpoint} accessible (HTTP {response.status_code})")
+                    self.log_result(f"Protected Endpoint - {description}", False,
+                                  f"❌ {endpoint} allows access without auth (HTTP {response.status_code})")
+                    all_passed = False
                     
             except Exception as e:
-                self.log_result(f"Endpoint Accessibility - {description}", False,
-                              f"Exception accessing {endpoint}: {str(e)}")
+                self.log_result(f"Protected Endpoint - {description}", False,
+                              f"Exception testing {endpoint}: {str(e)}")
                 all_passed = False
         
         return all_passed
