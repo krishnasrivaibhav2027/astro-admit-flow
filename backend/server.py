@@ -73,21 +73,6 @@ class StudentCreate(BaseModel):
     phone: str
 
 
-class StudentRegister(BaseModel):
-    first_name: str
-    last_name: str
-    age: int
-    dob: str
-    email: str
-    phone: str
-    password: str
-
-
-class StudentLogin(BaseModel):
-    email: str
-    password: str
-
-
 class UpdatePhoneRequest(BaseModel):
     student_id: str
     phone: str
