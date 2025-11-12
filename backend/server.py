@@ -35,10 +35,17 @@ supabase_url = os.environ.get('SUPABASE_URL')
 supabase_key = os.environ.get('SUPABASE_KEY')
 supabase: Client = create_client(supabase_url, supabase_key)
 
-# Initialize LangChain LLM
+# Initialize LangChain LLM for question generation
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     temperature=0.7,
+    api_key=os.environ.get('GEMINI_API_KEY')
+)
+
+# Initialize separate LLM for strict answer evaluation (lower temperature for consistency)
+evaluator_llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
+    temperature=0.1,  # Low temperature for consistent, strict grading
     api_key=os.environ.get('GEMINI_API_KEY')
 )
 
