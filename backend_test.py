@@ -478,6 +478,7 @@ class AdmitAIBackendTester:
             ("1. Health Check", self.test_health_check),
             ("2. Registration", self.test_registration),
             ("3. Login", self.test_login),
+            ("3b. Firebase Authentication", self.test_firebase_authentication),
             ("4. Question Generation", self.test_question_generation),
             ("5. Endpoint Accessibility", self.test_endpoint_accessibility)
         ]
