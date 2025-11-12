@@ -809,7 +809,7 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
         raise
     except Exception as e:
         logging.error(f"Error evaluating answers: {e}")
-        logging.error(f"Traceback: ", exc_info=True)
+        logging.error("Traceback: ", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Evaluation error: {str(e)}")
 
 
@@ -992,7 +992,7 @@ Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT' foll
         raise
     except Exception as e:
         logging.error(f"Error getting review data: {e}")
-        logging.error(f"Traceback: ", exc_info=True)
+        logging.error("Traceback: ", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Review error: {str(e)}")
 
 
@@ -1043,7 +1043,7 @@ Provide a detailed, educational review (200-300 words) that helps the student le
         response = llm.invoke(review_prompt)
         review_text = response.content.strip()
         
-        logging.info(f"✅ AI review generated successfully")
+        logging.info("✅ AI review generated successfully")
         
         return {
             "review": review_text,
@@ -1052,7 +1052,7 @@ Provide a detailed, educational review (200-300 words) that helps the student le
         
     except Exception as e:
         logging.error(f"Error generating AI review: {e}")
-        logging.error(f"Traceback: ", exc_info=True)
+        logging.error("Traceback: ", exc_info=True)
         raise HTTPException(status_code=500, detail=f"AI review error: {str(e)}")
 
 
@@ -1221,7 +1221,7 @@ Respond in this JSON format:
         raise
     except Exception as e:
         logging.error(f"Error generating AI notes: {e}")
-        logging.error(f"Traceback: ", exc_info=True)
+        logging.error("Traceback: ", exc_info=True)
         raise HTTPException(status_code=500, detail=f"AI notes error: {str(e)}")
 
 
@@ -1347,7 +1347,7 @@ async def get_leaderboard():
         
     except Exception as e:
         logging.error(f"Error generating leaderboard: {e}")
-        logging.error(f"Traceback: ", exc_info=True)
+        logging.error("Traceback: ", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Leaderboard error: {str(e)}")
 
 
@@ -1584,7 +1584,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-logging.info(f"🚀 AdmitAI Backend with LangGraph + RAG")
+logging.info("🚀 AdmitAI Backend with LangGraph + RAG")
 logging.info(f"📊 Supabase: {supabase_url}")
-logging.info(f"🤖 Gemini 2.5 Flash: Configured")
+logging.info("🤖 Gemini 2.5 Flash: Configured")
 logging.info(f"🔮 RAG: {'Enabled' if RAG_ENABLED else 'Disabled (will use fallback)'}")
