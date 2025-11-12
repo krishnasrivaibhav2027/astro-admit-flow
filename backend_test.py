@@ -219,17 +219,17 @@ class AdmitAIBackendTester:
         return all_passed
 
     def test_question_generation(self):
-        """Test 4: Question generation endpoint (POST /api/generate-questions) - test with JWT token from login, verify diverse questions are generated"""
-        print("\n🔍 Test 4: Question Generation Endpoint with Diversity Verification")
+        """Test 5: Question Generation - Test POST /api/generate-questions with Firebase auth (Note: Gemini API key might have issues, that's expected)"""
+        print("\n🔍 Test 5: Question Generation with Firebase Authentication")
         
-        if not self.jwt_token:
+        if not self.firebase_token:
             self.log_result("Question Generation", False, 
-                          "No JWT token available - login may have failed")
+                          "No Firebase token available - Firebase auth may have failed")
             return False
         
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.jwt_token}"
+            "Authorization": f"Bearer {self.firebase_token}"
         }
         
         all_passed = True
