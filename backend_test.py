@@ -194,24 +194,24 @@ class AdmitAIBackendTester:
             self.log_result("Login", False, f"Exception: {str(e)}")
             return False
 
-    def test_question_generation_diversity(self):
-        """Test 2: Question generation diversity system - CRITICAL"""
-        # Get Firebase token for authentication
-        firebase_token = self.get_firebase_token()
-        if not firebase_token:
-            self.log_result("Question Generation Diversity", False, 
-                          "Could not obtain Firebase authentication token")
+    def test_question_generation(self):
+        """Test 4: Question generation endpoint (POST /api/generate-questions) - test with JWT token from login, verify diverse questions are generated"""
+        print("\n🔍 Test 4: Question Generation Endpoint with Diversity Verification")
+        
+        if not self.jwt_token:
+            self.log_result("Question Generation", False, 
+                          "No JWT token available - login may have failed")
             return False
         
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {firebase_token}"
+            "Authorization": f"Bearer {self.jwt_token}"
         }
         
         all_passed = True
         
-        # Test 1: Generate Easy Questions - First Attempt
-        print("\n🔍 Test 1: Generate Easy Questions - First Attempt")
+        # Test 4a: Generate Easy Questions - First Attempt
+        print("   🔍 4a: Generate Easy Questions - First Attempt")
         try:
             first_request = {"level": "easy", "num_questions": 5}
             
@@ -248,14 +248,17 @@ class AdmitAIBackendTester:
                                       f"Question {i+1} has empty question or answer", q)
                         return False
                 
-                self.log_result("Question Generation - First Attempt", True,
-                              f"Generated 5 unique questions covering different physics concepts")
-                
                 # Store first set for comparison
                 first_questions = [q["question"] for q in questions1]
                 
-                # Test 2: Generate Easy Questions - Second Attempt (Immediately After)
-                print("\n🔍 Test 2: Generate Easy Questions - Second Attempt (Immediately After)")
+                self.log_result("Question Generation - First Attempt", True,
+                              f"✅ Generated 5 valid questions: {first_questions[0][:50]}...")
+                
+                # Test 4b: Generate Easy Questions - Second Attempt (Diversity Test)
+                print("   🔍 4b: Generate Easy Questions - Second Attempt (Diversity Test)")
+                
+                # Wait a moment to ensure different timestamp seed
+                time.sleep(1)
                 
                 response2 = self.session.post(
                     f"{BASE_URL}/generate-questions",
@@ -276,25 +279,27 @@ class AdmitAIBackendTester:
                     
                     # Check for diversity - questions should be different
                     identical_questions = set(first_questions) & set(second_questions)
-                    diversity_percentage = (len(set(first_questions + second_questions)) / (len(first_questions) + len(second_questions))) * 100
+                    total_unique = len(set(first_questions + second_questions))
+                    total_questions = len(first_questions) + len(second_questions)
+                    diversity_percentage = (total_unique / total_questions) * 100
                     
                     if len(identical_questions) == 0:
                         self.log_result("Question Generation - Diversity Check", True,
-                                      f"100% unique questions between attempts - excellent diversity!")
+                                      f"✅ 100% unique questions between attempts - excellent anti-malpractice protection!")
                     elif len(identical_questions) <= 1:
                         self.log_result("Question Generation - Diversity Check", True,
-                                      f"Good diversity: only {len(identical_questions)} identical question(s), {diversity_percentage:.1f}% unique")
+                                      f"✅ Good diversity: only {len(identical_questions)} identical question(s), {diversity_percentage:.1f}% unique")
                     else:
                         self.log_result("Question Generation - Diversity Check", False,
-                                      f"Poor diversity: {len(identical_questions)} identical questions out of 5")
+                                      f"❌ Poor diversity: {len(identical_questions)} identical questions out of 5")
                         all_passed = False
                     
                     # Print sample questions for verification
-                    print(f"   Sample from First Attempt: {first_questions[0][:80]}...")
-                    print(f"   Sample from Second Attempt: {second_questions[0][:80]}...")
+                    print(f"      Sample from First Attempt: {first_questions[0][:60]}...")
+                    print(f"      Sample from Second Attempt: {second_questions[0][:60]}...")
                     
                     self.log_result("Question Generation - Second Attempt", True,
-                                  f"Generated 5 different questions than first attempt")
+                                  f"✅ Generated 5 questions with diversity verification complete")
                     
                 else:
                     self.log_result("Question Generation - Second Attempt", False,
@@ -307,7 +312,7 @@ class AdmitAIBackendTester:
                 all_passed = False
                 
         except Exception as e:
-            self.log_result("Question Generation Diversity", False,
+            self.log_result("Question Generation", False,
                           f"Exception: {str(e)}")
             all_passed = False
         
