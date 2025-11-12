@@ -86,6 +86,9 @@ class AdmitAIBackendTester:
     def test_registration(self):
         """Test 2: Registration endpoint (POST /api/register) - test with a new unique email"""
         print("\n🔍 Test 2: Registration Endpoint")
+        
+        # Based on the error, it seems the custom authentication with password column is not set up
+        # Let's test if the endpoint exists and handles the missing schema gracefully
         try:
             # Generate unique email for testing
             timestamp = int(time.time())
@@ -131,6 +134,19 @@ class AdmitAIBackendTester:
                     self.log_result("Registration", False, 
                                   f"Registration failed: {data.get('message', 'Unknown error')}", data)
                     return False
+            elif response.status_code == 500:
+                # Check if it's the password column issue
+                try:
+                    error_data = response.json()
+                    if "password" in str(error_data) and "column" in str(error_data):
+                        self.log_result("Registration", False, 
+                                      f"❌ CRITICAL: Database schema missing 'password' column - custom authentication not properly configured", error_data)
+                        return False
+                except:
+                    pass
+                self.log_result("Registration", False, 
+                              f"HTTP {response.status_code}: {response.text}")
+                return False
             else:
                 self.log_result("Registration", False, 
                               f"HTTP {response.status_code}: {response.text}")
