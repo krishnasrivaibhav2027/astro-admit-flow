@@ -115,53 +115,8 @@ class SendConfirmationEmailRequest(BaseModel):
     user_id: str
 
 
-# ===== PASSWORD HASHING FUNCTIONS =====
-def hash_password(password: str) -> str:
-    """Hash password using SHA256 with salt"""
-    salt = secrets.token_hex(16)
-    pwd_hash = hashlib.sha256((password + salt).encode()).hexdigest()
-    return f"{salt}${pwd_hash}"
-
-
-def verify_password(password: str, hashed: str) -> bool:
-    """Verify password against hash"""
-    try:
-        salt, pwd_hash = hashed.split('$')
-        return hashlib.sha256((password + salt).encode()).hexdigest() == pwd_hash
-    except (ValueError, AttributeError):
-        return False
-
-
-# ===== JWT AUTHENTICATION =====
-JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'default-secret-key-change-in-production')
-JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
-JWT_EXPIRATION_HOURS = int(os.environ.get('JWT_EXPIRATION_HOURS', 24))
-
+# ===== FIREBASE AUTHENTICATION =====
 security = HTTPBearer()
-
-
-def create_jwt_token(student_id: str, email: str) -> str:
-    """Create JWT token for authenticated user"""
-    expiration = datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
-    payload = {
-        "student_id": student_id,
-        "email": email,
-        "exp": expiration,
-        "iat": datetime.utcnow()
-    }
-    token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
-    return token
-
-
-def verify_jwt_token(token: str) -> Dict:
-    """Verify and decode JWT token"""
-    try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token has expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
 
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict:
