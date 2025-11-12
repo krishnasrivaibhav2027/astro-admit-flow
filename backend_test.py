@@ -35,6 +35,8 @@ class AdmitAIBackendTester:
         self.test_user_email = None
         self.test_user_password = "TestPassword123!"
         self.student_id = None
+        self.result_id = None
+        self.questions = []
         
     def log_result(self, test_name, success, details, response_data=None):
         """Log test result"""
