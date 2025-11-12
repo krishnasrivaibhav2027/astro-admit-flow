@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """
-AdmitAI Backend API Testing - Firebase Authentication Review
-Tests cleaned-up backend API as requested in review:
-1. Health Check - GET /api/health - verify database connection and RAG status
-2. Firebase Authentication - Verify that Firebase token-based authentication is working
-3. Student Management - Test POST /api/students endpoint with Firebase token
-4. Question Generation - Test POST /api/generate-questions with Firebase auth (Note: Gemini API key might have issues, that's expected)
-5. Verify removed endpoints - Confirm POST /api/register and POST /api/login return 404 Not Found
-6. All protected endpoints - Verify they require Firebase authentication
+AdmitAI Backend API Testing - Gemini AI Question Generation with New API Key
+Tests Gemini AI question generation functionality with newly updated API key as requested in review:
+1. Health Check - Verify backend is healthy with RAG enabled
+2. Firebase Authentication - Create a test Firebase user and get authentication token
+3. Question Generation Test - Call POST /api/generate-questions endpoint with Firebase auth and verify no 403 "API key leaked" errors
+4. RAG System Verification - Verify that generated questions use context from NCERT Physics PDF and are diverse/unique
 """
 
 import requests
