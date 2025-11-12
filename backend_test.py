@@ -27,9 +27,10 @@ class AdmitAIBackendTester:
         self.results = []
         self.session = requests.Session()
         self.session.timeout = TIMEOUT
-        self.jwt_token = None
+        self.firebase_token = None
         self.test_user_email = None
         self.test_user_password = "TestPassword123!"
+        self.student_id = None
         
     def log_result(self, test_name, success, details, response_data=None):
         """Log test result"""
