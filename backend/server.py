@@ -236,7 +236,7 @@ async def create_student(student: StudentCreate, current_user: Dict = Depends(ge
 
 @api_router.get("/students/by-email/{email}")
 async def get_student_by_email(email: str, current_user: Dict = Depends(get_current_user)):
-    """Get student by email - JWT Protected"""
+    """Get student by email - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
