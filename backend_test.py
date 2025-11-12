@@ -427,8 +427,8 @@ class AdmitAIBackendTester:
 
     def run_comprehensive_test(self):
         """Run comprehensive backend test as requested in review"""
-        print("🚀 AdmitAI Backend API Firebase Authentication Testing")
-        print("📋 Review Request: Test cleaned-up backend with Firebase auth, verify removed custom auth endpoints")
+        print("🚀 AdmitAI Backend API - Gemini AI Question Generation Testing")
+        print("📋 Review Request: Test Gemini AI question generation functionality with newly updated API key")
         print(f"📍 Base URL: {BASE_URL}")
         print(f"⏰ Timeout: {TIMEOUT}s")
         print("=" * 80)
@@ -437,10 +437,7 @@ class AdmitAIBackendTester:
         tests = [
             ("1. Health Check", self.test_health_check),
             ("2. Firebase Authentication", self.test_firebase_authentication),
-            ("3. Student Management", self.test_student_management),
-            ("4. Removed Endpoints", self.test_removed_endpoints),
-            ("5. Question Generation", self.test_question_generation),
-            ("6. Protected Endpoints Auth", self.test_protected_endpoints_auth)
+            ("3. Question Generation with New API Key", self.test_question_generation_with_new_api_key)
         ]
         
         total_tests = 0
@@ -458,7 +455,7 @@ class AdmitAIBackendTester:
                 total_tests += 1
         
         print("\n" + "=" * 80)
-        print(f"📊 ADMITAI BACKEND API TEST SUMMARY")
+        print(f"📊 GEMINI AI QUESTION GENERATION TEST SUMMARY")
         print(f"Total Tests: {total_tests}")
         print(f"Passed: {passed_tests}")
         print(f"Failed: {total_tests - passed_tests}")
@@ -473,19 +470,22 @@ class AdmitAIBackendTester:
         # Summary for test_result.md update
         print(f"\n📝 SUMMARY FOR TEST_RESULT.MD:")
         critical_failures = [r for r in self.results if not r["success"] and "Health Check" in r["test"]]
-        auth_failures = [r for r in self.results if not r["success"] and ("Firebase Authentication" in r["test"] or "Student Management" in r["test"])]
-        question_failures = [r for r in self.results if not r["success"] and "Question Generation" in r["test"] and "Gemini API Issue" not in r["test"]]
+        auth_failures = [r for r in self.results if not r["success"] and "Firebase Authentication" in r["test"]]
+        question_failures = [r for r in self.results if not r["success"] and "Question Generation" in r["test"]]
+        api_key_issues = [r for r in self.results if not r["success"] and "leaked" in r["details"].lower()]
         
         if len(critical_failures) > 0:
             print("❌ CRITICAL: Backend health check failed - database or RAG issues")
         elif len(auth_failures) > 0:
             print("❌ CRITICAL: Firebase authentication system not working")
+        elif len(api_key_issues) > 0:
+            print("❌ CRITICAL: New Gemini API key still shows 'leaked' error - API key replacement failed")
         elif len(question_failures) > 0:
             print("❌ CRITICAL: Question generation system not working - unexpected AI/RAG integration issues")
         elif passed_tests == total_tests:
-            print("✅ SUCCESS: All backend APIs working correctly with Firebase auth - cleanup successful")
+            print("✅ SUCCESS: Gemini AI question generation working perfectly with new API key - no 403 'API key leaked' errors, RAG system operational, questions are diverse and unique")
         else:
-            print("✅ SUCCESS: Backend cleanup successful - Firebase auth working, custom auth removed, Gemini API key issue expected")
+            print("⚠️ PARTIAL SUCCESS: Some tests passed but issues remain - check detailed results above")
         
         return passed_tests, total_tests
 
