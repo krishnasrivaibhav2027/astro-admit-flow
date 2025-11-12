@@ -122,9 +122,9 @@ backend:
   
   - task: "Gemini AI question generation using RAG"
     implemented: true
-    working: true
+    working: false
     file: "backend/server.py, backend/rag_module.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
     needs_retesting: false
     status_history:
@@ -134,6 +134,9 @@ backend:
       - working: true
         agent: "testing"
         comment: "✅ TESTED: RAG system initialized with NCERT Physics PDF (804 chunks). Question generation working for all levels (easy/medium/hard). Generated contextually relevant physics questions with proper JSON structure. Sample: 'Why does a magnet fall slower through aluminium pipe?' - shows RAG context integration."
+      - working: false
+        agent: "testing"
+        comment: "❌ CRITICAL ISSUE: Gemini API key has been reported as leaked and blocked by Google. Error: '403 Your API key was reported as leaked. Please use another API key.' First question generation attempt worked (generated valid physics question: 'What fundamental physics phenomenon is primarily e...'), but subsequent requests fail. ✅ RAG system and backend integration working correctly, only API key needs replacement."
   
   - task: "JWT Authentication with Supabase Auth"
     implemented: true
