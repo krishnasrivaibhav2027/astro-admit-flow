@@ -1,22 +1,22 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Target, Zap, Crown, Lock, CheckCircle2, LogOut, User, KeyRound, Trophy } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { ModeToggle } from "@/components/mode-toggle";
-import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/config/firebase";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { CheckCircle2, Crown, KeyRound, Lock, LogOut, Target, Trophy, User, Zap } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 type LevelStatus = "locked" | "current" | "completed";
 
@@ -315,7 +315,7 @@ const Levels = () => {
           </div>
 
           {/* Go to Results Button - Only shown when test is completed */}
-          {testCompleted && latestResultData && (
+          {testCompleted && (
             <div className="mb-6">
               <Card className="border-2 border-primary bg-gradient-to-r from-primary/10 to-purple-500/10">
                 <CardContent className="p-6">
@@ -329,18 +329,23 @@ const Levels = () => {
                     <Button
                       size="lg"
                       variant="glow"
-                      onClick={() => {
+                      onClick={async () => {
+                        // Fetch all results for this student
                         const studentId = sessionStorage.getItem('studentId');
-                        navigate("/results", { 
-                          state: { 
+                        const { data: allResults } = await supabase
+                          .from("results")
+                          .select("*")
+                          .eq("student_id", studentId)
+                          .order("created_at", { ascending: true });
+                        // Check if medium is passed
+                        const mediumPassed = allResults?.find(r => r.level === "medium" && r.result === "pass");
+                        // If medium is passed, allow test as passed, else not passed
+                        // Pass allResults to FinalResults for correct UI
+                        navigate("/final-results", {
+                          state: {
                             studentId,
-                            score: latestResultData.score || 0,
-                            result: latestResultData.result || 'fail',
-                            level: latestResultData.level || 'easy',
-                            criteria: latestResultData.criteria || {},
-                            emailSent: true,
-                            completed: true
-                          } 
+                            allResults: allResults?.filter(r => ["easy","medium","hard"].includes(r.level)) || []
+                          }
                         });
                       }}
                     >

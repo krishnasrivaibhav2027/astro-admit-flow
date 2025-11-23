@@ -1,19 +1,19 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { ModeToggle } from "@/components/mode-toggle";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Trophy, XCircle, RotateCcw, Home, CheckCircle2, TrendingUp, Mail, Clock, LogOut } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { ModeToggle } from "@/components/mode-toggle";
+import { supabase } from "@/integrations/supabase/client";
+import { CheckCircle2, Clock, Home, Mail, TrendingUp, Trophy, XCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const Results = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const { studentId, score, result, level, criteria, timeout, completed } = location.state || {};
+  const { studentId, score, result, result_status, level, criteria, timeout, completed } = location.state || {};
   const [currentAttempts, setCurrentAttempts] = useState<number>(0);
   const [maxAttempts, setMaxAttempts] = useState<number>(0);
   const [emailSent, setEmailSent] = useState<boolean>(false);
@@ -150,7 +150,9 @@ const Results = () => {
     navigate("/");
   };
 
-  const isPassed = result === "pass";
+  // Prefer backend result_status, fallback to result, then to score threshold
+  const passStatus = (typeof result_status === 'string' ? result_status : result) || '';
+  const isPassed = passStatus.toLowerCase() === 'pass' || (passStatus === '' && typeof score === 'number' && score >= 6);
 
   // Display 6 evaluation criteria (average scores across all questions)
   const evaluationCriteria = criteria ? [

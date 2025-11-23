@@ -1,14 +1,14 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { ModeToggle } from "@/components/mode-toggle";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, LogIn, Eye, EyeOff } from "lucide-react";
-import { ModeToggle } from "@/components/mode-toggle";
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/config/firebase";
+import { useToast } from "@/hooks/use-toast";
+import { sendPasswordResetEmail, signInWithEmailAndPassword } from "firebase/auth";
+import { ArrowLeft, Eye, EyeOff, LogIn } from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -65,6 +65,7 @@ const Login = () => {
       // Store student info in session
       sessionStorage.setItem('studentId', studentId);
       sessionStorage.setItem('studentEmail', user.email || formData.email);
+      localStorage.setItem('userEmail', user.email);
 
       console.log("Student ID retrieved:", studentId);
 

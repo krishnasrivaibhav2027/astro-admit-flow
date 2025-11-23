@@ -1,14 +1,14 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { ModeToggle } from "@/components/mode-toggle";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Send, ChevronLeft, ChevronRight, CheckCircle2, Clock } from "lucide-react";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ModeToggle } from "@/components/mode-toggle";
+import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Loader2, Send } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 interface Question {
   question: string;
@@ -431,11 +431,29 @@ const Test = () => {
       );
 
       // Navigate to results
+      // Patch: If user failed hard but passed medium, set result: 'pass' for final result
+      let finalResult = testResult;
+      if (
+        level === 'hard' &&
+        testResult === 'fail' &&
+        newAttemptCount >= 2
+      ) {
+        // Check if medium was passed
+        const { data: allResults } = await supabase
+          .from("results")
+          .select("*")
+          .eq("student_id", studentId)
+          .order("created_at", { ascending: false });
+        const mediumPassed = allResults?.some(r => r.level === 'medium' && r.result === 'pass');
+        if (mediumPassed) {
+          finalResult = 'pass';
+        }
+      }
       navigate("/results", {
         state: {
           studentId,
           score: testScore,
-          result: testResult,
+          result: finalResult,
           level,
           criteria: evaluationData.criteria || {},
           emailSent: shouldSendEmail,

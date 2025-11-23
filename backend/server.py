@@ -49,6 +49,30 @@ evaluator_llm = ChatGoogleGenerativeAI(
     api_key=os.environ.get('GEMINI_API_KEY')
 )
 
+
+def safe_invoke(model, prompt_or_messages, purpose: str = "LLM call"):
+    """Invoke the LLM and translate common service errors into HTTPExceptions with helpful messages.
+
+    Returns the model response object on success. Raises HTTPException on known failures.
+    """
+    try:
+        response = model.invoke(prompt_or_messages)
+        return response
+    except Exception as e:
+        msg = str(e)
+        logging.error(f"LLM error during {purpose}: {msg}")
+
+        # Detect leaked/invalid API key errors from Gemini / Google client
+        if "leaked" in msg.lower() or ("api key" in msg.lower() and "leaked" in msg.lower()) or "403" in msg:
+            # Provide actionable guidance to the operator (do not reveal keys)
+            raise HTTPException(status_code=502, detail=(
+                "AI provider rejected the API key (reported leaked or invalid). "
+                "Please set a valid GEMINI_API_KEY in the environment and restart the server."
+            ))
+
+        # Generic upstream AI provider error
+        raise HTTPException(status_code=502, detail=f"AI provider error: {msg}")
+
 # Create the main app
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -130,13 +154,15 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     """Dependency to get current authenticated user from Firebase token"""
     token = credentials.credentials
     try:
-        # Verify Firebase ID token
         decoded_token = verify_firebase_token(token)
+        logging.info(f"✅ Firebase token verified successfully for: {decoded_token.get('email')}")
         return decoded_token
     except ValueError as e:
+        logging.warning(f"Authentication failed: {e}")
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+        logging.error(f"Unexpected authentication error: {e}")
+        raise HTTPException(status_code=401, detail="Authentication failed")
 
 
 # ===== PROMPTS (LangGraph style) =====
@@ -335,9 +361,9 @@ async def create_result(request: CreateResultRequest, current_user: Dict = Depen
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
         # Verify the student exists and belongs to the authenticated user
-        student_response = supabase.table("students").select("*").eq("id", request.student_id).eq("email", current_user.get('email')).execute()
-        if not student_response.data or len(student_response.data) == 0:
-            raise HTTPException(status_code=403, detail="Cannot create results for other users")
+        student_response = supabase.table("students").select("*").eq("id", request.student_id).execute()
+        if not student_response.data or len(student_response.data) == 0 or student_response.data[0].get("email") != current_user.get('email'):
+            raise HTTPException(status_code=403, detail="Student not found or does not belong to the authenticated user")
         
         # Create result entry in Supabase
         response = supabase.table("results").insert({
@@ -459,7 +485,7 @@ async def generate_questions(request: GenerateQuestionsRequest, current_user: Di
             level=level
         )
         
-        response = llm.invoke(prompt)
+        response = safe_invoke(llm, prompt, purpose="generate-questions")
         response_text = response.content.strip()
         
         # Clean up response
@@ -547,7 +573,7 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                     student_answer=student_answer
                 )
                 
-                response = evaluator_llm.invoke(prompt)
+                response = safe_invoke(evaluator_llm, prompt, purpose=f"evaluate-answers Q{idx}")
                 response_text = response.content.strip()
                 
                 # Clean up response
@@ -769,9 +795,30 @@ async def get_review_data(level: str, student_id: str, current_user: Dict = Depe
                     try:
                         context_docs = get_physics_context(q['question_text'], k=2)
                         context = "\n\n".join(context_docs) if context_docs else ""
-                        
-                        # Create evaluation prompt
-                        eval_prompt = f"""
+
+                        # Basic sanity checks on the student answer to catch gibberish/short inputs
+                        clean_answer = (student_answer or "").strip()
+                        alpha_chars = sum(1 for c in clean_answer if c.isalpha())
+                        max_char = 0
+                        if len(clean_answer) > 0:
+                            from collections import Counter
+                            counts = Counter(clean_answer)
+                            max_char = max(counts.values())
+
+                        is_suspicious = (
+                            len(clean_answer) < 10 or
+                            len(clean_answer.split()) < 2 or
+                            alpha_chars < 3 or
+                            (len(clean_answer) > 0 and (max_char / len(clean_answer) > 0.6))
+                        )
+
+                        if is_suspicious:
+                            logging.warning(f"Detected suspicious/gibberish student answer for question {q['id']}")
+                            is_correct = False
+                            explanation = "Student answer appears to be not a valid attempt (too short or gibberish); marked incorrect."
+                        else:
+                            # Create evaluation prompt
+                            eval_prompt = f"""
 Question: {q['question_text']}
 Correct Answer: {q['correct_answer']}
 Student Answer: {student_answer}
@@ -780,18 +827,25 @@ Context: {context[:1000]}
 
 Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT' followed by a detailed explanation of why it's correct or what's wrong.
 """
-                        
-                        response = llm.invoke(eval_prompt)
-                        ai_response = response.content.strip()
-                        
-                        is_correct = ai_response.upper().startswith('CORRECT')
-                        
-                        if not is_correct:
-                            # Extract explanation (everything after INCORRECT)
-                            explanation = ai_response.replace('INCORRECT', '').strip()
-                            if not explanation:
-                                explanation = "Your answer doesn't match the expected solution. Please review the correct answer above."
-                        
+
+                            # Call LLM safely
+                            response = safe_invoke(llm, eval_prompt, purpose="review-eval")
+                            ai_response = (response.content or "").strip()
+
+                            # Normalize and interpret AI response strictly
+                            ai_norm = ai_response.upper().lstrip()
+                            if ai_norm.startswith('CORRECT'):
+                                is_correct = True
+                                explanation = ai_response[len('CORRECT'):].strip() or "Correct answer."
+                            elif ai_norm.startswith('INCORRECT'):
+                                is_correct = False
+                                explanation = ai_response[len('INCORRECT'):].strip() or "Incorrect answer."
+                            else:
+                                # Unexpected format from AI - do not trust as correct
+                                logging.warning(f"Unexpected AI review format for q={q['id']}: {ai_response}")
+                                is_correct = False
+                                explanation = "AI did not return a clear CORRECT/INCORRECT response; marked incorrect." 
+
                         # Cache the review
                         try:
                             supabase.table("question_reviews").insert({
@@ -804,6 +858,9 @@ Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT' foll
                         except Exception as cache_error:
                             logging.warning(f"Failed to cache review: {cache_error}")
                             
+                    except HTTPException:
+                        # Propagate HTTPExceptions from safe_invoke (e.g., AI key errors)
+                        raise
                     except Exception as e:
                         logging.error(f"Error generating explanation: {e}")
                         is_correct = False
@@ -841,7 +898,7 @@ Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT' foll
                 level=level
             )
             
-            response = llm.invoke(prompt)
+            response = safe_invoke(llm, prompt, purpose="generate-sample-questions")
             response_text = response.content.strip()
             
             # Clean up response
@@ -1472,3 +1529,7 @@ logging.info("🚀 AdmitAI Backend with LangGraph + RAG")
 logging.info(f"📊 Supabase: {supabase_url}")
 logging.info("🤖 Gemini 2.5 Flash: Configured")
 logging.info(f"🔮 RAG: {'Enabled' if RAG_ENABLED else 'Disabled (will use fallback)'}")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)
