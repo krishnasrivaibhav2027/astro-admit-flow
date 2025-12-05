@@ -1,9 +1,5 @@
 // FinalResults.tsx
 import { ModeToggle } from "@/components/mode-toggle";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Home, Trophy, XCircle } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
@@ -98,29 +94,29 @@ const FinalResults: React.FC = () => {
         }
 
         const data = await response.json();
-        
+
         // Get current user's email from localStorage (used during login/signup)
         const userEmail = localStorage.getItem('userEmail');
-        
+
         if (!userEmail) {
           console.warn('No user email found in localStorage');
           setLoading(false);
           return;
         }
-        
+
         // Search for current user in both leaderboards
         let userScore: StudentScore | undefined;
-        
+
         // Check hard leaderboard first
         if (data.hard_leaderboard && Array.isArray(data.hard_leaderboard)) {
-          userScore = data.hard_leaderboard.find((entry: StudentScore) => 
+          userScore = data.hard_leaderboard.find((entry: StudentScore) =>
             entry.email.toLowerCase() === userEmail.toLowerCase()
           );
         }
-        
+
         // If not found in hard, check medium leaderboard
         if (!userScore && data.medium_leaderboard && Array.isArray(data.medium_leaderboard)) {
-          userScore = data.medium_leaderboard.find((entry: StudentScore) => 
+          userScore = data.medium_leaderboard.find((entry: StudentScore) =>
             entry.email.toLowerCase() === userEmail.toLowerCase()
           );
         }
@@ -131,7 +127,7 @@ const FinalResults: React.FC = () => {
         } else {
           console.warn('User not found in leaderboard. Email:', userEmail);
         }
-        
+
         setLoading(false);
       } catch (error: any) {
         console.error('Error fetching actual score:', error);
@@ -194,11 +190,11 @@ const FinalResults: React.FC = () => {
   const presentLevels = normalized.length;
   const totalScore = normalized.reduce((s, r) => s + r.score, 0);
   const calculatedAvgScore = presentLevels ? totalScore / presentLevels : 0;
-  
+
   // CRITICAL: Always prioritize backend score (matches leaderboard)
   // Only use calculated score if backend fetch failed
   const displayScore = backendScore !== null ? backendScore : calculatedAvgScore;
-  
+
   // Log for debugging
   React.useEffect(() => {
     console.log('Score Debug:', {
@@ -228,108 +224,175 @@ const FinalResults: React.FC = () => {
   /* -------------------- Render -------------------- */
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-background via-purple-50 to-blue-50 dark:from-background dark:via-purple-950/20 dark:to-blue-950/20" />
-      <div className="absolute top-20 left-10 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-float" />
-      <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-float" style={{ animationDelay: "2s" }} />
+    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-cyan-100 dark:from-slate-900 dark:to-slate-800 p-4 md:p-8 transition-colors duration-300">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-teal-500/10 rounded-full blur-3xl animate-float" />
+        <div className="absolute bottom-20 right-10 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-float" style={{ animationDelay: "2s" }} />
+      </div>
 
       <div className="absolute top-4 right-4 z-50">
         <ModeToggle />
       </div>
 
-      <div className="relative z-10 container mx-auto px-4 py-12">
-        <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
-          <Card className={`border-4 shadow-elevated ${isPassed ? "border-green-500" : "border-red-500"}`}>
-            <CardContent className="p-12 text-center space-y-6">
-              <div
-                className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center ${
-                  isPassed ? "bg-gradient-to-br from-green-500 to-emerald-500" : "bg-gradient-to-br from-red-500 to-pink-500"
-                } animate-scale-in glow-effect`}
-              >
-                {isPassed ? <Trophy className="w-12 h-12 text-white" /> : <XCircle className="w-12 h-12 text-white" />}
+      <div className="max-w-6xl mx-auto relative z-10">
+        {/* Status Banner */}
+        <div className={`rounded-2xl p-6 mb-8 shadow-xl ${isPassed
+            ? "bg-gradient-to-r from-green-500 to-emerald-600"
+            : "bg-gradient-to-r from-red-500 to-pink-600"
+          }`}>
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+                {isPassed ? (
+                  <Trophy className="w-8 h-8 text-white" />
+                ) : (
+                  <XCircle className="w-8 h-8 text-white" />
+                )}
               </div>
-
-              <div>
-                <h1 className="text-4xl font-bold mb-2">
-                  {isPassed ? (
-                    <>
-                      Congratulations! <span className="gradient-text">You Passed!</span>
-                    </>
-                  ) : (
-                    <>
-                      Test <span className="gradient-text">Not Passed</span>
-                    </>
-                  )}
-                </h1>
-                <p className="text-xl text-muted-foreground">Admission Test Results</p>
+              <div className="text-center md:text-left">
+                <h2 className="text-white text-2xl font-bold mb-1">
+                  {isPassed ? "Congratulations! You Passed!" : "Test Not Passed"}
+                </h2>
+                <p className="text-white/90">
+                  {isPassed ? "All requirements successfully met" : "Requirements not met, please try again"}
+                </p>
               </div>
-
-              <div className="inline-flex items-center gap-4 px-8 py-4 rounded-2xl bg-muted/50 border-2">
-                <div className="text-left">
-                  <p className="text-sm text-muted-foreground mb-1">Your Average Score</p>
-                  <p className="text-5xl font-bold gradient-text">{displayScore.toFixed(2)}</p>
-                </div>
-                <div className="text-6xl text-muted-foreground">/</div>
-                <div className="text-left">
-                  <p className="text-sm text-muted-foreground mb-1">Out of</p>
-                  <p className="text-5xl font-bold">10.0</p>
-                </div>
-              </div>
-
-              <Progress value={Math.max(0, Math.min(100, (displayScore / 10) * 100))} className="h-3" />
-
-              <div className="flex justify-center gap-4 mt-4">
-                <div>
-                  <span className="font-semibold">Easy:</span>{" "}
-                  {easyStatus === "Passed" ? <span className="text-green-600">Passed</span> : easyStatus === "Not Attempted" ? <span className="text-gray-500">Not Attempted</span> : <span className="text-red-600">Failed</span>}
-                </div>
-                <div>
-                  <span className="font-semibold">Medium:</span>{" "}
-                  {mediumStatus === "Passed" ? <span className="text-green-600">Passed</span> : mediumStatus === "Not Attempted" ? <span className="text-gray-500">Not Attempted</span> : <span className="text-red-600">Failed</span>}
-                </div>
-                <div>
-                  <span className="font-semibold">Hard:</span>{" "}
-                  {hardStatus === "Passed" ? <span className="text-green-600">Passed</span> : hardStatus === "Not Attempted" ? <span className="text-gray-500">Not Attempted</span> : <span className="text-red-600">Failed</span>}
-                </div>
-              </div>
-
-              {isPassed ? (
-                <Badge className="text-lg px-6 py-2 bg-green-500 hover:bg-green-600">
-                  <CheckCircle2 className="w-5 h-5 mr-2" />
-                  Passed
-                </Badge>
-              ) : (
-                <Badge variant="destructive" className="text-lg px-6 py-2">
-                  <XCircle className="w-5 h-5 mr-2" />
-                  Not Passed
-                </Badge>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Feedback / guidance card */}
-          <Card className="border-2 bg-card/50 backdrop-blur">
-            <CardContent className="p-6">
-              <h3 className="font-semibold text-lg mb-3">{isPassed ? "Great Job!" : "Keep Trying!"}</h3>
-              <p className="text-muted-foreground leading-relaxed">
-                {isPassed
-                  ? "Exceptional work! You've successfully completed the medium level which is required to pass. Our team will review your application and contact you with next steps."
-                  : "You need to pass the medium level to be considered successful. Review which level(s) show as failed and try again."}
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <Button size="lg" variant="outline" className="flex-1" onClick={() => navigate("/", { state: { studentId } })}>
-              <Home className="w-5 h-5 mr-2" />
-              Home
-            </Button>
-
-            <Button size="lg" variant="glow" className="flex-1" onClick={() => navigate("/levels", { state: { studentId, fromResults: true } })}>
-              Detailed Analysis
-            </Button>
+            </div>
+            {isPassed ? (
+              <CheckCircle2 className="w-12 h-12 text-white opacity-80" />
+            ) : (
+              <XCircle className="w-12 h-12 text-white opacity-80" />
+            )}
           </div>
+        </div>
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          {/* Score Card */}
+          <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-8 transition-colors duration-300">
+            <h3 className="text-gray-900 dark:text-white mb-6 flex items-center gap-2 text-xl font-semibold">
+              <Trophy className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+              Your Performance
+            </h3>
+
+            <div className="bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-900/20 dark:to-cyan-900/20 rounded-2xl p-8 mb-6">
+              <div className="text-center mb-6">
+                <p className="text-gray-600 dark:text-gray-400 mb-3 font-medium">Average Score</p>
+                <div className="flex items-baseline justify-center gap-2">
+                  <span className="text-teal-600 dark:text-teal-400 font-bold" style={{ fontSize: '4.5rem', lineHeight: 1 }}>
+                    {displayScore.toFixed(2)}
+                  </span>
+                  <span className="text-gray-400 dark:text-gray-600" style={{ fontSize: '2rem' }}>/</span>
+                  <span className="text-gray-600 dark:text-gray-400" style={{ fontSize: '2rem' }}>10.0</span>
+                </div>
+                <div className="mt-4 inline-block px-6 py-2 bg-teal-600 text-white rounded-full font-medium">
+                  {(displayScore * 10).toFixed(1)}% Overall
+                </div>
+              </div>
+            </div>
+
+            {/* Difficulty Breakdown */}
+            <div className="space-y-4">
+              {[
+                { label: 'Easy Questions', level: 'easy' as LevelName, color: 'bg-green-500' },
+                { label: 'Medium Questions', level: 'medium' as LevelName, color: 'bg-blue-500' },
+                { label: 'Hard Questions', level: 'hard' as LevelName, color: 'bg-purple-500' },
+              ].map((item, index) => {
+                const levelData = byLevel[item.level];
+                const score = levelData?.score || 0;
+                const isAttempted = !!levelData;
+
+                return (
+                  <div key={index} className="bg-gray-50 dark:bg-white/5 rounded-xl p-4 transition-colors duration-300">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-gray-700 dark:text-gray-300 font-medium">{item.label}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-900 dark:text-white font-bold">
+                          {isAttempted ? `${score.toFixed(1)}/10` : "Not Attempted"}
+                        </span>
+                        {isAttempted && (
+                          score >= 6 ? (
+                            <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
+                          ) : (
+                            <XCircle className="w-5 h-5 text-red-500 dark:text-red-400" />
+                          )
+                        )}
+                      </div>
+                    </div>
+                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${item.color} rounded-full transition-all duration-1000`}
+                        style={{ width: `${(score / 10) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Side Info Cards */}
+          <div className="space-y-6">
+            {/* Stats Card */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-6 transition-colors duration-300">
+              <h3 className="text-gray-900 dark:text-white mb-4 text-lg font-semibold">Quick Stats</h3>
+              <div className="space-y-4">
+                {[
+                  { label: 'Status', value: isPassed ? 'Passed' : 'Not Passed' },
+                  { label: 'Levels Completed', value: `${presentLevels}/3` },
+                  { label: 'Accuracy', value: `${(displayScore * 10).toFixed(1)}%` },
+                ].map((stat, index) => (
+                  <div key={index} className="flex justify-between items-center border-b border-gray-100 dark:border-gray-800 last:border-0 pb-3 last:pb-0">
+                    <span className="text-gray-600 dark:text-gray-400">{stat.label}</span>
+                    <span className="text-gray-900 dark:text-white font-medium">{stat.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Achievement/Info Card */}
+            <div className="bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl shadow-xl p-6 text-white">
+              <Trophy className="w-12 h-12 mb-4 text-white" />
+              <h3 className="text-white mb-2 font-bold text-lg">Performance Summary</h3>
+              <p className="text-yellow-100">
+                {isPassed
+                  ? "You have demonstrated excellent understanding across the evaluated difficulty levels."
+                  : "Keep practicing! Focus on the levels where you scored below the passing threshold."}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Message Card */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-8 mb-6 transition-colors duration-300">
+          <h3 className="text-gray-900 dark:text-white mb-3 text-xl font-semibold">What's Next?</h3>
+          <p className="text-gray-600 dark:text-gray-300 mb-4 leading-relaxed">
+            {isPassed
+              ? "Exceptional work! You've successfully completed the medium level which is required to pass. Our team will review your application and contact you with next steps."
+              : "You need to pass the medium level to be considered successful. Review which level(s) show as failed and try again."}
+          </p>
+          <div className="flex items-center gap-2 text-teal-600 dark:text-teal-400 font-medium">
+            <CheckCircle2 className="w-5 h-5" />
+            <span>Your results have been saved</span>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <button
+            onClick={() => navigate("/", { state: { studentId } })}
+            className="px-6 py-4 bg-white dark:bg-slate-900 border-2 border-gray-200 dark:border-slate-700 rounded-xl hover:border-teal-500 dark:hover:border-teal-500 transition-all flex items-center justify-center gap-2 text-gray-700 dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400 shadow-lg"
+          >
+            <Home className="w-5 h-5" />
+            <span>Back to Home</span>
+          </button>
+          <button
+            onClick={() => navigate("/levels", { state: { studentId, fromResults: true } })}
+            className="px-6 py-4 bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-xl hover:shadow-xl transition-all flex items-center justify-center gap-2 shadow-lg"
+          >
+            <Trophy className="w-5 h-5" />
+            <span>Detailed Analysis</span>
+          </button>
         </div>
       </div>
     </div>

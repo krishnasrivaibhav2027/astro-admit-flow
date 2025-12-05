@@ -1,12 +1,13 @@
-import { ModeToggle } from "@/components/mode-toggle";
+import { LandingHeader } from "@/components/landing/LandingHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { auth } from "@/config/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { sendPasswordResetEmail, signInWithEmailAndPassword } from "firebase/auth";
-import { ArrowLeft, Eye, EyeOff, LogIn } from "lucide-react";
+import { Eye, EyeOff, LogIn } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -15,6 +16,7 @@ const Login = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: ""
@@ -42,44 +44,68 @@ const Login = () => {
 
       console.log("User authenticated with Firebase, UID:", user.uid);
 
-      // Get student UUID from backend by email
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
-      const studentResponse = await fetch(`${backendUrl}/api/students/by-email/${user.email || formData.email}`, {
-        headers: {
-          'Authorization': `Bearer ${idToken}`
-        }
-      });
 
-      if (!studentResponse.ok) {
-        if (studentResponse.status === 404) {
-          // Student record doesn't exist but Firebase user does
-          // This means user's Firebase account exists but profile was never created
-          throw new Error('Your account exists but profile is incomplete. Please use "Register" to complete your profile with this email.');
+      if (isAdmin) {
+        // Admin Login
+        const adminResponse = await fetch(`${backendUrl}/api/admin/me`, {
+          headers: {
+            'Authorization': `Bearer ${idToken}`
+          }
+        });
+
+        if (!adminResponse.ok) {
+          throw new Error("Admin profile not found. Please register as an admin first.");
         }
-        throw new Error('Failed to get student information. Please try again.');
+
+        const adminData = await adminResponse.json();
+
+        toast({
+          title: "Admin Login Successful!",
+          description: `Welcome back, ${adminData.first_name}!`,
+        });
+
+        navigate("/admin");
+
+      } else {
+        // Student Login
+        // Get student UUID from backend by email
+        const studentResponse = await fetch(`${backendUrl}/api/students/by-email/${user.email || formData.email}`, {
+          headers: {
+            'Authorization': `Bearer ${idToken}`
+          }
+        });
+
+        if (!studentResponse.ok) {
+          if (studentResponse.status === 404) {
+            // Student record doesn't exist but Firebase user does
+            throw new Error('Your account exists but profile is incomplete. Please use "Register" to complete your profile with this email.');
+          }
+          throw new Error('Failed to get student information. Please try again.');
+        }
+
+        const studentData = await studentResponse.json();
+        const studentId = studentData.id;
+
+        // Store student info in session
+        sessionStorage.setItem('studentId', studentId);
+        sessionStorage.setItem('studentEmail', user.email || formData.email);
+        localStorage.setItem('userEmail', user.email);
+
+        console.log("Student ID retrieved:", studentId);
+
+        toast({
+          title: "Login Successful!",
+          description: `Welcome back!`,
+        });
+
+        // Navigate to levels page
+        navigate("/levels", { state: { studentId: studentId } });
       }
-
-      const studentData = await studentResponse.json();
-      const studentId = studentData.id;
-
-      // Store student info in session
-      sessionStorage.setItem('studentId', studentId);
-      sessionStorage.setItem('studentEmail', user.email || formData.email);
-      localStorage.setItem('userEmail', user.email);
-
-      console.log("Student ID retrieved:", studentId);
-
-      toast({
-        title: "Login Successful!",
-        description: `Welcome back!`,
-      });
-
-      // Navigate to levels page
-      navigate("/levels", { state: { studentId: studentId } });
 
     } catch (error: any) {
       console.error("Login error:", error);
-      
+
       let errorMessage = "Invalid email or password. Please try again.";
       if (error.code === 'auth/user-not-found') {
         errorMessage = "No account found with this email.";
@@ -90,7 +116,7 @@ const Login = () => {
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       toast({
         title: "Login Failed",
         description: errorMessage,
@@ -134,37 +160,24 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
+    <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4 pt-24">
       {/* Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-background via-purple-50 to-blue-50 dark:from-background dark:via-purple-950/20 dark:to-blue-950/20" />
-      <div className="absolute top-20 left-10 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-float" />
-      <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
+      <div className="absolute inset-0 bg-gradient-to-br from-background via-emerald-50 to-teal-50 dark:from-background dark:via-emerald-950/20 dark:to-teal-950/20" />
+      <div className="absolute top-20 left-10 w-72 h-72 bg-emerald-500/20 rounded-full blur-3xl animate-float" />
+      <div className="absolute bottom-20 right-10 w-96 h-96 bg-teal-500/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
 
-      {/* Theme Toggle */}
-      <div className="absolute top-4 right-4 z-50">
-        <ModeToggle />
-      </div>
-
-      {/* Back Button */}
-      <Button
-        variant="ghost"
-        className="absolute top-4 left-4 z-50"
-        onClick={() => navigate("/")}
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Home
-      </Button>
+      <LandingHeader />
 
       {/* Login Form */}
       <div className="relative z-10 w-full max-w-md animate-fade-in">
         <Card className="border-2 shadow-2xl">
           <CardHeader className="space-y-1 text-center">
             <div className="flex justify-center mb-4">
-              <div className="p-3 bg-primary/10 rounded-full">
-                <LogIn className="w-8 h-8 text-primary" />
+              <div className="p-3 bg-emerald-500/10 rounded-full">
+                <LogIn className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
               </div>
             </div>
-            <CardTitle className="text-3xl font-bold gradient-text">
+            <CardTitle className="text-3xl font-bold text-emerald-700 dark:text-emerald-400">
               Welcome Back
             </CardTitle>
             <CardDescription className="text-base">
@@ -172,6 +185,16 @@ const Login = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="flex items-center justify-center space-x-2 mb-6">
+              <Label htmlFor="admin-mode" className="text-sm font-medium">Student</Label>
+              <Switch
+                id="admin-mode"
+                checked={isAdmin}
+                onCheckedChange={setIsAdmin}
+                className="data-[state=checked]:bg-emerald-500"
+              />
+              <Label htmlFor="admin-mode" className="text-sm font-medium">Admin</Label>
+            </div>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address *</Label>
@@ -219,17 +242,16 @@ const Login = () => {
                 <button
                   type="button"
                   onClick={handleForgotPassword}
-                  className="text-sm text-primary hover:underline font-medium"
+                  className="text-sm text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 hover:underline font-medium"
                 >
                   Forgot Password?
                 </button>
               </div>
 
-              <Button 
-                type="submit" 
-                className="w-full" 
+              <Button
+                type="submit"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/20 border-none dark:bg-none"
                 size="lg"
-                variant="glow"
                 disabled={loading}
               >
                 {loading ? "Logging in..." : "Login"}
@@ -240,7 +262,7 @@ const Login = () => {
                 <button
                   type="button"
                   onClick={() => navigate("/registration")}
-                  className="text-primary hover:underline font-medium"
+                  className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 hover:underline font-medium"
                 >
                   Register here
                 </button>

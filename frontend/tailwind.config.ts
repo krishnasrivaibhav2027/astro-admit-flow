@@ -1,4 +1,6 @@
+import typography from "@tailwindcss/typography";
 import type { Config } from "tailwindcss";
+import tailwindcssAnimate from "tailwindcss-animate";
 
 export default {
   darkMode: ["class"],
@@ -85,8 +87,8 @@ export default {
           "100%": { transform: "scale(1)", opacity: "1" }
         },
         "glow-pulse": {
-          "0%, 100%": { boxShadow: "0 0 20px hsl(263 70% 50% / 0.3)" },
-          "50%": { boxShadow: "0 0 40px hsl(263 70% 50% / 0.6), 0 0 60px hsl(280 80% 55% / 0.4)" }
+          "0%, 100%": { boxShadow: "0 0 20px hsl(207 44% 49% / 0.3)" },
+          "50%": { boxShadow: "0 0 40px hsl(207 44% 49% / 0.6), 0 0 60px hsl(220 40% 60% / 0.4)" }
         }
       },
       animation: {
@@ -100,7 +102,25 @@ export default {
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
       },
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+        serif: ['Playfair Display', 'serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+        slab: ['Roboto Slab', 'serif'],
+        script: ['Dancing Script', 'cursive'],
+      },
+      fontWeight: {
+        thin: '400',
+        extralight: '400',
+        light: '400',
+        normal: '400',
+        medium: '400',
+        semibold: '400',
+        bold: '400',
+        extrabold: '400',
+        black: '400',
+      },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [tailwindcssAnimate, typography],
 } satisfies Config;

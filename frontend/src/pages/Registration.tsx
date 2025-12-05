@@ -1,16 +1,17 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { LandingHeader } from "@/components/landing/LandingHeader";
+import { PasswordMatch, PasswordStrength } from "@/components/PasswordStrength";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, UserPlus } from "lucide-react";
-import { z } from "zod";
-import { ModeToggle } from "@/components/mode-toggle";
-import { PasswordStrength, PasswordMatch } from "@/components/PasswordStrength";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
+import { Switch } from "@/components/ui/switch";
 import { auth } from "@/config/firebase";
+import { useToast } from "@/hooks/use-toast";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { UserPlus } from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { z } from "zod";
 
 const registrationSchema = z.object({
   firstName: z.string().min(2, "First name must be at least 2 characters"),
@@ -33,6 +34,7 @@ const Registration = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -64,14 +66,21 @@ const Registration = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     setLoading(true);
 
     try {
-      const validated = registrationSchema.parse({
-        ...formData,
-        age: parseInt(formData.age)
-      });
+      // Validate based on role
+      if (!isAdmin) {
+        registrationSchema.parse({
+          ...formData,
+          age: parseInt(formData.age)
+        });
+      } else {
+        // Simple validation for admin
+        if (!formData.email || !formData.password || !formData.firstName || !formData.lastName) {
+          throw new Error("Please fill in all required fields.");
+        }
+      }
 
       let userCredential;
       let isNewUser = true;
@@ -80,125 +89,84 @@ const Registration = () => {
         // Try to create user with Firebase Authentication
         userCredential = await createUserWithEmailAndPassword(
           auth,
-          validated.email,
-          validated.password
+          formData.email,
+          formData.password
         );
       } catch (firebaseError: any) {
         if (firebaseError.code === 'auth/email-already-in-use') {
-          // Firebase user exists, check if student profile exists in database
-          console.log("Firebase user exists, checking database for student profile...");
-          
-          // Try to sign in with the provided password
-          try {
-            userCredential = await signInWithEmailAndPassword(
-              auth,
-              validated.email,
-              validated.password
-            );
-            
-            const tempToken = await userCredential.user.getIdToken();
-            
-            // Check if student profile exists in database
-            const backendUrl = import.meta.env.VITE_BACKEND_URL;
-            const checkResponse = await fetch(`${backendUrl}/api/students/by-email/${validated.email}`, {
-              headers: {
-                'Authorization': `Bearer ${tempToken}`
-              }
-            });
-            
-            if (checkResponse.ok) {
-              // Student profile exists, user should login instead
-              throw new Error("This email is already registered with a complete profile. Please use the Login page instead.");
-            } else if (checkResponse.status === 404) {
-              // Firebase user exists but no student profile - allow profile creation
-              console.log("Firebase user exists but no student profile found. Creating profile...");
-              isNewUser = false; // Firebase user exists, but creating new student profile
-            } else {
-              throw new Error("Unable to verify account status. Please try again.");
-            }
-          } catch (signInError: any) {
-            if (signInError.code === 'auth/wrong-password' || signInError.code === 'auth/invalid-credential') {
-              throw new Error("This email is already registered with a different password. Please use the Login page, or click 'Forgot Password' if you don't remember your password.");
-            } else if (signInError.message) {
-              throw signInError; // Re-throw if it's one of our custom errors
-            } else {
-              throw new Error("Unable to complete registration. Please try again.");
-            }
-          }
+          // For admin, we might want to allow login if firebase user exists? 
+          // But let's keep it simple: Register means Register.
+          throw firebaseError;
         } else {
           throw firebaseError;
         }
       }
 
       const user = userCredential.user;
-
-      // Get Firebase ID token
       const idToken = await user.getIdToken();
-
-      // Store Firebase token
       localStorage.setItem('firebase_token', idToken);
 
-      // Create or get student record in Supabase with Firebase UID
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
-      const response = await fetch(`${backendUrl}/api/students`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify({
-          first_name: validated.firstName,
-          last_name: validated.lastName,
-          age: validated.age,
-          dob: validated.dob,
-          email: validated.email,
-          phone: validated.phone
-        })
-      });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to create student record');
-      }
-
-      const studentData = await response.json();
-      const studentId = studentData.id; // Use the UUID returned by backend
-
-      // Store student info in session
-      sessionStorage.setItem('studentId', studentId);
-      sessionStorage.setItem('studentEmail', validated.email);
-
-      console.log("Registration successful with Firebase, UID:", user.uid);
-      console.log("Student created with ID:", studentId);
-
-      if (isNewUser) {
-        toast({
-          title: "Registration Successful!",
-          description: "Welcome! You can now proceed to the test.",
+      if (isAdmin) {
+        // Register as Admin
+        const response = await fetch(`${backendUrl}/api/admin/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+          },
+          body: JSON.stringify({
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            email: formData.email
+          })
         });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Failed to create admin record');
+        }
+
+        toast({ title: "Admin Registration Successful!", description: "Welcome Admin." });
+        navigate("/admin");
+
       } else {
-        toast({
-          title: "Profile Completed!",
-          description: "Your profile has been created. You can now proceed to the test.",
+        // Register as Student (existing logic)
+        const response = await fetch(`${backendUrl}/api/students`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+          },
+          body: JSON.stringify({
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            age: parseInt(formData.age),
+            dob: formData.dob,
+            email: formData.email,
+            phone: formData.phone
+          })
         });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Failed to create student record');
+        }
+
+        const studentData = await response.json();
+        sessionStorage.setItem('studentId', studentData.id);
+        sessionStorage.setItem('studentEmail', formData.email);
+
+        toast({ title: "Registration Successful!", description: "Welcome! You can now proceed to the test." });
+        navigate("/levels", { state: { studentId: studentData.id } });
       }
 
-      navigate("/levels", { state: { studentId: studentId } });
     } catch (error: any) {
       console.error("Registration error:", error);
-      
-      let errorMessage = "Please check your information and try again.";
-      if (error.code === 'auth/weak-password') {
-        errorMessage = "Password is too weak. Use at least 8 characters with uppercase and special characters.";
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = "Invalid email address format.";
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
       toast({
         title: "Registration Failed",
-        description: errorMessage,
+        description: error.message || "Please check your information and try again.",
         variant: "destructive"
       });
     } finally {
@@ -207,41 +175,36 @@ const Registration = () => {
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
+    <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4 pt-24">
       {/* Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-background via-purple-50 to-blue-50 dark:from-background dark:via-purple-950/20 dark:to-blue-950/20" />
-      <div className="absolute top-20 left-10 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-float" />
-      <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
+      <div className="absolute inset-0 bg-gradient-to-br from-background via-emerald-50 to-teal-50 dark:from-background dark:via-emerald-950/20 dark:to-teal-950/20" />
+      <div className="absolute top-20 left-10 w-72 h-72 bg-emerald-500/20 rounded-full blur-3xl animate-float" />
+      <div className="absolute bottom-20 right-10 w-96 h-96 bg-teal-500/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
 
-      {/* Theme Toggle */}
-      <div className="absolute top-4 right-4 z-50">
-        <ModeToggle />
-      </div>
+      <LandingHeader />
 
       <div className="relative z-10 w-full max-w-2xl animate-fade-in">
-        <Button
-          variant="ghost"
-          onClick={() => navigate("/")}
-          className="mb-6"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Home
-        </Button>
 
         <Card className="border-2 shadow-elevated">
           <CardHeader className="space-y-1 text-center pb-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-2xl mx-auto mb-4 flex items-center justify-center glow-effect">
+            <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl mx-auto mb-4 flex items-center justify-center glow-effect">
               <UserPlus className="w-8 h-8 text-white" />
             </div>
             <CardTitle className="text-3xl font-bold">
-              Student <span className="gradient-text">Registration</span>
+              {isAdmin ? "Admin" : "Student"} <span className="text-emerald-500">Registration</span>
             </CardTitle>
             <CardDescription className="text-base">
-              Fill in your details to begin the admission test
+              Fill in your details to begin
             </CardDescription>
           </CardHeader>
-          
+
           <CardContent>
+            <div className="flex items-center justify-center space-x-2 mb-6">
+              <Label htmlFor="admin-mode" className="text-sm font-medium">Student</Label>
+              <Switch id="admin-mode" checked={isAdmin} onCheckedChange={setIsAdmin} className="data-[state=checked]:bg-emerald-500" />
+              <Label htmlFor="admin-mode" className="text-sm font-medium">Admin</Label>
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -254,7 +217,7 @@ const Registration = () => {
                     placeholder="John"
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="lastName">Last Name *</Label>
                   <Input
@@ -267,34 +230,50 @@ const Registration = () => {
                 </div>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="dob">Date of Birth *</Label>
-                  <Input
-                    id="dob"
-                    type="date"
-                    required
-                    value={formData.dob}
-                    onChange={(e) => handleDobChange(e.target.value)}
-                  />
-                </div>
+              {!isAdmin && (
+                <>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="dob">Date of Birth *</Label>
+                      <Input
+                        id="dob"
+                        type="date"
+                        required
+                        value={formData.dob}
+                        onChange={(e) => handleDobChange(e.target.value)}
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="age">Age * (Auto-calculated)</Label>
-                  <Input
-                    id="age"
-                    type="number"
-                    required
-                    min="16"
-                    max="100"
-                    value={formData.age}
-                    readOnly
-                    disabled
-                    placeholder="Auto-calculated"
-                    className="bg-muted"
-                  />
-                </div>
-              </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="age">Age * (Auto-calculated)</Label>
+                      <Input
+                        id="age"
+                        type="number"
+                        required
+                        min="16"
+                        max="100"
+                        value={formData.age}
+                        readOnly
+                        disabled
+                        placeholder="Auto-calculated"
+                        className="bg-muted"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone Number *</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      required
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      placeholder="+1234567890"
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address *</Label>
@@ -305,18 +284,6 @@ const Registration = () => {
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="john.doe@example.com"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number *</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  required
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+1234567890"
                 />
               </div>
 
@@ -343,20 +310,19 @@ const Registration = () => {
                   onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                   placeholder="Re-enter your password"
                 />
-                <PasswordMatch 
-                  password={formData.password} 
-                  confirmPassword={formData.confirmPassword} 
+                <PasswordMatch
+                  password={formData.password}
+                  confirmPassword={formData.confirmPassword}
                 />
               </div>
 
-              <Button 
-                type="submit" 
-                className="w-full" 
+              <Button
+                type="submit"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/20 border-none dark:bg-none"
                 size="lg"
-                variant="glow"
                 disabled={loading}
               >
-                {loading ? "Registering..." : "Register & Start Test"}
+                {loading ? "Registering..." : (isAdmin ? "Register as Admin" : "Register & Start Test")}
               </Button>
 
               <div className="text-center text-sm text-muted-foreground">
@@ -364,7 +330,7 @@ const Registration = () => {
                 <button
                   type="button"
                   onClick={() => navigate("/login")}
-                  className="text-primary hover:underline font-medium"
+                  className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 hover:underline font-medium"
                 >
                   Login here
                 </button>

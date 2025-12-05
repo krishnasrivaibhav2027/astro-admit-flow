@@ -5,6 +5,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React, { Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import AINotesPage from "./pages/AINotesPage";
+import About from "./pages/About";
+import Blog from "./pages/Blog";
+import BlogPost from "./pages/BlogPost";
+import Contact from "./pages/Contact";
+import ContactAdmin from "./pages/ContactAdmin";
+import Help from "./pages/Help";
 import Landing from "./pages/Landing";
 import Leaderboard from "./pages/Leaderboard";
 import Levels from "./pages/Levels";
@@ -15,6 +21,21 @@ import Registration from "./pages/Registration";
 import Results from "./pages/Results";
 import Review from "./pages/Review";
 import Test from "./pages/Test";
+
+// Admin Imports
+import AdminLayout from "./layouts/AdminLayout";
+import StudentLayout from "./layouts/StudentLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import Announcements from "./pages/admin/Announcements";
+import ContactStudent from "./pages/admin/ContactStudent";
+import DetailedReport from "./pages/admin/DetailedReport";
+import LiveMonitoring from "./pages/admin/LiveMonitoring";
+import QuestionAnalytics from "./pages/admin/QuestionAnalytics";
+import Reports from "./pages/admin/Reports";
+import Settings from "./pages/admin/Settings";
+import StudentManagement from "./pages/admin/StudentManagement";
+
+
 const FinalResults = React.lazy(() => import("./pages/FinalResults"));
 
 const queryClient = new QueryClient();
@@ -27,21 +48,43 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/blog" element={<Blog />} />
+          <Route path="/blog/:slug" element={<BlogPost />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/help" element={<Help />} />
           <Route path="/registration" element={<Registration />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/levels" element={<Levels />} />
-          <Route path="/test" element={<Test />} />
-          <Route path="/results" element={<Results />} />
-          <Route path="/final-results" element={
-            <Suspense fallback={<div>Loading...</div>}>
-              <FinalResults />
-            </Suspense>
-          } />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/review/:level" element={<Review />} />
-          <Route path="/ai-notes/:level" element={<AINotesPage />} />
-          <Route path="/leaderboard" element={<Leaderboard />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          {/* Student Routes */}
+          <Route element={<StudentLayout />}>
+            <Route path="/levels" element={<Levels />} />
+            <Route path="/test" element={<Test />} />
+            <Route path="/results" element={<Results />} />
+            <Route path="/final-results" element={
+              <Suspense fallback={<div>Loading...</div>}>
+                <FinalResults />
+              </Suspense>
+            } />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/review/:level" element={<Review />} />
+            <Route path="/ai-notes/:level" element={<AINotesPage />} />
+            <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/contact-admin" element={<ContactAdmin />} />
+          </Route>
+
+          {/* Admin Routes */}
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="questions" element={<QuestionAnalytics />} />
+            <Route path="monitoring" element={<LiveMonitoring />} />
+            <Route path="students" element={<StudentManagement />} />
+            <Route path="announcements" element={<Announcements />} />
+            <Route path="contact" element={<ContactStudent />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="reports/detailed" element={<DetailedReport />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

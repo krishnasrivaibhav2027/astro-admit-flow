@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, BookOpen, Lightbulb, Brain, Sparkles } from "lucide-react";
-import { ModeToggle } from "@/components/mode-toggle";
+import { ArrowLeft, BookOpen, Brain, Lightbulb, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 interface TopicNote {
   topic: string;
@@ -58,7 +57,7 @@ const AINotesPage = () => {
       }
 
       const data = await response.json();
-      
+
       // If no incorrect answers, just set empty and finish
       if (!data.topic_notes || data.topic_notes.length === 0) {
         setTopicNotes([]);
@@ -67,10 +66,10 @@ const AINotesPage = () => {
         setGenerating(false);
         return;
       }
-      
+
       // Check if notes are cached
       const isCached = data.cached === true;
-      
+
       // Clean markdown
       const cleanedNotes = data.topic_notes.map((note: any) => ({
         ...note,
@@ -83,11 +82,11 @@ const AINotesPage = () => {
         displayedNotes: isCached ? note.notes.replace(/\*\*/g, '').replace(/\*/g, '').replace(/###\s*/g, '\n').replace(/##\s*/g, '\n').replace(/\n{3,}/g, '\n\n') : '',
         isTyping: false
       }));
-      
+
       setTopicNotes(cleanedNotes);
       setIncorrectCount(data.incorrect_count);
       setLoading(false);
-      
+
       if (isCached) {
         // Cached notes - show immediately without animation
         setGenerating(false);
@@ -97,7 +96,7 @@ const AINotesPage = () => {
       }
     } catch (error: any) {
       console.error('Error generating notes:', error);
-      
+
       // Don't show error if it's just no incorrect questions
       if (error.message && error.message.includes('No questions found')) {
         setTopicNotes([]);
@@ -106,7 +105,7 @@ const AINotesPage = () => {
         setGenerating(false);
         return;
       }
-      
+
       toast({
         title: "Error",
         description: "Failed to generate AI notes. Please try again.",
@@ -120,33 +119,33 @@ const AINotesPage = () => {
   const animateNotes = async (notes: TopicNote[]) => {
     for (let i = 0; i < notes.length; i++) {
       const note = notes[i];
-      
+
       // Mark as typing
-      setTopicNotes(prev => 
+      setTopicNotes(prev =>
         prev.map((n, idx) => idx === i ? { ...n, isTyping: true } : n)
       );
-      
+
       // Animate word by word
       const words = note.notes.split(' ');
       let displayedText = '';
-      
+
       for (let j = 0; j < words.length; j++) {
         displayedText += (j > 0 ? ' ' : '') + words[j];
-        
+
         setTopicNotes(prev =>
           prev.map((n, idx) => idx === i ? { ...n, displayedNotes: displayedText } : n)
         );
-        
+
         // Delay between words (faster for better UX)
         await new Promise(resolve => setTimeout(resolve, 30));
       }
-      
+
       // Mark as done typing
       setTopicNotes(prev =>
         prev.map((n, idx) => idx === i ? { ...n, isTyping: false, displayedNotes: note.notes } : n)
       );
     }
-    
+
     setGenerating(false);
   };
 
@@ -187,15 +186,6 @@ const AINotesPage = () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-background via-purple-50 to-blue-50 dark:from-background dark:via-purple-950/20 dark:to-blue-950/20" />
-      
-      {/* Theme Toggle */}
-      <div className="absolute top-4 right-4 z-50">
-        <ModeToggle />
-      </div>
-
-      {/* Content */}
       <div className="relative z-10 container max-w-6xl mx-auto px-4 py-12">
         <Button
           variant="ghost"
@@ -232,21 +222,23 @@ const AINotesPage = () => {
         </Card>
 
         {/* No incorrect answers */}
-        {topicNotes.length === 0 && (
-          <Card className="border-2 border-green-200 dark:border-green-800">
-            <CardContent className="p-12 text-center">
-              <div className="space-y-4">
-                <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900 mx-auto flex items-center justify-center">
-                  <Sparkles className="w-10 h-10 text-green-600" />
+        {
+          topicNotes.length === 0 && (
+            <Card className="border-2 border-green-200 dark:border-green-800">
+              <CardContent className="p-12 text-center">
+                <div className="space-y-4">
+                  <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900 mx-auto flex items-center justify-center">
+                    <Sparkles className="w-10 h-10 text-green-600" />
+                  </div>
+                  <h3 className="text-2xl font-bold">Perfect Performance! 🎉</h3>
+                  <p className="text-muted-foreground">
+                    You answered all questions correctly. No weak areas identified!
+                  </p>
                 </div>
-                <h3 className="text-2xl font-bold">Perfect Performance! 🎉</h3>
-                <p className="text-muted-foreground">
-                  You answered all questions correctly. No weak areas identified!
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              </CardContent>
+            </Card>
+          )
+        }
 
         {/* Topic Notes */}
         <div className="space-y-6">
@@ -319,8 +311,8 @@ const AINotesPage = () => {
             Back to Review
           </Button>
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 };
 

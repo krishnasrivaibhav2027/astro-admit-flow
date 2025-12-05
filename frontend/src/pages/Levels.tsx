@@ -1,21 +1,11 @@
-import { ModeToggle } from "@/components/mode-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { auth } from "@/config/firebase";
 import { useToast } from "@/hooks/use-toast";
+import { useStudentProgress } from "@/hooks/useAppQueries";
 import { supabase } from "@/integrations/supabase/client";
-import { sendPasswordResetEmail } from "firebase/auth";
-import { CheckCircle2, Crown, KeyRound, Lock, LogOut, Target, Trophy, User, Zap } from "lucide-react";
-import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import { Award, CheckCircle, Crown, Lock, Target, TrendingUp, Trophy, Zap } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 type LevelStatus = "locked" | "current" | "completed";
@@ -36,14 +26,15 @@ const Levels = () => {
   const location = useLocation();
   const { toast } = useToast();
   const studentId = location.state?.studentId;
-  const fromResults = location.state?.fromResults; // Check if coming from Results page
-  const [levels, setLevels] = useState<LevelData[]>([
+  const { data: results, isLoading } = useStudentProgress(studentId || sessionStorage.getItem('studentId'));
+
+  const initialLevels: LevelData[] = [
     {
       level: "easy",
       title: "Easy Level",
       icon: Target,
-      color: "from-green-500 to-emerald-500",
-      description: "Foundation concepts - 5 questions",
+      color: "from-emerald-400 to-emerald-600",
+      description: "Foundation concepts",
       status: "current",
       attempts: 0,
       maxAttempts: 1
@@ -52,8 +43,8 @@ const Levels = () => {
       level: "medium",
       title: "Medium Level",
       icon: Zap,
-      color: "from-blue-500 to-cyan-500",
-      description: "Intermediate concepts - 3 questions",
+      color: "from-blue-400 to-blue-600",
+      description: "Intermediate concepts",
       status: "locked",
       attempts: 0,
       maxAttempts: 2
@@ -62,381 +53,394 @@ const Levels = () => {
       level: "hard",
       title: "Hard Level",
       icon: Crown,
-      color: "from-purple-500 to-pink-500",
-      description: "Advanced concepts - 2 questions",
+      color: "from-purple-400 to-pink-500",
+      description: "Advanced concepts",
       status: "locked",
       attempts: 0,
       maxAttempts: 2
     }
-  ]);
+  ];
+
   const [testCompleted, setTestCompleted] = useState(false);
-  const [latestResultData, setLatestResultData] = useState<any>(null);
+
+  // Derive levels from query data
+  const levels = useMemo(() => {
+    if (!results || results.length === 0) return initialLevels;
+
+    const easyPassed = results.some(r => r.level === "easy" && r.result === "pass");
+    const mediumPassed = results.some(r => r.level === "medium" && r.result === "pass");
+    const hardPassed = results.some(r => r.level === "hard" && r.result === "pass");
+
+    const latestResult = results[0]; // Results are ordered by created_at desc
+    // We need to find the latest attempt counts. 
+    // Actually, the backend might return separate rows for each attempt or a summary.
+    // Looking at previous code: "latestResult.attempts_easy". It seems there's a summary record or the latest record has the counts.
+    // Let's assume the latest record has the cumulative counts as per previous logic.
+
+    const easyAttempts = latestResult.attempts_easy || 0;
+    const mediumAttempts = latestResult.attempts_medium || 0;
+    const hardAttempts = latestResult.attempts_hard || 0;
+
+    const newLevels = [...initialLevels];
+    newLevels[0].attempts = easyAttempts;
+    newLevels[1].attempts = mediumAttempts;
+    newLevels[2].attempts = hardAttempts;
+
+    // Easy Level
+    if (easyPassed || easyAttempts >= 1) {
+      newLevels[0].status = "completed";
+    } else {
+      newLevels[0].status = "current";
+    }
+
+    // Medium Level
+    if (mediumPassed || (easyPassed && mediumAttempts >= 2)) {
+      newLevels[1].status = "completed";
+    } else if (easyPassed) {
+      newLevels[1].status = "current";
+    } else {
+      newLevels[1].status = "locked";
+    }
+
+    // Hard Level
+    if (hardPassed || (mediumPassed && hardAttempts >= 2)) {
+      newLevels[2].status = "completed";
+    } else if (mediumPassed) {
+      newLevels[2].status = "current";
+    } else {
+      newLevels[2].status = "locked";
+    }
+
+    return newLevels;
+  }, [results]);
 
   useEffect(() => {
-    const checkAuthAndLoadData = async () => {
-      try {
-        // Check if user is authenticated using sessionStorage (custom auth)
-        const storedStudentId = sessionStorage.getItem('studentId');
-        const currentStudentId = studentId || storedStudentId;
-        
-        if (!currentStudentId) {
-          console.log("No student ID found, redirecting to login");
-          navigate("/login");
-          return;
-        }
+    if (!results) return;
 
-        console.log("Student authenticated:", currentStudentId);
-        loadProgress(currentStudentId);
-      } catch (error) {
-        console.error("Error checking auth:", error);
-        navigate("/login");
-      }
-    };
+    const easyPassed = results.some(r => r.level === "easy" && r.result === "pass");
+    const mediumPassed = results.some(r => r.level === "medium" && r.result === "pass");
+    const hardPassed = results.some(r => r.level === "hard" && r.result === "pass");
 
-    checkAuthAndLoadData();
-  }, [studentId]);
+    // Check for failure completion
+    const latestResult = results[0];
+    const easyAttempts = latestResult?.attempts_easy || 0;
+    const mediumAttempts = latestResult?.attempts_medium || 0;
+    const hardAttempts = latestResult?.attempts_hard || 0;
 
-  const loadProgress = async (currentStudentId: string) => {
-    if (!currentStudentId) {
-      navigate("/login");
-      return;
-    }
+    const easyFailedCompletely = easyAttempts >= 1 && !easyPassed;
+    const mediumFailedCompletely = easyPassed && mediumAttempts >= 2 && !mediumPassed;
+    const hardFailedCompletely = mediumPassed && hardAttempts >= 2 && !hardPassed;
 
-    const { data } = await supabase
-      .from("results")
-      .select("*")
-      .eq("student_id", currentStudentId)
-      .order("created_at", { ascending: false });
-
-    if (data && data.length > 0) {
-      const latestResult = data[0];
-      
-      // Check pass status for each level
-      const easyPassed = data.some(r => r.level === "easy" && r.result === "pass");
-      const mediumPassed = data.some(r => r.level === "medium" && r.result === "pass");
-      const hardPassed = data.some(r => r.level === "hard" && r.result === "pass");
-      
-      // Get attempt counts from latest result
-      const easyAttempts = latestResult.attempts_easy || 0;
-      const mediumAttempts = latestResult.attempts_medium || 0;
-      const hardAttempts = latestResult.attempts_hard || 0;
-      
-      // Update level statuses FIRST - This is the PRIMARY function
-      const newLevels = [...levels];
-      newLevels[0].attempts = easyAttempts;
-      newLevels[1].attempts = mediumAttempts;
-      newLevels[2].attempts = hardAttempts;
-      
-      // SIMPLIFIED LOGIC: Set level statuses based on pass/fail ONLY
-      // Easy Level
-      if (easyPassed || easyAttempts >= 1) {
-        newLevels[0].status = "completed";
-      } else {
-        newLevels[0].status = "current";
-      }
-      
-      // Medium Level - UNLOCKS when Easy is PASSED
-      if (mediumPassed || (easyPassed && mediumAttempts >= 2)) {
-        newLevels[1].status = "completed";
-      } else if (easyPassed) {
-        newLevels[1].status = "current"; // KEY FIX: Unlock when Easy passed
-      } else {
-        newLevels[1].status = "locked";
-      }
-      
-      // Hard Level - UNLOCKS when Medium is PASSED
-      if (hardPassed || (mediumPassed && hardAttempts >= 2)) {
-        newLevels[2].status = "completed";
-      } else if (mediumPassed) {
-        newLevels[2].status = "current"; // Unlock when Medium passed
-      } else {
-        newLevels[2].status = "locked";
-      }
-      
-      // Update levels state IMMEDIATELY
-      setLevels(newLevels);
-      
-      // Determine if ENTIRE test sequence is complete
-      // ONLY true when ALL 3 levels are passed
-      const allThreeLevelsPassed = easyPassed && mediumPassed && hardPassed;
-      
-      // OR when failed a level and exhausted all attempts (cannot continue)
-      const easyFailedCompletely = easyAttempts >= 1 && !easyPassed;
-      const mediumFailedCompletely = easyPassed && mediumAttempts >= 2 && !mediumPassed;
-      const hardFailedCompletely = mediumPassed && hardAttempts >= 2 && !hardPassed;
-      
-      const testFullyComplete = allThreeLevelsPassed || easyFailedCompletely || mediumFailedCompletely || hardFailedCompletely;
-      
-      console.log("🔍 DEBUG:", {
-        easyPassed, mediumPassed, hardPassed,
-        easyAttempts, mediumAttempts, hardAttempts,
-        testFullyComplete,
-        mediumStatus: newLevels[1].status
-      });
-      
-      // Set test completion state
-      setTestCompleted(testFullyComplete);
-      
-      // Set result data only if test is fully complete
-      if (testFullyComplete) {
-        setLatestResultData(latestResult);
-      } else {
-        setLatestResultData(null);
-      }
-      
-      // NO AUTO-REDIRECTS - User clicks "Go to Results" button when ready
-      // Level statuses are already set above
-    }
-  };
+    const isComplete = (easyPassed && mediumPassed && hardPassed) || easyFailedCompletely || mediumFailedCompletely || hardFailedCompletely;
+    setTestCompleted(isComplete);
+  }, [results]);
 
   const handleStartLevel = (level: LevelData) => {
-    // Don't allow starting locked or completed levels
     if (level.status === "locked" || level.status === "completed") return;
-    
-    navigate("/test", { 
-      state: { 
-        studentId, 
+
+    navigate("/test", {
+      state: {
+        studentId: sessionStorage.getItem('studentId'),
         level: level.level,
         currentAttempt: level.attempts + 1
-      } 
-    });
-  };
-
-  const handleLogout = () => {
-    // Clear all authentication data
-    localStorage.removeItem('firebase_token');
-    sessionStorage.removeItem('studentId');
-    sessionStorage.removeItem('studentEmail');
-    
-    toast({
-      title: "Logged Out",
-      description: "You have been successfully logged out.",
-    });
-    
-    // Navigate to home page
-    navigate("/");
-  };
-
-  const handleChangePassword = async () => {
-    try {
-      const email = sessionStorage.getItem('studentEmail');
-      if (!email) {
-        toast({
-          title: "Error",
-          description: "Email not found. Please log in again.",
-          variant: "destructive"
-        });
-        return;
       }
-
-      await sendPasswordResetEmail(auth, email);
-
-      toast({
-        title: "Password Reset Email Sent!",
-        description: "Please check your email to reset your password.",
-      });
-    } catch (error: any) {
-      console.error('Error sending password reset:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to send password reset email.",
-        variant: "destructive"
-      });
-    }
+    });
   };
+
+  // Calculate overall progress
+  const completedLevels = levels.filter(l => l.status === "completed").length;
+  const progressPercentage = Math.round((completedLevels / 3) * 100);
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-background via-purple-50 to-blue-50 dark:from-background dark:via-purple-950/20 dark:to-blue-950/20" />
-      <div className="absolute top-20 left-10 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-float" />
-      <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
+    <div className="min-h-screen relative overflow-hidden transition-colors duration-500">
+      {/* Animated Gradient Orbs */}
+      <motion.div
+        className="absolute -top-40 -left-40 w-96 h-96 bg-emerald-500/20 dark:bg-emerald-500/30 rounded-full blur-3xl pointer-events-none"
+        animate={{
+          scale: [1, 1.2, 1],
+          opacity: [0.2, 0.4, 0.2]
+        }}
+        transition={{ duration: 6, repeat: Infinity }}
+      />
+      <motion.div
+        className="absolute -bottom-40 -right-40 w-96 h-96 bg-blue-500/20 dark:bg-blue-500/30 rounded-full blur-3xl pointer-events-none"
+        animate={{
+          scale: [1, 1.3, 1],
+          opacity: [0.2, 0.4, 0.2]
+        }}
+        transition={{ duration: 8, repeat: Infinity }}
+      />
 
-      {/* Leaderboard Button - Top Left */}
-      <div className="absolute top-4 left-4 z-50">
-        <Button
-          variant="outline"
-          size="lg"
-          onClick={() => navigate("/leaderboard")}
-          className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white border-0 hover:from-yellow-600 hover:to-orange-600"
+      {/* Main Content */}
+      <div className="container mx-auto px-6 py-12 relative z-10">
+        <motion.div
+          className="text-center mb-12"
+          initial={{ opacity: 0, y: -30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
         >
-          <Trophy className="w-5 h-5 mr-2" />
-          Leaderboard
-        </Button>
-      </div>
+          <h1 className="text-4xl md:text-5xl font-bold mb-3 text-slate-900 dark:text-white">
+            Test <span className="text-emerald-500 dark:text-emerald-400">Levels</span>
+          </h1>
+          <p className="text-slate-600 dark:text-slate-400 text-lg">
+            Progress through each level to complete your admission test
+          </p>
+        </motion.div>
 
-      {/* Theme Toggle, Account Menu, and Logout */}
-      <div className="absolute top-4 right-4 z-50 flex gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              className="bg-background/80 backdrop-blur-sm"
-              title="Account"
+        {/* Overall Progress Bar */}
+        <motion.div
+          className="max-w-4xl mx-auto mb-12"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.3 }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Overall Progress</span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold">{progressPercentage}%</span>
+          </div>
+          <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden relative">
+            <motion.div
+              className="h-full bg-gradient-to-r from-emerald-500 via-blue-500 to-purple-500 rounded-full relative"
+              initial={{ width: 0 }}
+              animate={{ width: `${progressPercentage}%` }}
+              transition={{ duration: 2, delay: 0.5, ease: "easeOut" }}
             >
-              <User className="h-[1.2rem] w-[1.2rem]" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => navigate("/profile")} className="cursor-pointer">
-              <User className="mr-2 h-4 w-4" />
-              <span>Profile</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleChangePassword} className="cursor-pointer">
-              <KeyRound className="mr-2 h-4 w-4" />
-              <span>Change Password</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={handleLogout}
-          className="bg-background/80 backdrop-blur-sm"
-          title="Logout"
-        >
-          <LogOut className="h-[1.2rem] w-[1.2rem]" />
-        </Button>
-        <ModeToggle />
-      </div>
+              {/* Glowing effect */}
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                animate={{ x: ['-100%', '200%'] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+              />
+            </motion.div>
+          </div>
+        </motion.div>
 
-      <div className="relative z-10 container mx-auto px-4 py-12">
-        <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
-          <div className="text-center space-y-4">
-            <h1 className="text-4xl md:text-5xl font-bold">
-              Test <span className="gradient-text">Levels</span>
-            </h1>
-            <p className="text-xl text-muted-foreground">
-              Progress through each level to complete your admission test
-            </p>
+        {/* Completion Banner */}
+        {testCompleted && (
+          <motion.div
+            className="max-w-4xl mx-auto mb-16 bg-gradient-to-r from-emerald-500/20 to-emerald-500/10 dark:from-emerald-500/10 dark:to-emerald-500/5 border border-emerald-500/40 dark:border-emerald-500/30 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between backdrop-blur-sm relative overflow-hidden gap-4"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.4 }}
+          >
+            {/* Animated background */}
+            <motion.div
+              className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent dark:from-emerald-500/5"
+              animate={{ x: ['-100%', '100%'] }}
+              transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+            />
+
+            <div className="relative z-10 text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
+                <p className="text-xl font-bold text-slate-900 dark:text-white">Test Completed!</p>
+                <motion.span
+                  className="text-2xl"
+                  animate={{ rotate: [0, 10, -10, 0] }}
+                  transition={{ duration: 1, repeat: Infinity }}
+                >
+                  🎉
+                </motion.span>
+              </div>
+              <p className="text-slate-600 dark:text-slate-400 text-sm">View your final results and performance summary</p>
+            </div>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 relative z-10 shadow-lg shadow-emerald-500/20 dark:bg-none"
+              onClick={async () => {
+                const studentId = sessionStorage.getItem('studentId');
+                const { data: allResults } = await supabase
+                  .from("results")
+                  .select("*")
+                  .eq("student_id", studentId)
+                  .order("created_at", { ascending: true });
+
+                navigate("/final-results", {
+                  state: {
+                    studentId,
+                    allResults: allResults?.filter(r => ["easy", "medium", "hard"].includes(r.level)) || []
+                  }
+                });
+              }}
+            >
+              <Trophy className="w-4 h-4" />
+              Go to Results
+            </Button>
+          </motion.div>
+        )}
+
+        {/* Level Cards with Progress Flow */}
+        <div className="max-w-6xl mx-auto relative">
+          {/* Flowing Connection Lines - Visible on large screens */}
+          <div className="absolute top-1/2 left-0 right-0 h-1 -translate-y-1/2 hidden lg:block -z-10">
+            <motion.div
+              className="h-full bg-gradient-to-r from-emerald-500/30 via-blue-500/30 to-purple-500/30 rounded-full relative"
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ duration: 2, delay: 1 }}
+              style={{ transformOrigin: "left" }}
+            >
+              {/* Glowing particles flowing */}
+              <motion.div
+                className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-emerald-400 rounded-full shadow-lg shadow-emerald-500"
+                animate={{ x: ['0%', '100%'] }}
+                transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+              />
+              <motion.div
+                className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-400 rounded-full shadow-lg shadow-blue-500"
+                animate={{ x: ['0%', '100%'] }}
+                transition={{ duration: 3, repeat: Infinity, ease: "linear", delay: 1 }}
+              />
+            </motion.div>
           </div>
 
-          {/* Go to Results Button - Only shown when test is completed */}
-          {testCompleted && (
-            <div className="mb-6">
-              <Card className="border-2 border-primary bg-gradient-to-r from-primary/10 to-purple-500/10">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-xl font-semibold mb-1">Test Completed! 🎉</h3>
-                      <p className="text-muted-foreground">
-                        View your final results and performance summary
-                      </p>
-                    </div>
-                    <Button
-                      size="lg"
-                      variant="glow"
-                      onClick={async () => {
-                        // Fetch all results for this student
-                        const studentId = sessionStorage.getItem('studentId');
-                        const { data: allResults } = await supabase
-                          .from("results")
-                          .select("*")
-                          .eq("student_id", studentId)
-                          .order("created_at", { ascending: true });
-                        // Check if medium is passed
-                        const mediumPassed = allResults?.find(r => r.level === "medium" && r.result === "pass");
-                        // If medium is passed, allow test as passed, else not passed
-                        // Pass allResults to FinalResults for correct UI
-                        navigate("/final-results", {
-                          state: {
-                            studentId,
-                            allResults: allResults?.filter(r => ["easy","medium","hard"].includes(r.level)) || []
-                          }
-                        });
-                      }}
-                    >
-                      <Trophy className="w-5 h-5 mr-2" />
-                      Go to Results
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative z-0">
             {levels.map((level, index) => {
-              const Icon = level.icon;
               const isLocked = level.status === "locked";
               const isCompleted = level.status === "completed";
               const isCurrent = level.status === "current";
+              const Icon = level.icon;
+
+              // Define colors based on level type
+              let borderColor = "border-slate-200 dark:border-slate-800";
+              let shadowColor = "";
+              let gradientColor = "";
+              let iconColor = "";
+              let progressColor = "";
+
+              if (level.level === "easy") {
+                borderColor = isCurrent || isCompleted ? "border-emerald-500/60 dark:border-emerald-500/50" : borderColor;
+                shadowColor = "rgba(16, 185, 129, 0.3)";
+                gradientColor = "from-emerald-400 to-emerald-600";
+                iconColor = "text-emerald-400";
+                progressColor = "bg-emerald-500";
+              } else if (level.level === "medium") {
+                borderColor = isCurrent || isCompleted ? "border-blue-500/60 dark:border-blue-500/50" : borderColor;
+                shadowColor = "rgba(59, 130, 246, 0.3)";
+                gradientColor = "from-blue-400 to-blue-600";
+                iconColor = "text-blue-400";
+                progressColor = "bg-blue-500";
+              } else { // hard
+                borderColor = isCurrent || isCompleted ? "border-purple-500/60 dark:border-purple-500/50" : borderColor;
+                shadowColor = "rgba(168, 85, 247, 0.3)";
+                gradientColor = "from-purple-400 to-pink-500";
+                iconColor = "text-purple-400";
+                progressColor = "bg-purple-500";
+              }
 
               return (
-                <Card 
+                <motion.div
                   key={level.level}
-                  className={`
-                    border-2 transition-all duration-300 overflow-hidden
-                    ${isLocked ? "opacity-60" : "hover:shadow-xl hover:-translate-y-1"}
-                    ${isCurrent ? "border-primary glow-effect" : ""}
-                    ${isCompleted ? "border-green-500" : ""}
-                  `}
-                  style={{
-                    animationDelay: `${index * 0.1}s`
-                  }}
+                  className="relative"
+                  initial={{ opacity: 0, y: 50 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, delay: 0.6 + (index * 0.2) }}
                 >
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-6 flex-1">
-                        <div className={`
-                          w-16 h-16 rounded-2xl bg-gradient-to-br ${level.color} 
-                          flex items-center justify-center relative
-                          ${isCurrent ? "animate-glow-pulse" : ""}
-                        `}>
-                          {isLocked ? (
-                            <Lock className="w-8 h-8 text-white" />
-                          ) : isCompleted ? (
-                            <CheckCircle2 className="w-8 h-8 text-white" />
-                          ) : (
-                            <Icon className="w-8 h-8 text-white" />
-                          )}
-                        </div>
+                  <motion.div
+                    className={`
+                      ${isLocked ? 'opacity-70 grayscale-[0.5]' : ''}
+                      bg-white/80 dark:bg-slate-800/50 border ${borderColor} 
+                      rounded-2xl p-6 backdrop-blur-sm relative overflow-hidden h-full flex flex-col
+                    `}
+                    whileHover={!isLocked ? {
+                      scale: 1.03,
+                      borderColor: borderColor.replace('/60', '').replace('/50', ''),
+                      boxShadow: `0 20px 40px ${shadowColor}`
+                    } : {}}
+                  >
+                    {/* Top Progress Line */}
+                    <div className="absolute top-0 left-0 w-full h-1 bg-slate-200 dark:bg-slate-700">
+                      {(isCompleted || isCurrent) && (
+                        <motion.div
+                          className={`h-full bg-gradient-to-r ${gradientColor}`}
+                          initial={{ width: 0 }}
+                          animate={{ width: isCompleted ? "100%" : "50%" }}
+                          transition={{ duration: 1.5, delay: 1 + (index * 0.2) }}
+                        />
+                      )}
+                    </div>
 
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-2xl font-bold">{level.title}</h3>
-                            {isCompleted && (
-                              <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-green-500/20">
-                                Completed
-                              </Badge>
-                            )}
-                            {isCurrent && (
-                              <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
-                                Current
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-muted-foreground mb-2">{level.description}</p>
-                          <div className="text-sm text-muted-foreground">
-                            Attempts: {level.attempts} / {level.maxAttempts}
-                          </div>
-                        </div>
+                    {/* Level Number Badge */}
+                    <div className={`absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center shadow-lg z-10 ${isLocked ? 'bg-slate-400' : progressColor}`}>
+                      <span className="text-sm text-white font-bold">{index + 1}</span>
+                    </div>
+
+                    {/* Icon Circle */}
+                    <div className="flex justify-center mb-6 mt-2">
+                      <motion.div
+                        className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${gradientColor} flex items-center justify-center shadow-xl relative`}
+                        whileHover={!isLocked ? { rotate: [0, 5, -5, 0] } : {}}
+                      >
+                        {isLocked ? (
+                          <Lock className="w-10 h-10 text-white/80" />
+                        ) : isCompleted ? (
+                          <CheckCircle className="w-10 h-10 text-white" />
+                        ) : (
+                          <Icon className="w-10 h-10 text-white" />
+                        )}
+
+                        {/* Success Pulse Animation Removed */}
+                      </motion.div>
+                    </div>
+
+                    <h3 className="text-center text-xl font-bold mb-2 text-slate-900 dark:text-white">{level.title}</h3>
+
+                    <div className="flex items-center justify-center gap-2 mb-4 min-h-[24px]">
+                      {isCompleted ? (
+                        <>
+                          <Award className={`w-4 h-4 ${iconColor}`} />
+                          <p className={`text-center ${iconColor} text-sm font-medium`}>Completed</p>
+                        </>
+                      ) : isCurrent ? (
+                        <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                          Current
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-slate-500">Locked</Badge>
+                      )}
+                    </div>
+
+                    {/* Questions Progress */}
+                    <div className="bg-slate-100/50 dark:bg-slate-900/50 rounded-lg p-3 mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-slate-600 dark:text-slate-400">Questions</span>
+                        <span className={`text-xs font-medium ${isLocked ? 'text-slate-400' : iconColor}`}>
+                          {level.level === 'easy' ? '5' : level.level === 'medium' ? '3' : '2'} Questions
+                        </span>
                       </div>
+                      <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <motion.div
+                          className={`h-full ${progressColor}`}
+                          initial={{ width: 0 }}
+                          animate={{ width: isCompleted ? "100%" : "0%" }}
+                          transition={{ duration: 1, delay: 1.2 + (index * 0.2) }}
+                        />
+                      </div>
+                    </div>
 
-                      {/* Button Logic:
-                          - If level is completed (has attempts) → Show "Review" button
-                          - If level is current and not attempted → Show "Start Test" button
-                          - If level is locked → Show "Locked" button
-                      */}
+                    <div className="space-y-2 mb-6 flex-grow">
+                      <p className="text-slate-600 dark:text-slate-400 text-sm text-center">
+                        {level.description}
+                      </p>
+                      <div className="flex items-center justify-center gap-1 text-slate-500 text-xs">
+                        <TrendingUp className="w-3 h-3" />
+                        <span>Attempts: {level.attempts} / {level.maxAttempts}</span>
+                      </div>
+                    </div>
+
+                    {/* Action Button */}
+                    <div className="mt-auto">
                       {(isCompleted || level.attempts > 0) ? (
                         <Button
-                          size="lg"
-                          variant="secondary"
+                          variant="outline"
+                          className={`w-full ${level.level === 'easy' ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10' : level.level === 'medium' ? 'border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10' : 'border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10'} dark:bg-transparent`}
                           onClick={() => navigate(`/review/${level.level}`)}
-                          className="ml-4"
                         >
                           Review
                         </Button>
                       ) : (
                         <Button
-                          size="lg"
-                          variant={isCurrent ? "glow" : "outline"}
+                          className={`w-full ${isLocked ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/20'} dark:bg-none`}
                           disabled={isLocked}
                           onClick={() => handleStartLevel(level)}
-                          className="ml-4"
                         >
                           {isLocked ? (
                             <>
@@ -444,26 +448,16 @@ const Levels = () => {
                               Locked
                             </>
                           ) : (
-                            "Start Test"
+                            // Check if there is a pending result for this level to show "Resume"
+                            results?.some(r => r.level === level.level && r.result === 'pending') ? "Resume Test" : "Start Test"
                           )}
                         </Button>
                       )}
                     </div>
-                  </CardContent>
-                </Card>
+                  </motion.div>
+                </motion.div>
               );
             })}
-          </div>
-
-          <div className="mt-12 p-6 rounded-xl bg-card border-2">
-            <h3 className="text-lg font-semibold mb-3">Test Guidelines</h3>
-            <ul className="space-y-2 text-muted-foreground">
-              <li>• Each level must be passed to unlock the next</li>
-              <li>• You need a minimum score of 5.0/10 to pass</li>
-              <li>• Easy level: 1 attempt only</li>
-              <li>• Medium & Hard levels: 2 attempts maximum</li>
-              <li>• Your answers will be evaluated on multiple criteria</li>
-            </ul>
           </div>
         </div>
       </div>

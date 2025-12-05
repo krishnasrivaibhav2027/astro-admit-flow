@@ -1,8 +1,9 @@
-import { ModeToggle } from "@/components/mode-toggle";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { auth } from "@/config/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { CheckCircle2, Clock, Home, Mail, TrendingUp, Trophy, XCircle } from "lucide-react";
@@ -24,7 +25,7 @@ const Results = () => {
     // Check authentication first
     const token = localStorage.getItem('firebase_token');
     const sessionStudentId = sessionStorage.getItem('studentId');
-    
+
     if (!token || !sessionStudentId) {
       toast({
         title: "Authentication Required",
@@ -34,7 +35,7 @@ const Results = () => {
       navigate("/login");
       return;
     }
-    
+
     if (!studentId || score === undefined) {
       navigate("/levels");
       return;
@@ -57,7 +58,7 @@ const Results = () => {
         const attemptsField = `attempts_${level}` as keyof typeof latestResult;
         const attempts = latestResult[attemptsField] as number || 0;
         setCurrentAttempts(attempts);
-        
+
         // Set max attempts based on level
         const maxAttemptsByLevel = {
           easy: 1,
@@ -67,8 +68,8 @@ const Results = () => {
         const maxAttempts = maxAttemptsByLevel[level as keyof typeof maxAttemptsByLevel];
         setMaxAttempts(maxAttempts);
 
-        // Check if max attempts reached and send email if needed
-        if (attempts >= maxAttempts && !isPassed) {
+        // Check if max attempts reached or test passed, send email
+        if (isPassed || attempts >= maxAttempts) {
           await handleMaxAttemptsReached();
         }
       }
@@ -79,7 +80,7 @@ const Results = () => {
 
   const handleMaxAttemptsReached = async () => {
     if (emailSent || sendingEmail) return;
-    
+
     setSendingEmail(true);
     try {
       // Get student data for email
@@ -90,18 +91,28 @@ const Results = () => {
         .single();
 
       if (studentData) {
+        // Get current user token
+        const user = auth.currentUser;
+        if (!user) {
+          console.error("User not authenticated");
+          return;
+        }
+        const token = await user.getIdToken();
+
         // Send email notification via backend API
         const backendUrl = import.meta.env.VITE_BACKEND_URL;
         const response = await fetch(`${backendUrl}/api/send-notification`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
             to_email: studentData.email,
             student_name: `${studentData.first_name} ${studentData.last_name}`,
-            result: "fail",
-            score: score
+            result: "fail", // This is just a trigger, backend will calculate actual status
+            score: score,
+            student_id: studentId
           })
         });
 
@@ -126,28 +137,13 @@ const Results = () => {
 
   const handleRetryLevel = () => {
     // Navigate directly to test with incremented attempt
-    navigate("/test", { 
-      state: { 
-        studentId, 
+    navigate("/test", {
+      state: {
+        studentId,
         level,
         currentAttempt: currentAttempts + 1
-      } 
+      }
     });
-  };
-
-  const handleLogout = () => {
-    // Clear all authentication data
-    localStorage.removeItem('firebase_token');
-    sessionStorage.removeItem('studentId');
-    sessionStorage.removeItem('studentEmail');
-    
-    toast({
-      title: "Logged Out",
-      description: "You have been successfully logged out.",
-    });
-    
-    // Navigate to home page
-    navigate("/");
   };
 
   // Prefer backend result_status, fallback to result, then to score threshold
@@ -182,23 +178,14 @@ const Results = () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-background via-purple-50 to-blue-50 dark:from-background dark:via-purple-950/20 dark:to-blue-950/20" />
-      <div className="absolute top-20 left-10 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-float" />
-      <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
-
-      {/* Theme Toggle */}
-      <div className="absolute top-4 right-4 z-50">
-        <ModeToggle />
-      </div>
 
       <div className="relative z-10 container mx-auto px-4 py-12">
         <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
           {/* Result Header */}
           <Card className={`border-4 shadow-elevated ${isPassed ? 'border-green-500' : 'border-red-500'}`}>
             <CardContent className="p-12 text-center space-y-6">
-              <div className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center ${
-                isPassed ? 'bg-gradient-to-br from-green-500 to-emerald-500' : 'bg-gradient-to-br from-red-500 to-pink-500'
-              } animate-scale-in glow-effect`}>
+              <div className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center ${isPassed ? 'bg-gradient-to-br from-green-500 to-emerald-500' : 'bg-gradient-to-br from-red-500 to-pink-500'
+                } animate-scale-in glow-effect`}>
                 {isPassed ? (
                   <Trophy className="w-12 h-12 text-white" />
                 ) : (
@@ -273,9 +260,9 @@ const Results = () => {
                     </span>
                   </div>
                   <div className="relative h-2 bg-muted rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className={`absolute inset-y-0 left-0 ${getScoreBg(criterion.score)} transition-all duration-1000`}
-                      style={{ 
+                      style={{
                         width: `${(criterion.score / 10) * 100}%`,
                         animationDelay: `${index * 0.05}s`
                       }}
@@ -300,21 +287,20 @@ const Results = () => {
                     `Well done on passing the ${level} level! You can now proceed to the next challenge. Each level builds upon the previous one, testing your knowledge and skills progressively.`
                   )
                 ) : (
-                  `You need a minimum score of 5.0/10 to pass. Review the detailed feedback above to understand which areas need improvement. ${
-                    level === "easy" ? "Unfortunately, the easy level only allows one attempt." : "You can retry this level if attempts are remaining."
+                  `You need a minimum score of 5.0/10 to pass. Review the detailed feedback above to understand which areas need improvement. ${level === "easy" ? "Unfortunately, the easy level only allows one attempt." : "You can retry this level if attempts are remaining."
                   }`
                 )}
               </p>
-              
+
               {/* Email Sent Notification */}
               {currentAttempts >= maxAttempts && !isPassed && (
                 <div className="mt-4 p-4 rounded-lg bg-blue-50 border border-blue-200 dark:bg-blue-950/20 dark:border-blue-800">
                   <div className="flex items-center gap-2">
                     <Mail className="w-5 h-5 text-blue-600" />
                     <span className="font-medium text-blue-800 dark:text-blue-200">
-                      {sendingEmail ? "Sending email notification..." : 
-                       emailSent ? "Email notification sent successfully!" : 
-                       "Processing email notification..."}
+                      {sendingEmail ? "Sending email notification..." :
+                        emailSent ? "Email notification sent successfully!" :
+                          "Processing email notification..."}
                     </span>
                   </div>
                   <p className="text-sm text-blue-600 dark:text-blue-300 mt-1">
@@ -331,12 +317,12 @@ const Results = () => {
               size="lg"
               variant="outline"
               className="flex-1"
-              onClick={handleLogout}
+              onClick={() => navigate("/levels")}
             >
               <Home className="w-5 h-5 mr-2" />
               Home
             </Button>
-            
+
             <Button
               size="lg"
               variant="glow"

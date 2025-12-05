@@ -6,12 +6,12 @@ import os
 import pdfplumber
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from dotenv import load_dotenv
 
 load_dotenv()
 
-persist_dir = "/app/backend/chroma_db"
+persist_dir = os.path.join(os.path.dirname(__file__), "chroma_db")
 
 def extract_text_from_pdf(pdf_path):
     """Extract text from PDF using pdfplumber"""
@@ -38,7 +38,8 @@ def create_vectorstore():
         print("📥 First run: extracting, embedding, and persisting...")
         
         # Extract text from PDF
-        physics_text = extract_text_from_pdf("/app/backend/NCERT-Physics.pdf")
+        pdf_path = os.path.join(os.path.dirname(__file__), "NCERT-Physics.pdf")
+        physics_text = extract_text_from_pdf(pdf_path)
         
         # Split into chunks
         print("🔪 Splitting text into chunks...")
@@ -69,7 +70,7 @@ def create_vectorstore():
     
     return vectorstore
 
-def get_retriever(k=3):
+def get_retriever(k=15):
     """Get retriever for RAG queries"""
     vectorstore = create_vectorstore()
     return vectorstore.as_retriever(search_kwargs={"k": k})
@@ -81,7 +82,7 @@ if __name__ == "__main__":
     
     # Test query
     print("\n🧪 Testing retriever...")
-    results = retriever.get_relevant_documents("Newton's laws of motion")
+    results = retriever.invoke("Newton's laws of motion")
     print(f"✅ Retrieved {len(results)} relevant documents")
     if results:
         print(f"Sample: {results[0].page_content[:200]}...")

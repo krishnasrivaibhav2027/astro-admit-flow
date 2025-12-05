@@ -3,15 +3,15 @@ Lazy-loading RAG module for Physics Questions
 """
 import os
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from dotenv import load_dotenv
 
 load_dotenv()
 
-persist_dir = "/app/backend/chroma_db"
+persist_dir = os.path.join(os.path.dirname(__file__), "chroma_db")
 _retriever = None
 
-def get_retriever(k=3):
+def get_retriever(k=15):
     """Get or create retriever (lazy loading)"""
     global _retriever
     
@@ -51,7 +51,7 @@ def get_physics_context(query: str, k: int = 3, randomize: bool = True):
         return []
     
     try:
-        results = retriever.get_relevant_documents(query)
+        results = retriever.invoke(query)
         
         if randomize and len(results) > k:
             # Randomly sample k documents from retrieved results for diversity

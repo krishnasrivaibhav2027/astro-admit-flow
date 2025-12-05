@@ -1,21 +1,28 @@
-import { ModeToggle } from "@/components/mode-toggle";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Loader2, Send } from "lucide-react";
+import { motion } from "framer-motion";
+import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Leaf, Loader2, Sprout, Trees, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 interface Question {
+  id: string;
   question: string;
   answer: string;
 }
 
-// Timer durations in seconds
 const TIMER_DURATIONS = {
   easy: 10 * 60,    // 10 minutes
   medium: 35 * 60,  // 35 minutes
@@ -23,30 +30,29 @@ const TIMER_DURATIONS = {
 };
 
 const Test = () => {
-  const navigate = useNavigate();
   const location = useLocation();
+  const navigate = useNavigate();
   const { toast } = useToast();
-  const { studentId, level, currentAttempt } = location.state || {};
-  
+  const { studentId, level } = location.state || {};
+
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
-  const [submittedQuestions, setSubmittedQuestions] = useState<boolean[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [submittedQuestions, setSubmittedQuestions] = useState<boolean[]>([]);
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [resultId, setResultId] = useState<string | null>(null);
-  
+
   // Timer states
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [timerActive, setTimerActive] = useState(false);
   const [timeOut, setTimeOut] = useState(false);
   const [startTime, setStartTime] = useState<number>(0);
-  const [totalTimeTaken, setTotalTimeTaken] = useState<number>(0);
+  const [questionIds, setQuestionIds] = useState<string[]>([]);
 
   // Prevent navigation away from test
   useEffect(() => {
-    // Block browser back/forward buttons
     const handlePopState = (e: PopStateEvent) => {
       e.preventDefault();
       window.history.pushState(null, '', window.location.pathname);
@@ -57,7 +63,6 @@ const Test = () => {
       });
     };
 
-    // Block page refresh/close
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (timerActive) {
         e.preventDefault();
@@ -66,9 +71,7 @@ const Test = () => {
       }
     };
 
-    // Push initial state to prevent back navigation
     window.history.pushState(null, '', window.location.pathname);
-    
     window.addEventListener('popstate', handlePopState);
     window.addEventListener('beforeunload', handleBeforeUnload);
 
@@ -83,18 +86,7 @@ const Test = () => {
       navigate("/registration");
       return;
     }
-
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = "";
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    generateQuestions();
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
+    initializeTest();
   }, [studentId, level]);
 
   // Timer effect
@@ -116,63 +108,20 @@ const Test = () => {
     return () => clearInterval(interval);
   }, [timerActive, timeRemaining]);
 
-  const generateQuestions = async () => {
+  const initializeTest = async () => {
     try {
-      const numQuestions = level === "easy" ? 5 : level === "medium" ? 3 : 2;
-      
+      setLoading(true);
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
-      if (!backendUrl) {
-        throw new Error('Backend URL not configured');
-      }
-
-      // Get Firebase token for authentication
       const token = localStorage.getItem('firebase_token');
-      if (!token) {
-        throw new Error('Authentication required');
-      }
+      if (!token) throw new Error('Authentication required');
 
-      const response = await fetch(`${backendUrl}/api/generate-questions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ level, num_questions: numQuestions })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Question generation error:', errorText);
-        throw new Error('Failed to generate questions');
-      }
-      
-      const data = await response.json();
-      
-      if (!data || !data.questions || !Array.isArray(data.questions) || data.questions.length === 0) {
-        throw new Error('Invalid questions response from server');
-      }
-
-      setQuestions(data.questions);
-      setAnswers(new Array(data.questions.length).fill(""));
-      setSubmittedQuestions(new Array(data.questions.length).fill(false));
-      
-      // Start timer and track start time
-      const duration = TIMER_DURATIONS[level as keyof typeof TIMER_DURATIONS];
-      setTimeRemaining(duration);
-      setTimerActive(true);
-      setStartTime(Date.now()); // Track when test started
-      
-      // Get previous attempts from Supabase
-      const { data: previousResults, error: fetchError } = await supabase
+      // 1. Get or Create Test Session
+      const { data: previousResults } = await supabase
         .from("results")
         .select("*")
         .eq("student_id", studentId)
         .order("created_at", { ascending: false })
         .limit(1);
-
-      if (fetchError) {
-        console.warn('Error fetching previous results:', fetchError);
-      }
 
       const previousAttempts = previousResults?.[0] || {
         attempts_easy: 0,
@@ -180,12 +129,7 @@ const Test = () => {
         attempts_hard: 0
       };
 
-      // Create result entry via backend API
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-
-      const createResultResponse = await fetch(`${backendUrl}/api/create-result`, {
+      const createResponse = await fetch(`${backendUrl}/api/create-result`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -194,46 +138,127 @@ const Test = () => {
         body: JSON.stringify({
           student_id: studentId,
           level,
-          attempts_easy: previousAttempts.attempts_easy || 0,
-          attempts_medium: previousAttempts.attempts_medium || 0,
-          attempts_hard: previousAttempts.attempts_hard || 0
+          attempts_easy: (previousAttempts.attempts_easy || 0) + (level === 'easy' ? 1 : 0),
+          attempts_medium: (previousAttempts.attempts_medium || 0) + (level === 'medium' ? 1 : 0),
+          attempts_hard: (previousAttempts.attempts_hard || 0) + (level === 'hard' ? 1 : 0)
         })
       });
 
-      if (!createResultResponse.ok) {
-        throw new Error('Failed to create test result entry');
-      }
-
-      const result = await createResultResponse.json();
+      if (!createResponse.ok) throw new Error('Failed to initialize test session');
+      const result = await createResponse.json();
       setResultId(result.id);
 
-      // Save questions via backend API
-      const saveQuestionsResponse = await fetch(`${backendUrl}/api/save-questions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          result_id: result.id,
-          questions: data.questions
-        })
-      });
+      // 2. Check if Resuming or New
+      const { count } = await supabase
+        .from("questions")
+        .select("*", { count: 'exact', head: true })
+        .eq("result_id", result.id);
 
-      if (!saveQuestionsResponse.ok) {
-        throw new Error('Failed to save questions');
+      const isResuming = count && count > 0;
+
+      if (isResuming) {
+        // --- RESUME FLOW ---
+        const sessionResponse = await fetch(`${backendUrl}/api/test-session/${result.id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!sessionResponse.ok) throw new Error('Failed to fetch test session');
+        const sessionData = await sessionResponse.json();
+
+        setQuestions(sessionData.questions);
+        setQuestionIds(sessionData.questions.map((q: any) => q.id));
+
+        const restoredAnswers = sessionData.questions.map((q: any) => q.student_answer || "");
+        setAnswers(restoredAnswers);
+        setSubmittedQuestions(restoredAnswers.map((a: string) => !!a));
+
+        let endTime: number;
+
+        if (result.end_time) {
+          endTime = new Date(result.end_time).getTime();
+        } else {
+          // Fallback: Calculate end time from start_time + duration
+          const startTime = new Date(result.start_time || result.created_at).getTime();
+          const duration = TIMER_DURATIONS[level as keyof typeof TIMER_DURATIONS];
+          endTime = startTime + (duration * 1000);
+        }
+
+        const now = Date.now();
+        const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+
+        setTimeRemaining(remaining);
+        setStartTime(new Date(result.start_time || result.created_at).getTime());
+
+        if (remaining > 0) {
+          setTimerActive(true);
+        } else {
+          setTimeOut(true);
+          handleTimeOut();
+        }
+
+      } else {
+        // --- NEW TEST FLOW ---
+        await generateAndSaveQuestions(result.id, token, backendUrl);
+        const duration = TIMER_DURATIONS[level as keyof typeof TIMER_DURATIONS];
+        setTimeRemaining(duration);
+        setTimerActive(true);
+        setStartTime(Date.now());
       }
-      
+
     } catch (error: any) {
-      console.error('Generate questions error:', error);
+      console.error('Test initialization error:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to generate questions. Please try again.",
+        description: error.message || "Failed to start test.",
         variant: "destructive"
       });
       navigate("/levels", { state: { studentId } });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generateAndSaveQuestions = async (resId: string, token: string, backendUrl: string) => {
+    const numQuestions = level === "easy" ? 5 : level === "medium" ? 3 : 2;
+
+    const genResponse = await fetch(`${backendUrl}/api/generate-questions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ level, num_questions: numQuestions })
+    });
+
+    if (!genResponse.ok) throw new Error('Failed to generate questions');
+    const data = await genResponse.json();
+
+    setQuestions(data.questions);
+    setAnswers(new Array(data.questions.length).fill(""));
+    setSubmittedQuestions(new Array(data.questions.length).fill(false));
+
+    const saveResponse = await fetch(`${backendUrl}/api/save-questions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        result_id: resId,
+        questions: data.questions
+      })
+    });
+
+    if (!saveResponse.ok) throw new Error('Failed to save questions');
+
+    const { data: savedQuestions } = await supabase
+      .from("questions")
+      .select("id")
+      .eq("result_id", resId)
+      .order("created_at");
+
+    if (savedQuestions) {
+      setQuestionIds(savedQuestions.map(q => q.id));
     }
   };
 
@@ -243,9 +268,7 @@ const Test = () => {
       description: "The test time has expired. Submitting your answers...",
       variant: "destructive"
     });
-
-    // Auto-submit with current answers
-    await submitAllAnswers(true); // Pass true to indicate timeout
+    await submitAllAnswers(true);
   };
 
   const handleAnswerChange = (value: string) => {
@@ -254,7 +277,7 @@ const Test = () => {
     setAnswers(newAnswers);
   };
 
-  const handleSubmitCurrentAnswer = () => {
+  const handleSubmitCurrentAnswer = async () => {
     if (!answers[currentQuestionIndex]?.trim()) {
       toast({
         title: "Answer Required",
@@ -264,208 +287,98 @@ const Test = () => {
       return;
     }
 
-    // Mark current question as submitted
+    try {
+      const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      const token = localStorage.getItem('firebase_token');
+
+      if (resultId && questionIds[currentQuestionIndex]) {
+        await fetch(`${backendUrl}/api/save-answer`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            result_id: resultId,
+            question_id: questionIds[currentQuestionIndex],
+            student_answer: answers[currentQuestionIndex]
+          })
+        });
+      }
+    } catch (error) {
+      console.error("Failed to save answer:", error);
+    }
+
     const newSubmitted = [...submittedQuestions];
     newSubmitted[currentQuestionIndex] = true;
     setSubmittedQuestions(newSubmitted);
 
     toast({
-      title: "Answer Submitted",
+      title: "Answer Saved",
       description: `Question ${currentQuestionIndex + 1} answer saved successfully`,
     });
 
-    // If this is the last question, submit all answers
     if (currentQuestionIndex === questions.length - 1) {
       submitAllAnswers();
     }
   };
 
-  const handlePrevious = () => {
-    if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(currentQuestionIndex - 1);
+  const handleNext = () => {
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
     }
   };
 
-  const handleNext = () => {
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
+  const handlePrevious = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(prev => prev - 1);
     }
   };
 
   const submitAllAnswers = async (isTimeout: boolean = false) => {
-    // For timeout, don't check if all questions are answered
-    if (!isTimeout) {
-      const unansweredQuestions = answers.map((ans, idx) => ans?.trim() ? null : idx + 1).filter(Boolean);
-      if (unansweredQuestions.length > 0) {
-        toast({
-          title: "Incomplete Answers",
-          description: `Please answer all questions. Missing: Q${unansweredQuestions.join(', Q')}`,
-          variant: "destructive"
-        });
-        return;
-      }
-    }
-
-    setSubmitting(true);
-    setTimerActive(false); // Stop timer
-    
-    // Calculate time taken (in seconds)
-    const timeElapsed = Math.floor((Date.now() - startTime) / 1000);
-    setTotalTimeTaken(timeElapsed);
-    
     try {
-      if (!resultId) {
-        throw new Error("No test result ID found");
-      }
+      if (!resultId) throw new Error("No test result ID found");
+      setSubmitting(true);
+      setTimerActive(false);
 
-      // Save all answers (even empty ones for timeout)
-      const { data: questionRecords, error: questionsError } = await supabase
-        .from("questions")
-        .select("id")
-        .eq("result_id", resultId)
-        .order("created_at");
-
-      if (questionsError || !questionRecords || questionRecords.length === 0) {
-        throw new Error("Failed to fetch questions");
-      }
-
-      const answersToInsert = answers.map((answer, idx) => {
-        if (!questionRecords[idx]) return null;
-        return {
-          question_id: questionRecords[idx].id,
-          student_answer: answer || ""  // Empty string for unanswered
-        };
-      }).filter(Boolean);
-
-      if (answersToInsert.length > 0) {
-        const { error: insertError } = await supabase
-          .from("student_answers")
-          .insert(answersToInsert);
-        
-        if (insertError) {
-          console.error("Error inserting answers:", insertError);
-          throw new Error("Failed to save answers");
-        }
-      }
-
-      // Evaluate answers
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
-      
-      // Get Firebase token for authentication
       const token = localStorage.getItem('firebase_token');
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-      
-      const evalResponse = await fetch(`${backendUrl}/api/evaluate-answers`, {
+
+      const response = await fetch(`${backendUrl}/api/submit-test`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ result_id: resultId })
+        body: JSON.stringify({
+          result_id: resultId,
+          answers: answers,
+          is_timeout: isTimeout
+        })
       });
 
-      if (!evalResponse.ok) {
-        throw new Error('Failed to evaluate answers');
-      }
+      if (!response.ok) throw new Error('Failed to submit test');
 
-      const evaluationData = await evalResponse.json();
+      const resultData = await response.json();
 
-      // Get current result
-      const { data: currentResult, error: resultError } = await supabase
-        .from("results")
-        .select("*")
-        .eq("id", resultId)
-        .single();
+      toast({
+        title: isTimeout ? "Test Timed Out" : "Test Submitted",
+        description: "Your answers have been recorded.",
+      });
 
-      if (resultError || !currentResult) {
-        throw new Error("Result not found");
-      }
-
-      const attemptsField = `attempts_${level}`;
-      const newAttemptCount = (currentResult[attemptsField] || 0) + 1;
-      
-      // Determine result based on score and timeout
-      let testResult: string;
-      let testScore = evaluationData.score || 0;
-      
-      if (isTimeout) {
-        // If timeout but score >= 5, still pass
-        testResult = testScore >= 5 ? 'pass' : 'fail';
-      } else {
-        testResult = evaluationData.result || 'fail';
-      }
-
-      // Update result with incremented attempts and time taken
-      await supabase
-        .from("results")
-        .update({
-          [attemptsField]: newAttemptCount,
-          time_taken: timeElapsed
-        })
-        .eq("id", resultId);
-
-      // If timeout with passing score, show message and go to levels
-      if (isTimeout && testScore >= 5) {
-        toast({
-          title: "Time's Up - But You Passed!",
-          description: `Your score: ${testScore.toFixed(1)}/10. You can proceed to the next level!`,
-        });
-        
-        // Small delay to show the toast
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        navigate("/levels", { state: { studentId } });
-        return;
-      }
-
-      // Determine what happens next and if email should be sent
-      const shouldSendEmail = await determineNextStep(
-        level,
-        testResult,
-        newAttemptCount,
-        studentId,
-        testScore,
-        isTimeout
-      );
-
-      // Navigate to results
-      // Patch: If user failed hard but passed medium, set result: 'pass' for final result
-      let finalResult = testResult;
-      if (
-        level === 'hard' &&
-        testResult === 'fail' &&
-        newAttemptCount >= 2
-      ) {
-        // Check if medium was passed
-        const { data: allResults } = await supabase
-          .from("results")
-          .select("*")
-          .eq("student_id", studentId)
-          .order("created_at", { ascending: false });
-        const mediumPassed = allResults?.some(r => r.level === 'medium' && r.result === 'pass');
-        if (mediumPassed) {
-          finalResult = 'pass';
-        }
-      }
       navigate("/results", {
         state: {
+          ...resultData,
           studentId,
-          score: testScore,
-          result: finalResult,
-          level,
-          criteria: evaluationData.criteria || {},
-          emailSent: shouldSendEmail,
-          timeout: isTimeout
+          completed: true
         }
       });
-      
+
     } catch (error: any) {
-      console.error("Test submission error:", error);
+      console.error('Submission error:', error);
       toast({
-        title: "Submission Error",
-        description: error.message || "Failed to submit test. Please try again.",
+        title: "Error",
+        description: "Failed to submit test. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -473,125 +386,48 @@ const Test = () => {
     }
   };
 
-  const determineNextStep = async (
-    currentLevel: string,
-    result: string,
-    attempts: number,
-    studentId: string,
-    score: number,
-    isTimeout: boolean = false
-  ): Promise<boolean> => {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
-    let shouldSendEmail = false;
-
-    try {
-      const { data: studentData } = await supabase
-        .from("students")
-        .select("*")
-        .eq("id", studentId)
-        .single();
-
-      const { data: allResults } = await supabase
-        .from("results")
-        .select("*")
-        .eq("student_id", studentId)
-        .order("created_at", { ascending: false });
-
-      const mediumPassed = allResults?.some(r => r.level === 'medium' && r.result === 'pass');
-
-      if (currentLevel === "easy") {
-        // Only send fail email if score < 5
-        if ((result === "fail" && score < 5) || (isTimeout && score < 5)) {
-          shouldSendEmail = true;
-          await sendEmailNotification(backendUrl, studentData, "fail", score);
-        }
-        // If timeout but score >= 5, no email (already passed)
-      } else if (currentLevel === "medium") {
-        const maxAttempts = 2;
-        if (result === "pass" && !isTimeout) {
-          // Medium passed - no email, continue to hard
-          shouldSendEmail = false;
-        } else if ((result === "fail" && score < 5 && attempts >= maxAttempts) || (isTimeout && score < 5 && attempts >= maxAttempts)) {
-          // Medium failed both attempts with score < 5 - send fail email
-          shouldSendEmail = true;
-          await sendEmailNotification(backendUrl, studentData, "fail", score);
-        }
-        // If timeout but score >= 5, or still has attempts, no email
-      } else if (currentLevel === "hard") {
-        const maxAttempts = 2;
-        if (result === "pass" && !isTimeout) {
-          // Hard passed - send pass email
-          shouldSendEmail = true;
-          await sendEmailNotification(backendUrl, studentData, "pass", score);
-        } else if (attempts >= maxAttempts && score < 5) {
-          // Hard failed both attempts with score < 5
-          if (mediumPassed) {
-            // Medium was passed, so overall pass
-            shouldSendEmail = true;
-            await sendEmailNotification(backendUrl, studentData, "pass", score);
-          } else {
-            // Both medium and hard failed with low score
-            shouldSendEmail = true;
-            await sendEmailNotification(backendUrl, studentData, "fail", score);
-          }
-        }
-        // If timeout but score >= 5, or still has attempts, no email
-      }
-    } catch (error) {
-      console.error("Error determining next step:", error);
-    }
-
-    return shouldSendEmail;
-  };
-
-  const sendEmailNotification = async (
-    backendUrl: string,
-    studentData: any,
-    result: string,
-    score: number
-  ) => {
-    try {
-      // Get Firebase token for authentication
-      const token = localStorage.getItem('firebase_token');
-      if (!token) {
-        console.error('No Firebase token found for email notification');
-        return;
-      }
-      
-      await fetch(`${backendUrl}/api/send-notification`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          to_email: studentData.email,
-          student_name: `${studentData.first_name} ${studentData.last_name}`,
-          result: result,
-          score: score,
-          student_id: studentId,
-          level: level
-        })
-      });
-    } catch (error) {
-      console.error("Email send error:", error);
-    }
-  };
-
   const handleExit = () => {
     setShowExitDialog(true);
   };
 
-  const confirmExit = () => {
+  const confirmExit = async () => {
+    if (answers[currentQuestionIndex]?.trim() && !submittedQuestions[currentQuestionIndex]) {
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL;
+        const token = localStorage.getItem('firebase_token');
+        if (resultId && questionIds[currentQuestionIndex]) {
+          await fetch(`${backendUrl}/api/save-answer`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              result_id: resultId,
+              question_id: questionIds[currentQuestionIndex],
+              student_answer: answers[currentQuestionIndex]
+            })
+          });
+        }
+      } catch (e) {
+        console.error("Failed to save answer on exit", e);
+      }
+    }
     navigate("/levels", { state: { studentId } });
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-green-50">
         <div className="text-center space-y-4">
-          <Loader2 className="w-12 h-12 animate-spin mx-auto text-primary" />
-          <p className="text-lg text-muted-foreground">Generating questions...</p>
+          <Loader2 className="w-12 h-12 animate-spin mx-auto text-emerald-600" />
+          <p className="text-lg text-emerald-800">Preparing your test environment...</p>
         </div>
       </div>
     );
@@ -601,206 +437,297 @@ const Test = () => {
   const isLastQuestion = currentQuestionIndex === questions.length - 1;
   const isFirstQuestion = currentQuestionIndex === 0;
   const isCurrentSubmitted = submittedQuestions[currentQuestionIndex];
-  const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
-
-  // Format time remaining
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const getTimerColor = () => {
-    const percentage = (timeRemaining / TIMER_DURATIONS[level as keyof typeof TIMER_DURATIONS]) * 100;
-    if (percentage > 50) return 'text-green-600 dark:text-green-400';
-    if (percentage > 20) return 'text-orange-600 dark:text-orange-400';
-    return 'text-red-600 dark:text-red-400 animate-pulse';
-  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 dark:from-primary/10 dark:via-background dark:to-secondary/10 p-4">
-      {/* Theme Toggle */}
-      <div className="absolute top-4 right-4 z-50">
-        <ModeToggle />
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-green-50 to-emerald-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 relative overflow-hidden font-sans transition-colors duration-500">
+      {/* Organic shapes background - Subtle in dark mode */}
+      <motion.div
+        className="absolute top-0 right-0 w-96 h-96 rounded-full bg-gradient-to-br from-green-200/40 to-emerald-300/40 dark:from-emerald-500/5 dark:to-green-500/5 blur-3xl"
+        animate={{
+          x: [0, 80, 0],
+          y: [0, 60, 0],
+          scale: [1, 1.2, 1]
+        }}
+        transition={{ duration: 20, repeat: Infinity }}
+      />
+      <motion.div
+        className="absolute bottom-0 left-0 w-96 h-96 rounded-full bg-gradient-to-br from-emerald-200/40 to-green-300/40 dark:from-emerald-500/5 dark:to-green-500/5 blur-3xl"
+        animate={{
+          x: [0, -60, 0],
+          y: [0, -80, 0],
+          scale: [1, 1.1, 1]
+        }}
+        transition={{ duration: 18, repeat: Infinity }}
+      />
 
-      <div className="max-w-4xl mx-auto py-8 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold gradient-text">
-              {level.charAt(0).toUpperCase() + level.slice(1)} Level Test
-            </h1>
-            <p className="text-muted-foreground">
-              Question {currentQuestionIndex + 1} of {questions.length}
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            {/* Timer Display */}
-            <Card className={`px-4 py-2 ${timeRemaining < 60 ? 'animate-pulse border-red-500' : ''}`}>
-              <div className="flex items-center gap-2">
-                <Clock className={`w-5 h-5 ${getTimerColor()}`} />
-                <div>
-                  <p className="text-xs text-muted-foreground">Time Remaining</p>
-                  <p className={`text-2xl font-bold ${getTimerColor()}`}>
-                    {formatTime(timeRemaining)}
-                  </p>
-                </div>
+      {/* Floating leaves - Subtle in dark mode */}
+      {[...Array(6)].map((_, i) => (
+        <motion.div
+          key={i}
+          className="absolute text-green-300/30 dark:text-emerald-500/10"
+          style={{
+            left: `${Math.random() * 100}%`,
+            top: `${Math.random() * 100}%`
+          }}
+          animate={{
+            y: [0, -30, 0],
+            rotate: [0, 360],
+            opacity: [0.3, 0.6, 0.3]
+          }}
+          transition={{
+            duration: 10 + i * 2,
+            repeat: Infinity,
+            delay: i * 0.5
+          }}
+        >
+          <Leaf className="w-8 h-8" />
+        </motion.div>
+      ))}
+
+      <div className="container mx-auto px-4 py-4 h-screen flex flex-col max-w-6xl relative z-10">
+        {/* Nature-inspired Header - Compact */}
+        <motion.div
+          className="mb-4 bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl border-2 border-green-200 dark:border-slate-800 rounded-2xl p-4 shadow-md shrink-0 transition-colors duration-300"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div className="flex items-center gap-3">
+              <motion.div
+                className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center shadow-md"
+                animate={{
+                  boxShadow: [
+                    '0 5px 20px rgba(16, 185, 129, 0.2)',
+                    '0 5px 30px rgba(16, 185, 129, 0.4)',
+                    '0 5px 20px rgba(16, 185, 129, 0.2)'
+                  ]
+                }}
+                transition={{ duration: 3, repeat: Infinity }}
+              >
+                <Trees className="w-6 h-6 text-white" />
+              </motion.div>
+              <div>
+                <h1 className="text-xl font-bold text-green-800 dark:text-slate-100 capitalize leading-tight">{level} Level Test</h1>
+                <p className="text-emerald-600 dark:text-slate-400 text-sm font-medium">Question {currentQuestionIndex + 1} of {questions.length}</p>
               </div>
-            </Card>
-            <Button variant="outline" onClick={handleExit}>
-              Exit Test
-            </Button>
-          </div>
-        </div>
-
-        {/* Progress */}
-        <div className="space-y-2">
-          <Progress value={progress} className="h-2" />
-          <div className="flex justify-between text-sm text-muted-foreground">
-            {questions.map((_, idx) => (
-              <div key={idx} className="flex flex-col items-center">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
-                  submittedQuestions[idx] 
-                    ? 'bg-green-500 text-white' 
-                    : idx === currentQuestionIndex 
-                    ? 'bg-primary text-primary-foreground' 
-                    : 'bg-muted'
-                }`}>
-                  {submittedQuestions[idx] ? <CheckCircle2 className="w-4 h-4" /> : idx + 1}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Question Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Question {currentQuestionIndex + 1}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="p-4 bg-muted rounded-lg">
-              <p className="text-lg">{currentQuestion.question}</p>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Your Answer:</label>
+            <div className="flex items-center gap-3">
+              <div className="bg-gradient-to-br from-green-100 to-emerald-100 dark:from-slate-800 dark:to-slate-800 border border-green-200 dark:border-slate-700 rounded-xl px-4 py-2 shadow-sm min-w-[140px]">
+                <div className="flex items-center gap-2 justify-center">
+                  <Clock className={`w-4 h-4 ${timeRemaining < 60 ? 'text-red-500 animate-pulse' : 'text-green-600 dark:text-emerald-400'}`} />
+                  <div>
+                    <p className="text-[10px] text-green-600 dark:text-slate-400 font-semibold uppercase tracking-wider text-center">Time Remaining</p>
+                    <p className={`text-lg font-bold leading-none tabular-nums text-center ${timeRemaining < 60 ? 'text-red-600 dark:text-red-400' : 'text-green-800 dark:text-slate-200'}`}>
+                      {formatTime(timeRemaining)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <Button
+                onClick={handleExit}
+                size="sm"
+                className="bg-white dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/30 hover:border-red-200 rounded-xl px-4 h-10 shadow-sm transition-all duration-300"
+              >
+                <X className="w-4 h-4 mr-2" />
+                Exit
+              </Button>
+            </div>
+          </div>
+
+          {/* Organic Progress - Compact */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            {questions.map((_, index) => {
+              const num = index + 1;
+              return (
+                <div key={num} className="flex-1 flex items-center gap-2 min-w-[40px]">
+                  <motion.div
+                    className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold cursor-pointer transition-colors duration-300 ${submittedQuestions[index]
+                      ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-sm'
+                      : index === currentQuestionIndex
+                        ? 'bg-gradient-to-br from-emerald-400 to-green-400 text-white shadow-md'
+                        : 'bg-green-100 dark:bg-slate-800 text-green-400 dark:text-slate-400 border border-green-200 dark:border-slate-700'
+                      }`}
+                    whileHover={{ scale: 1.1 }}
+                    onClick={() => setCurrentQuestionIndex(index)}
+                  >
+                    {submittedQuestions[index] ? <CheckCircle2 className="w-4 h-4" /> : num}
+                    {index === currentQuestionIndex && (
+                      <motion.div
+                        className="absolute inset-0 rounded-full border border-green-400 dark:border-emerald-500"
+                        animate={{ scale: [1, 1.3, 1], opacity: [1, 0, 1] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                      />
+                    )}
+                  </motion.div>
+                  {index < questions.length - 1 && (
+                    <div className="flex-1 h-1 bg-green-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <motion.div
+                        className="h-full bg-gradient-to-r from-green-400 to-emerald-500 rounded-full"
+                        initial={{ width: 0 }}
+                        animate={{ width: index < currentQuestionIndex || submittedQuestions[index] ? "100%" : "0%" }}
+                        transition={{ duration: 0.5 }}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+
+        {/* Question Card - Flex Grow to fill space but not overflow */}
+        <motion.div
+          className="flex-1 min-h-0 mb-4 bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl border-2 border-green-200 dark:border-slate-800 rounded-2xl p-6 shadow-lg flex flex-col transition-colors duration-300"
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.1 }}
+          key={currentQuestionIndex}
+        >
+          <div className="flex items-center gap-3 mb-4 shrink-0">
+            <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-green-500 rounded-xl flex items-center justify-center shadow-sm">
+              <Sprout className="w-5 h-5 text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-green-800 dark:text-slate-100">Question {currentQuestionIndex + 1}</h2>
+          </div>
+
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-slate-800/50 dark:to-slate-800/30 border border-green-100 dark:border-slate-700 rounded-xl p-4 mb-4 shrink-0 overflow-y-auto max-h-[15vh]">
+            <p className="text-green-900 dark:text-slate-200 text-base md:text-lg leading-relaxed font-medium">
+              {currentQuestion?.question}
+            </p>
+          </div>
+
+          <div className="flex-1 flex flex-col min-h-0">
+            <label className="text-green-700 dark:text-slate-400 mb-2 block flex items-center gap-2 text-sm font-semibold shrink-0">
+              <Leaf className="w-4 h-4 text-emerald-500" />
+              Your Answer
+            </label>
+            <div className="relative flex-1 min-h-0">
               <Textarea
-                value={answers[currentQuestionIndex]}
+                className="w-full h-full bg-gradient-to-br from-white to-green-50/50 dark:from-slate-950 dark:to-slate-900 border-2 border-green-200 dark:border-slate-700 rounded-xl p-4 text-green-900 dark:text-slate-200 placeholder-green-400/70 dark:placeholder-slate-600 resize-none focus:outline-none focus:ring-4 focus:ring-green-200 dark:focus:ring-emerald-900/30 focus:border-green-300 dark:focus:border-emerald-500/50 text-base shadow-inner transition-all duration-300"
+                placeholder="Share your thoughtful answer here..."
+                value={answers[currentQuestionIndex] || ''}
                 onChange={(e) => handleAnswerChange(e.target.value)}
-                placeholder="Write your detailed answer here..."
-                className="min-h-[200px]"
                 disabled={isCurrentSubmitted}
               />
               {isCurrentSubmitted && (
-                <p className="text-sm text-green-600 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Answer submitted for this question
-                </p>
+                <div className="absolute top-3 right-3 bg-green-100 dark:bg-emerald-900/30 text-green-700 dark:text-emerald-400 px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Submitted
+                </div>
               )}
             </div>
+          </div>
 
-            {/* Navigation & Submit Buttons */}
-            <div className="flex items-center justify-between gap-4">
+          {/* Navigation */}
+          <div className="flex items-center justify-between gap-3 mt-4 shrink-0">
+            <Button
+              variant="outline"
+              size="default"
+              className="border-2 border-green-300 dark:border-slate-700 text-green-700 dark:text-slate-300 hover:bg-green-50 dark:hover:bg-slate-800 px-6 rounded-xl font-medium transition-all duration-300 bg-transparent"
+              onClick={handlePrevious}
+              disabled={isFirstQuestion}
+            >
+              <ChevronLeft className="w-4 h-4 mr-2" />
+              Prev
+            </Button>
+
+            {!isLastQuestion && (
               <Button
-                variant="outline"
-                onClick={handlePrevious}
-                disabled={isFirstQuestion}
+                size="default"
+                className="bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white px-8 rounded-xl shadow-md font-bold transition-all duration-300 transform hover:scale-105"
+                onClick={handleSubmitCurrentAnswer}
+                disabled={isCurrentSubmitted || !answers[currentQuestionIndex]?.trim()}
               >
-                <ChevronLeft className="w-4 h-4 mr-2" />
-                Previous
+                {isCurrentSubmitted ? "Saved" : "Save"}
               </Button>
+            )}
 
-              <div className="flex gap-2">
-                {!isLastQuestion && (
-                  <Button
-                    onClick={handleSubmitCurrentAnswer}
-                    disabled={isCurrentSubmitted || !answers[currentQuestionIndex]?.trim()}
-                  >
-                    {isCurrentSubmitted ? "Submitted" : "Submit Answer"}
-                  </Button>
-                )}
-
-                {isLastQuestion && (
-                  <Button
-                    onClick={handleSubmitCurrentAnswer}
-                    disabled={submitting}
-                    variant="glow"
-                  >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Submitting Test...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4 mr-2" />
-                        Submit Test
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
-
+            {isLastQuestion && (
               <Button
-                variant="outline"
-                onClick={handleNext}
-                disabled={isLastQuestion}
+                size="default"
+                className="bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white px-8 rounded-xl shadow-md font-bold transition-all duration-300 transform hover:scale-105"
+                onClick={() => submitAllAnswers()}
+                disabled={submitting}
               >
-                Next
-                <ChevronRight className="w-4 h-4 ml-2" />
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  "Submit"
+                )}
               </Button>
-            </div>
-          </CardContent>
-        </Card>
+            )}
 
-        {/* Summary */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Progress Summary</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <p className="text-2xl font-bold text-green-600">
-                  {submittedQuestions.filter(Boolean).length}
-                </p>
-                <p className="text-sm text-muted-foreground">Submitted</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-orange-600">
-                  {submittedQuestions.filter((s, idx) => !s && answers[idx]?.trim()).length}
-                </p>
-                <p className="text-sm text-muted-foreground">Draft</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-red-600">
-                  {submittedQuestions.filter((s, idx) => !s && !answers[idx]?.trim()).length}
-                </p>
-                <p className="text-sm text-muted-foreground">Unanswered</p>
-              </div>
+            <Button
+              size="default"
+              className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-6 rounded-xl shadow-md font-medium transition-all duration-300"
+              onClick={handleNext}
+              disabled={isLastQuestion}
+            >
+              Next
+              <ChevronRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
+        </motion.div>
+
+        {/* Progress Summary - Compact Footer */}
+        <motion.div
+          className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl border border-green-200 dark:border-slate-800 rounded-2xl p-3 shadow-md shrink-0 transition-colors duration-300"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <div className="flex justify-around items-center gap-4">
+            <div className="text-center">
+              <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400 leading-none">
+                {submittedQuestions.filter(Boolean).length}
+              </p>
+              <p className="text-[10px] text-green-700 dark:text-slate-400 font-medium uppercase tracking-wide">Submitted</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="h-8 w-px bg-green-200 dark:bg-slate-800"></div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-amber-500 dark:text-amber-400 leading-none">
+                {submittedQuestions.filter((s, idx) => !s && answers[idx]?.trim()).length}
+              </p>
+              <p className="text-[10px] text-green-700 dark:text-slate-400 font-medium uppercase tracking-wide">Draft</p>
+            </div>
+            <div className="h-8 w-px bg-green-200 dark:bg-slate-800"></div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-green-500 dark:text-slate-400 leading-none">
+                {submittedQuestions.filter((s, idx) => !s && !answers[idx]?.trim()).length}
+              </p>
+              <p className="text-[10px] text-green-700 dark:text-slate-400 font-medium uppercase tracking-wide">Pending</p>
+            </div>
+          </div>
+        </motion.div>
       </div>
 
-      {/* Exit Dialog */}
       <AlertDialog open={showExitDialog} onOpenChange={setShowExitDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-2 border-green-200 dark:border-slate-800 rounded-3xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Exit Test?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Your progress will be lost if you exit now. Are you sure you want to leave?
+            <AlertDialogTitle className="text-2xl text-green-800 dark:text-slate-100">Exit Test?</AlertDialogTitle>
+            <AlertDialogDescription className="text-green-700 dark:text-slate-400 text-lg">
+              Are you sure you want to exit?
+              <br /><br />
+              <span className="font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-lg border border-amber-200 dark:border-amber-800/50">
+                Warning: The timer will continue running in the background.
+              </span>
+              <br /><br />
+              You can resume the test later if time remains. If the time expires while you are away, the test will be automatically submitted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmExit}>Exit</AlertDialogAction>
+            <AlertDialogCancel className="rounded-2xl border-2 border-green-200 dark:border-slate-700 text-green-700 dark:text-slate-300 hover:bg-green-50 dark:hover:bg-slate-800 bg-transparent">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmExit} className="bg-red-500 hover:bg-red-600 text-white rounded-2xl px-6">
+              Exit Test
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </div >
   );
 };
 

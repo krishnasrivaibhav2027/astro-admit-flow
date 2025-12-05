@@ -1,0 +1,5 @@
+{
+    "model": "gemini-2.5-flash",
+    "temperature": 0.9,
+    "email_notifications": true
+}

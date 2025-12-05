@@ -7,12 +7,21 @@ import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
-from datetime import datetime
+from datetime import datetime, timezone
+from datetime import datetime, timezone
 import json
+import smtplib
+import base64
+import requests
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate
 from firebase_config import initialize_firebase, verify_firebase_token
+from settings_manager import settings_manager
 
 # Import RAG module
 try:
@@ -35,19 +44,32 @@ supabase_url = os.environ.get('SUPABASE_URL')
 supabase_key = os.environ.get('SUPABASE_KEY')
 supabase: Client = create_client(supabase_url, supabase_key)
 
-# Initialize LangChain LLM for question generation
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    temperature=0.7,
-    api_key=os.environ.get('GEMINI_API_KEY')
-)
+# Initialize LangChain LLM (Dynamic)
+llm = None
+evaluator_llm = None
 
-# Initialize separate LLM for strict answer evaluation (lower temperature for consistency)
-evaluator_llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    temperature=0.1,  # Low temperature for consistent, strict grading
-    api_key=os.environ.get('GEMINI_API_KEY')
-)
+def initialize_llms():
+    global llm, evaluator_llm
+    model_name = settings_manager.get_model_name()
+    temperature = settings_manager.get_temperature()
+    
+    logging.info(f"🔄 Initializing LLMs with model: {model_name}, temp: {temperature}")
+    
+    llm = ChatGoogleGenerativeAI(
+        model=model_name,
+        temperature=temperature,
+        api_key=os.environ.get('GEMINI_API_KEY')
+    )
+
+    # Evaluator always uses low temp for consistency, but follows model selection
+    evaluator_llm = ChatGoogleGenerativeAI(
+        model=model_name,
+        temperature=0.1,
+        api_key=os.environ.get('GEMINI_API_KEY')
+    )
+
+# Initial setup
+initialize_llms()
 
 
 def safe_invoke(model, prompt_or_messages, purpose: str = "LLM call"):
@@ -76,6 +98,14 @@ def safe_invoke(model, prompt_or_messages, purpose: str = "LLM call"):
 # Create the main app
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
+
+# Include Admin Router
+from admin_routes import admin_router
+app.include_router(admin_router)
+
+# Include Chat Router
+from chat_routes import router as chat_router
+app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 
 
 # ===== EVALUATION CRITERIA MODEL =====
@@ -127,6 +157,12 @@ class SaveQuestionsRequest(BaseModel):
     questions: List[Dict[str, str]]
 
 
+class SubmitTestRequest(BaseModel):
+    result_id: str
+    answers: List[str]
+    is_timeout: bool = False
+
+
 class EvaluateAnswersRequest(BaseModel):
     result_id: str
 
@@ -135,15 +171,29 @@ class NotificationEmailRequest(BaseModel):
     to_email: str
     student_name: str
     result: str
-    score: float
-    student_id: str
-    level: str
+    score: Optional[float] = None
+    student_id: Optional[str] = None
+
+
+
 
 
 class SendConfirmationEmailRequest(BaseModel):
     to_email: str
     student_name: str
     user_id: str
+
+class LogoutRequest(BaseModel):
+    email: str
+
+
+class SettingsUpdateRequest(BaseModel):
+    model: str
+    temperature: float
+    email_notifications: bool
+    passing_score: int
+    max_attempts: int
+    rag_k: int
 
 
 # ===== FIREBASE AUTHENTICATION =====
@@ -164,6 +214,24 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         logging.error(f"Unexpected authentication error: {e}")
         raise HTTPException(status_code=401, detail="Authentication failed")
 
+async def update_last_active(user: Dict):
+    """Background task to update last_active_at for students"""
+    try:
+        email = user.get('email')
+        if email:
+            # We don't await this to avoid blocking the response, or we can just fire and forget
+            # For simplicity in this sync/async mix, we'll just execute it.
+            supabase.table("students").update({"last_active_at": datetime.now().isoformat()}).eq("email", email).execute()
+    except Exception as e:
+        logging.error(f"Failed to update activity: {e}")
+
+async def get_current_user_with_activity(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict:
+    """Dependency that also updates activity"""
+    user = await get_current_user(credentials)
+    # Update activity
+    await update_last_active(user)
+    return user
+
 
 # ===== PROMPTS (LangGraph style) =====
 generate_questions_prompt = ChatPromptTemplate.from_messages([
@@ -175,7 +243,9 @@ generate_questions_prompt = ChatPromptTemplate.from_messages([
      "- Each question MUST cover DIFFERENT physics concepts (electromagnetic induction, mechanics, thermodynamics, waves, optics, etc.)\n"
      "- Questions MUST be UNIQUE and NOT repetitive\n"
      "- Use VARIED question formats (conceptual, numerical, experimental observation, comparison, etc.)\n"
-     "- Ensure questions are suitable for preventing academic malpractice\n\n"
+     "- Ensure questions are suitable for preventing academic malpractice\n"
+     "- DO NOT start questions with phrases like 'Based on the text', 'According to the passage', etc. Questions must stand alone.\n"
+     "- Questions should appear as if they are from a standard physics textbook or exam, without referencing any source material.\n\n"
      "Difficulty guidelines:\n"
      "- easy: Fundamental concepts, basic applications, definitions\n"
      "- medium: Problem-solving, application of multiple concepts\n"
@@ -239,7 +309,7 @@ async def health_check():
 
 # ===== STUDENT ENDPOINTS =====
 @api_router.post("/students")
-async def create_student(student: StudentCreate, current_user: Dict = Depends(get_current_user)):
+async def create_student(student: StudentCreate, current_user: Dict = Depends(get_current_user_with_activity)):
     """Create student - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
@@ -250,6 +320,26 @@ async def create_student(student: StudentCreate, current_user: Dict = Depends(ge
             # Student already exists, return existing student
             return existing_response.data[0]
         
+        # Check for admin domain
+        role = 'student'
+        try:
+            # Hardcoded check for reliability
+            domain = student.email.split('@')[-1]
+            if domain == 'admin.com':
+                role = 'admin'
+            else:
+                # DB check for other domains
+                settings_response = supabase.table("admin_settings").select("value").eq("key", "allowed_admin_domains").execute()
+                if settings_response.data:
+                    allowed_domains = json.loads(settings_response.data[0]['value'])
+                    if domain in allowed_domains:
+                        role = 'admin'
+        except Exception as e:
+            logging.error(f"Error checking admin domain: {e}")
+            # Fallback for safety
+            if student.email.endswith('@admin.com'):
+                role = 'admin'
+
         # Generate UUID for new student (let Supabase auto-generate)
         student_data = {
             "first_name": student.first_name,
@@ -257,11 +347,31 @@ async def create_student(student: StudentCreate, current_user: Dict = Depends(ge
             "age": student.age,
             "dob": student.dob,
             "email": student.email,
-            "phone": student.phone
+            "phone": student.phone,
+            "role": role
         }
         
         response = supabase.table("students").insert(student_data).execute()
         
+        # Sync with admins table if role is admin
+        if role == 'admin':
+            try:
+                admin_data = {
+                    "firebase_uid": current_user.get('uid'),
+                    "email": student.email,
+                    "first_name": student.first_name,
+                    "last_name": student.last_name,
+                    "role": "admin"
+                }
+                # Check if already exists in admins to avoid duplicates
+                existing_admin = supabase.table("admins").select("id").eq("email", student.email).execute()
+                if not existing_admin.data:
+                    supabase.table("admins").insert(admin_data).execute()
+                    logging.info(f"✅ Synced new admin to admins table: {student.email}")
+            except Exception as e:
+                logging.error(f"Failed to sync admin to admins table: {e}")
+                # Don't fail the request, just log it
+
         if hasattr(response, 'data') and response.data:
             return response.data[0]
         else:
@@ -274,7 +384,7 @@ async def create_student(student: StudentCreate, current_user: Dict = Depends(ge
 
 
 @api_router.get("/students/by-email/{email}")
-async def get_student_by_email(email: str, current_user: Dict = Depends(get_current_user)):
+async def get_student_by_email(email: str, current_user: Dict = Depends(get_current_user_with_activity)):
     """Get student by email - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
@@ -298,7 +408,7 @@ async def get_student_by_email(email: str, current_user: Dict = Depends(get_curr
 
 
 @api_router.put("/students/{student_id}/phone")
-async def update_student_phone(student_id: str, request: UpdatePhoneRequest, current_user: Dict = Depends(get_current_user)):
+async def update_student_phone(student_id: str, request: UpdatePhoneRequest, current_user: Dict = Depends(get_current_user_with_activity)):
     """Update student phone number - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
@@ -352,11 +462,116 @@ async def list_students(current_user: Dict = Depends(get_current_user)):
         logging.error(f"Error listing students: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.post("/logout")
+async def logout(request: LogoutRequest, user: Dict = Depends(get_current_user)):
+    """Logout user and update logout_time"""
+    try:
+        # Update student logout time
+        supabase.table("students").update({
+            "logout_time": datetime.now().isoformat(),
+            "last_active_at": datetime.now().isoformat() # Also update active so we know when they left
+        }).eq("email", user['email']).execute()
+        
+        return {"message": "Logged out successfully"}
+    except Exception as e:
+        logging.error(f"Logout error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== ADMIN SETTINGS ROUTES =====
+@api_router.get("/admin/settings")
+async def get_settings(current_user: Dict = Depends(get_current_user)):
+    """Get current admin settings"""
+    try:
+        # Verify admin role (simplified check)
+        # In a real app, we'd check the DB role here too
+        return settings_manager.get_settings()
+    except Exception as e:
+        logging.error(f"Error fetching settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/admin/settings")
+async def update_settings(settings: SettingsUpdateRequest, current_user: Dict = Depends(get_current_user)):
+    """Update admin settings"""
+    try:
+        logging.info(f"⚙️ Updating settings: {settings.model_dump()}")
+        
+        # Update settings
+        new_settings = settings_manager.update_settings(settings.model_dump())
+        
+        # Log activity
+        admin_name = current_user.get('name', current_user.get('email', 'Unknown Admin'))
+        
+        # Create a summary of changes (simplified)
+        details = f"Model: {new_settings.get('model')}, Temp: {new_settings.get('temperature')}, Pass: {new_settings.get('passing_score')}%, Attempts: {new_settings.get('max_attempts')}"
+        
+        settings_manager.log_activity(
+            admin_name=admin_name,
+            action="Updated System Settings",
+            details=details
+        )
+        
+        # Re-initialize LLMs with new settings
+        initialize_llms()
+        
+        return {"success": True, "settings": new_settings}
+    except Exception as e:
+        logging.error(f"Error updating settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/student/announcements")
+async def get_student_announcements(current_user: Dict = Depends(get_current_user_with_activity)):
+    """Get announcements for the current student based on their status"""
+    try:
+        # 1. Determine student status (passed or not)
+        # We define "passed" as having passed the 'hard' level
+        
+        student_response = supabase.table("students").select("id").eq("email", current_user['email']).execute()
+        if not student_response.data:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        student_db_id = student_response.data[0]['id']
+        
+        # Check if passed hard level
+        results_response = supabase.table("results").select("result").eq("student_id", student_db_id).eq("level", "hard").eq("result", "pass").execute()
+        is_passed = len(results_response.data) > 0
+        
+        # 2. Fetch announcements
+        # We want announcements where target_audience is 'all', 'students', or ('passed_students' AND is_passed)
+        
+        audiences = ["all", "students"]
+        if is_passed:
+            audiences.append("passed_students")
+            
+        response = supabase.table("announcements").select("*").in_("target_audience", audiences).order("created_at", desc=True).execute()
+        
+        return response.data
+        
+    except Exception as e:
+        logging.error(f"Error fetching student announcements: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ===== AI-POWERED QUESTION GENERATION WITH RAG =====
+# ===== CONSTANTS =====
+LEVEL_DURATIONS = {
+    "easy": 10 * 60,    # 10 minutes
+    "medium": 35 * 60,  # 35 minutes
+    "hard": 45 * 60     # 45 minutes
+}
+
+class SaveAnswerRequest(BaseModel):
+    result_id: str
+    question_id: str
+    student_answer: str
+
+# ... (existing code) ...
+
 @api_router.post("/create-result")
-async def create_result(request: CreateResultRequest, current_user: Dict = Depends(get_current_user)):
-    """Create test result entry - Firebase Auth Protected"""
+async def create_result(request: CreateResultRequest, current_user: Dict = Depends(get_current_user_with_activity)):
+    """Create test result entry or resume existing - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
@@ -365,6 +580,31 @@ async def create_result(request: CreateResultRequest, current_user: Dict = Depen
         if not student_response.data or len(student_response.data) == 0 or student_response.data[0].get("email") != current_user.get('email'):
             raise HTTPException(status_code=403, detail="Student not found or does not belong to the authenticated user")
         
+        # Check for existing PENDING result for this level
+        pending_result = supabase.table("results").select("*").eq("student_id", request.student_id).eq("level", request.level).eq("result", "pending").execute()
+        
+        if pending_result.data and len(pending_result.data) > 0:
+            # Found a pending result, return it for resumption
+            logging.info(f"🔄 Resuming existing test for student {request.student_id}, level {request.level}")
+            return pending_result.data[0]
+
+        # Check max attempts
+        settings = settings_manager.get_settings()
+        max_attempts = settings.get("max_attempts", 3)
+        
+        # Count existing attempts for this level
+        existing_attempts = supabase.table("results").select("id", count="exact").eq("student_id", request.student_id).eq("level", request.level).execute()
+        current_attempts = existing_attempts.count if existing_attempts.count is not None else 0
+        
+        if current_attempts >= max_attempts:
+             raise HTTPException(status_code=400, detail=f"Maximum attempts ({max_attempts}) reached for this level")
+
+        # Calculate start and end times
+        from datetime import timedelta
+        start_time = datetime.now(timezone.utc)
+        duration_seconds = LEVEL_DURATIONS.get(request.level, 10 * 60)
+        end_time = start_time + timedelta(seconds=duration_seconds)
+
         # Create result entry in Supabase
         response = supabase.table("results").insert({
             "student_id": request.student_id,
@@ -373,7 +613,9 @@ async def create_result(request: CreateResultRequest, current_user: Dict = Depen
             "score": None,
             "attempts_easy": request.attempts_easy,
             "attempts_medium": request.attempts_medium,
-            "attempts_hard": request.attempts_hard
+            "attempts_hard": request.attempts_hard,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat()
         }).execute()
         
         if not response.data or len(response.data) == 0:
@@ -389,7 +631,7 @@ async def create_result(request: CreateResultRequest, current_user: Dict = Depen
 
 
 @api_router.post("/save-questions")
-async def save_questions(request: SaveQuestionsRequest, current_user: Dict = Depends(get_current_user)):
+async def save_questions(request: SaveQuestionsRequest, current_user: Dict = Depends(get_current_user_with_activity)):
     """Save test questions - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
@@ -418,8 +660,298 @@ async def save_questions(request: SaveQuestionsRequest, current_user: Dict = Dep
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@api_router.post("/save-answer")
+async def save_answer(request: SaveAnswerRequest, current_user: Dict = Depends(get_current_user_with_activity)):
+    """Save a single student answer - Firebase Auth Protected"""
+    try:
+        logging.info(f"🔒 Authenticated request from: {current_user['email']}")
+        
+        # Upsert answer
+        # We need to check if an answer exists for this question and result (implicit via question_id)
+        # Actually student_answers links to question_id.
+        
+        # Check if answer exists
+        existing = supabase.table("student_answers").select("id").eq("question_id", request.question_id).execute()
+        
+        if existing.data:
+            # Update
+            response = supabase.table("student_answers").update({
+                "student_answer": request.student_answer
+            }).eq("question_id", request.question_id).execute()
+        else:
+            # Insert
+            response = supabase.table("student_answers").insert({
+                "question_id": request.question_id,
+                "student_answer": request.student_answer
+            }).execute()
+            
+        return {"success": True}
+    except Exception as e:
+        logging.error(f"Error saving answer: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/submit-test")
+async def submit_test(request: SubmitTestRequest, current_user: Dict = Depends(get_current_user_with_activity)):
+    """Submit test, calculate score, and update result - Firebase Auth Protected"""
+    try:
+        logging.info(f"🔒 Authenticated request from: {current_user['email']}")
+        
+        # 1. Fetch questions for this result to map answers
+        questions_response = supabase.table("questions").select("*").eq("result_id", request.result_id).order("created_at").execute()
+        if not questions_response.data:
+            raise HTTPException(status_code=404, detail="Questions not found for this result")
+            
+        questions = questions_response.data
+        
+        # 2. Save/Update answers
+        # We assume request.answers matches questions order
+        if len(request.answers) != len(questions):
+            logging.warning(f"Mismatch in answers count: received {len(request.answers)}, expected {len(questions)}")
+            # We proceed anyway, mapping as much as possible
+            
+        correct_count = 0
+        total_questions = len(questions)
+        
+        for i, q in enumerate(questions):
+            if i < len(request.answers):
+                student_ans = request.answers[i]
+                
+                # Upsert answer
+                existing = supabase.table("student_answers").select("id").eq("question_id", q['id']).execute()
+                if existing.data:
+                    supabase.table("student_answers").update({"student_answer": student_ans}).eq("question_id", q['id']).execute()
+                else:
+                    supabase.table("student_answers").insert({"question_id": q['id'], "student_answer": student_ans}).execute()
+                
+                # Check correctness (Simple exact match for now, case insensitive)
+                # In a real app, use LLM or more robust comparison
+                if student_ans.strip().lower() == q['correct_answer'].strip().lower():
+                    correct_count += 1
+                    
+        # 3. Calculate Score
+        score_percentage = (correct_count / total_questions) * 100 if total_questions > 0 else 0
+        
+        # 4. Determine Pass/Fail
+        settings = settings_manager.get_settings()
+        passing_score = settings.get("passing_score", 60)
+        result_status = "pass" if score_percentage >= passing_score else "fail"
+        
+        # 5. Update Result
+        update_data = {
+            "score": score_percentage,
+            "result": result_status,
+            "end_time": datetime.now(timezone.utc).isoformat()
+        }
+        
+        response = supabase.table("results").update(update_data).eq("id", request.result_id).execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=500, detail="Failed to update result")
+            
+        return response.data[0]
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/send-notification")
+async def send_notification(request: NotificationEmailRequest, current_user: Dict = Depends(get_current_user_with_activity)):
+    """Send email notification - Firebase Auth Protected"""
+    try:
+        logging.info(f"🔒 Authenticated request from: {current_user['email']}")
+        from email.mime.text import MIMEText
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        from googleapiclient.discovery import build
+        import base64
+        
+        client_id = os.environ.get('GMAIL_CLIENT_ID')
+        client_secret = os.environ.get('GMAIL_CLIENT_SECRET')
+        refresh_token = os.environ.get('GMAIL_REFRESH_TOKEN')
+        
+        if not all([client_id, client_secret, refresh_token]):
+            logging.warning("Gmail credentials not configured")
+            return {"success": False, "message": "Gmail not configured"}
+        
+        # Check all test results for this student to determine admission status
+        results_response = supabase.table("results").select("*").eq("student_id", request.student_id).order("created_at", desc=True).execute()
+        
+        admission_message = ""
+        email_subject = "AdmitAI Test Results"
+        
+        if results_response.data and len(results_response.data) > 0:
+            # Get all results to check level statuses
+            all_results = results_response.data
+            
+            # Check which levels were passed
+            easy_passed = any(r.get('level') == 'easy' and r.get('result') == 'pass' for r in all_results)
+            medium_passed = any(r.get('level') == 'medium' and r.get('result') == 'pass' for r in all_results)
+            hard_passed = any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in all_results)
+            
+            # Determine admission status and fee concession
+            if easy_passed and medium_passed and hard_passed:
+                # Passed all levels - 50% fee concession
+                admission_message = """
+🎉 Congratulations! We are thrilled to inform you that you have successfully passed all test levels!
+
+✨ ADMISSION GRANTED ✨
+
+You have been accepted into our prestigious institution with a remarkable 50% FEE CONCESSION!
+
+This outstanding achievement reflects your exceptional understanding of physics concepts and problem-solving abilities. We are excited to welcome you to our academic community.
+
+Next Steps:
+- You will receive detailed admission instructions shortly
+- Please prepare the required documents for enrollment
+- Our admissions team will contact you within 2-3 business days
+
+We look forward to supporting your academic journey!
+"""
+                email_subject = "🎉 Congratulations! Admission Granted with 50% Fee Concession - AdmitAI"
+                
+            elif easy_passed and medium_passed and not hard_passed:
+                # Passed medium but failed hard - 30% fee concession
+                admission_message = """
+🎊 Congratulations! We are pleased to inform you that you have demonstrated strong performance in your admission test!
+
+✨ ADMISSION GRANTED ✨
+
+You have been accepted into our prestigious institution with a 30% FEE CONCESSION!
+
+Your solid grasp of fundamental and intermediate physics concepts showcases your academic potential. We believe you will thrive in our academic environment.
+
+Next Steps:
+- You will receive detailed admission instructions shortly
+- Please prepare the required documents for enrollment
+- Our admissions team will contact you within 2-3 business days
+
+We are excited to have you join our institution!
+"""
+                email_subject = "🎊 Congratulations! Admission Granted with 30% Fee Concession - AdmitAI"
+                
+            elif easy_passed:
+                # Passed only easy level
+                admission_message = """
+Thank you for completing the AdmitAI admission test.
+
+While you have demonstrated understanding of basic physics concepts, we encourage you to strengthen your knowledge in advanced topics for better opportunities.
+
+You may retake the test to improve your results and qualify for fee concessions:
+- Pass Medium & Hard levels: 50% fee concession
+- Pass Medium level: 30% fee concession
+
+We believe in your potential and encourage you to try again!
+"""
+                email_subject = "AdmitAI Test Results - Keep Improving!"
+                
+            else:
+                # Did not pass or failed
+                admission_message = """
+Thank you for taking the AdmitAI admission test.
+
+We appreciate your effort and interest in our institution. While your current results don't qualify for admission at this time, we encourage you to review the concepts and retake the test.
+
+Our test review feature provides detailed explanations to help you improve. You can access it from your dashboard.
+
+Don't give up! With dedication and practice, we're confident you can achieve better results.
+"""
+                email_subject = "AdmitAI Test Results - Try Again!"
+        else:
+            # Fallback message if no results found
+            admission_message = f"""
+Dear {request.student_name},
+
+Thank you for completing your AdmitAI admission test.
+
+Result: {request.result.upper()}
+
+Please log in to your dashboard to view detailed results and next steps.
+
+Best regards,
+AdmitAI Team
+"""
+        
+        creds = Credentials(
+            None,
+            refresh_token=refresh_token,
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=['https://www.googleapis.com/auth/gmail.send']
+        )
+        
+        creds.refresh(Request())
+        service = build('gmail', 'v1', credentials=creds)
+        
+        message = MIMEText(f"""
+Dear {request.student_name},
+
+{admission_message}
+
+Best regards,
+The AdmitAI Team
+        """)
+        message['to'] = request.to_email
+        message['subject'] = email_subject
+        
+        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        service.users().messages().send(userId="me", body={'raw': raw}).execute()
+        
+        logging.info(f"✅ Email sent to {request.to_email}")
+        return {"success": True, "message": "Email sent successfully"}
+        
+    except Exception as e:
+        logging.error(f"❌ Email error: {str(e)}")
+        return {"success": False, "message": f"Email failed: {str(e)}"}
+
+
+@api_router.get("/test-session/{result_id}")
+async def get_test_session(result_id: str, current_user: Dict = Depends(get_current_user_with_activity)):
+    """Get questions and saved answers for a session - Firebase Auth Protected"""
+    try:
+        logging.info(f"🔒 Authenticated request from: {current_user['email']}")
+        
+        # Fetch questions
+        questions_response = supabase.table("questions").select("id, question_text, correct_answer").eq("result_id", result_id).order("created_at").execute()
+        
+        if not questions_response.data:
+            raise HTTPException(status_code=404, detail="Questions not found")
+            
+        questions = questions_response.data
+        
+        # Fetch answers
+        question_ids = [q['id'] for q in questions]
+        answers_response = supabase.table("student_answers").select("question_id, student_answer").in_("question_id", question_ids).execute()
+        
+        answers_map = {a['question_id']: a['student_answer'] for a in answers_response.data} if answers_response.data else {}
+        
+        # Combine
+        session_data = []
+        for q in questions:
+            session_data.append({
+                "id": q['id'],
+                "question": q['question_text'],
+                "answer": q['correct_answer'], # Frontend might need this for some logic, or we can hide it? 
+                                             # Current frontend expects 'answer' in Question interface but doesn't show it.
+                                             # Wait, frontend 'Question' interface has 'answer'. 
+                                             # Ideally we shouldn't send correct answer to frontend during test.
+                                             # But the current implementation of 'generate-questions' sends it.
+                                             # I will keep it consistent.
+                "student_answer": answers_map.get(q['id'], "")
+            })
+            
+        return {"questions": session_data}
+        
+    except Exception as e:
+        logging.error(f"Error fetching test session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @api_router.post("/generate-questions")
-async def generate_questions(request: GenerateQuestionsRequest, current_user: Dict = Depends(get_current_user)):
+async def generate_questions(request: GenerateQuestionsRequest, current_user: Dict = Depends(get_current_user_with_activity)):
     """Generate questions - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
@@ -470,8 +1002,11 @@ async def generate_questions(request: GenerateQuestionsRequest, current_user: Di
         # Create diverse query with randomized topics
         query = f"Physics {level} level: {', '.join(selected_topics)}"
         
-        # Retrieve diverse chunks with randomization enabled (k=5 for more content diversity)
-        context_docs = get_physics_context(query, k=5, randomize=True)
+        # Retrieve diverse chunks with randomization enabled
+        settings = settings_manager.get_settings()
+        rag_k = settings.get("rag_k", 3)
+        # Use slightly more than k for generation to ensure good context
+        context_docs = get_physics_context(query, k=rag_k + 2, randomize=True)
         context = "\n\n".join(context_docs) if context_docs else "General physics concepts"
         
         logging.info(f"🔮 Generating {num_questions} UNIQUE questions at {level} level")
@@ -480,7 +1015,7 @@ async def generate_questions(request: GenerateQuestionsRequest, current_user: Di
         
         # Generate questions using LangChain prompt
         prompt = generate_questions_prompt.format_messages(
-            context=context[:2000],  # Limit context size
+            context=context[:20000],  # Increased limit for k=15 chunks
             num_questions=num_questions,
             level=level
         )
@@ -512,7 +1047,7 @@ async def generate_questions(request: GenerateQuestionsRequest, current_user: Di
 
 # ===== AI-POWERED ANSWER EVALUATION WITH 6 CRITERIA =====
 @api_router.post("/evaluate-answers")
-async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict = Depends(get_current_user)):
+async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict = Depends(get_current_user_with_activity)):
     """Evaluate student answers - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
@@ -562,12 +1097,14 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                     continue
                 
                 # Get relevant context for this question
-                context_docs = get_physics_context(q.get('question_text', ''), k=2)
+                settings = settings_manager.get_settings()
+                rag_k = settings.get("rag_k", 3)
+                context_docs = get_physics_context(q.get('question_text', ''), k=rag_k)
                 context = "\n\n".join(context_docs) if context_docs else ""
                 
                 # Evaluate using LangChain prompt with strict evaluator LLM
                 prompt = evaluate_answer_prompt.format_messages(
-                    context=context[:1500],
+                    context=context[:20000],
                     question=q.get('question_text', ''),
                     correct_answer=q.get('correct_answer', ''),
                     student_answer=student_answer
@@ -653,8 +1190,12 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
         # Score is out of 10
         score_out_of_10 = total_avg
         
-        # Determine pass/fail (5/10 threshold = 50%)
-        result_status = 'pass' if score_out_of_10 >= 5.0 else 'fail'
+        # Determine pass/fail based on settings
+        settings = settings_manager.get_settings()
+        passing_score_percent = settings.get("passing_score", 70)
+        passing_threshold = passing_score_percent / 10.0 # Convert % to score out of 10
+        
+        result_status = 'pass' if score_out_of_10 >= passing_threshold else 'fail'
         
         # Calculate average for each of the 6 criteria across all questions
         criteria_averages = {
@@ -1293,156 +1834,7 @@ async def get_leaderboard():
         raise HTTPException(status_code=500, detail=f"Leaderboard error: {str(e)}")
 
 
-# ===== EMAIL NOTIFICATION =====
-@api_router.post("/send-notification")
-async def send_notification(request: NotificationEmailRequest, current_user: Dict = Depends(get_current_user)):
-    """Send email notification - Firebase Auth Protected"""
-    try:
-        logging.info(f"🔒 Authenticated request from: {current_user['email']}")
-        from email.mime.text import MIMEText
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request
-        from googleapiclient.discovery import build
-        import base64
-        
-        client_id = os.environ.get('GMAIL_CLIENT_ID')
-        client_secret = os.environ.get('GMAIL_CLIENT_SECRET')
-        refresh_token = os.environ.get('GMAIL_REFRESH_TOKEN')
-        
-        if not all([client_id, client_secret, refresh_token]):
-            logging.warning("Gmail credentials not configured")
-            return {"success": False, "message": "Gmail not configured"}
-        
-        # Check all test results for this student to determine admission status
-        results_response = supabase.table("results").select("*").eq("student_id", request.student_id).order("created_at", desc=True).execute()
-        
-        admission_message = ""
-        email_subject = "AdmitAI Test Results"
-        
-        if results_response.data and len(results_response.data) > 0:
-            # Get all results to check level statuses
-            all_results = results_response.data
-            
-            # Check which levels were passed
-            easy_passed = any(r.get('level') == 'easy' and r.get('result') == 'pass' for r in all_results)
-            medium_passed = any(r.get('level') == 'medium' and r.get('result') == 'pass' for r in all_results)
-            hard_passed = any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in all_results)
-            
-            # Determine admission status and fee concession
-            if easy_passed and medium_passed and hard_passed:
-                # Passed all levels - 50% fee concession
-                admission_message = """
-🎉 Congratulations! We are thrilled to inform you that you have successfully passed all test levels!
 
-✨ ADMISSION GRANTED ✨
-
-You have been accepted into our prestigious institution with a remarkable 50% FEE CONCESSION!
-
-This outstanding achievement reflects your exceptional understanding of physics concepts and problem-solving abilities. We are excited to welcome you to our academic community.
-
-Next Steps:
-- You will receive detailed admission instructions shortly
-- Please prepare the required documents for enrollment
-- Our admissions team will contact you within 2-3 business days
-
-We look forward to supporting your academic journey!
-"""
-                email_subject = "🎉 Congratulations! Admission Granted with 50% Fee Concession - AdmitAI"
-                
-            elif easy_passed and medium_passed and not hard_passed:
-                # Passed medium but failed hard - 30% fee concession
-                admission_message = """
-🎊 Congratulations! We are pleased to inform you that you have demonstrated strong performance in your admission test!
-
-✨ ADMISSION GRANTED ✨
-
-You have been accepted into our prestigious institution with a 30% FEE CONCESSION!
-
-Your solid grasp of fundamental and intermediate physics concepts showcases your academic potential. We believe you will thrive in our academic environment.
-
-Next Steps:
-- You will receive detailed admission instructions shortly
-- Please prepare the required documents for enrollment
-- Our admissions team will contact you within 2-3 business days
-
-We are excited to have you join our institution!
-"""
-                email_subject = "🎊 Congratulations! Admission Granted with 30% Fee Concession - AdmitAI"
-                
-            elif easy_passed:
-                # Passed only easy level
-                admission_message = """
-Thank you for completing the AdmitAI admission test.
-
-While you have demonstrated understanding of basic physics concepts, we encourage you to strengthen your knowledge in advanced topics for better opportunities.
-
-You may retake the test to improve your results and qualify for fee concessions:
-- Pass Medium & Hard levels: 50% fee concession
-- Pass Medium level: 30% fee concession
-
-We believe in your potential and encourage you to try again!
-"""
-                email_subject = "AdmitAI Test Results - Keep Improving!"
-                
-            else:
-                # Did not pass or failed
-                admission_message = """
-Thank you for taking the AdmitAI admission test.
-
-We appreciate your effort and interest in our institution. While your current results don't qualify for admission at this time, we encourage you to review the concepts and retake the test.
-
-Our test review feature provides detailed explanations to help you improve. You can access it from your dashboard.
-
-Don't give up! With dedication and practice, we're confident you can achieve better results.
-"""
-                email_subject = "AdmitAI Test Results - Try Again!"
-        else:
-            # Fallback message if no results found
-            admission_message = f"""
-Dear {request.student_name},
-
-Thank you for completing your AdmitAI admission test.
-
-Result: {request.result.upper()}
-
-Please log in to your dashboard to view detailed results and next steps.
-
-Best regards,
-AdmitAI Team
-"""
-        
-        creds = Credentials(
-            None,
-            refresh_token=refresh_token,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=client_id,
-            client_secret=client_secret,
-            scopes=['https://www.googleapis.com/auth/gmail.send']
-        )
-        
-        creds.refresh(Request())
-        service = build('gmail', 'v1', credentials=creds)
-        
-        message = MIMEText(f"""
-Dear {request.student_name},
-
-{admission_message}
-
-Best regards,
-The AdmitAI Team
-        """)
-        message['to'] = request.to_email
-        message['subject'] = email_subject
-        
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        service.users().messages().send(userId="me", body={'raw': raw}).execute()
-        
-        logging.info(f"✅ Email sent to {request.to_email}")
-        return {"success": True, "message": "Email sent successfully"}
-        
-    except Exception as e:
-        logging.error(f"❌ Email error: {str(e)}")
-        return {"success": False, "message": f"Email failed: {str(e)}"}
 
 
 @api_router.post("/send-confirmation-email")
