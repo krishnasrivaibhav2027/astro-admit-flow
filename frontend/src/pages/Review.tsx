@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, ArrowLeft, Brain, CheckCircle2, Lightbulb, RotateCcw, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 interface Question {
   id: string;
@@ -25,6 +25,7 @@ interface AIReviewState {
 
 const Review = () => {
   const navigate = useNavigate();
+  const location = useLocation(); // Add this
   const { level } = useParams<{ level: string }>();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -34,6 +35,7 @@ const Review = () => {
   const [canRetake, setCanRetake] = useState(false);
   const [currentAttempts, setCurrentAttempts] = useState(0);
   const [maxAttempts, setMaxAttempts] = useState(1);
+  const [subject, setSubject] = useState<string>("physics");
 
   useEffect(() => {
     loadReviewData();
@@ -54,8 +56,11 @@ const Review = () => {
         return;
       }
 
+      const locationState = location.state || {}; // Access passed state
+      const subjectParam = locationState.subject || "physics"; // Default to physics if missing, but Levels.tsx sends it now
+
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
-      const response = await fetch(`${backendUrl}/api/review/${level}/${studentId}`, {
+      const response = await fetch(`${backendUrl}/api/review/${level}/${studentId}?subject=${subjectParam}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -71,6 +76,7 @@ const Review = () => {
       setCanRetake(data.can_retake || false);
       setCurrentAttempts(data.current_attempts || 0);
       setMaxAttempts(data.max_attempts || 1);
+      setSubject(data.subject || "physics");
       setLoading(false);
     } catch (error: any) {
       console.error('Error loading review:', error);
@@ -106,6 +112,7 @@ const Review = () => {
     navigate("/test", {
       state: {
         level,
+        subject,
         studentId,
         retake: true
       }
@@ -155,7 +162,8 @@ const Review = () => {
           question: question.question_text,
           correct_answer: question.correct_answer,
           student_answer: question.student_answer,
-          level: level
+          level: level,
+          subject: subject
         })
       });
 

@@ -1,0 +1,13 @@
+Killing PID: 4804
+Killing PID: 0
+Stop-Process : Cannot stop process "Idle (0)" because of the following error: Access is denied
+At line:1 char:197
++ ... h-Object { Write-Host 'Killing PID:' $_; Stop-Process -Id $_ -Force }
++                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : CloseError: (System.Diagnostics.Process (Idle):Process) [Stop-Process], ProcessCommandEx 
+   ception
+    + FullyQualifiedErrorId : CouldNotStopProcess,Microsoft.PowerShell.Commands.StopProcessCommand
+ 
+Killing PID: 17544
+Killing PID: 5500
+Killing PID: 9296

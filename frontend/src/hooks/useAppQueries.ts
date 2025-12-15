@@ -97,8 +97,27 @@ export const useAdmins = () => {
             });
 
             return data;
+            return data;
         },
         refetchInterval: 5000, // Poll every 5 seconds
         staleTime: 0,
+    });
+};
+
+export const useAppSettings = () => {
+    return useQuery({
+        queryKey: ["appSettings"],
+        queryFn: async () => {
+            const backendUrl = import.meta.env.VITE_BACKEND_URL;
+            const token = localStorage.getItem("firebase_token"); // Use same token as student
+
+            const response = await fetch(`${backendUrl}/api/admin/settings`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) throw new Error("Failed to fetch settings");
+            return response.json();
+        },
+        staleTime: 60000, // Cache for 1 minute
     });
 };

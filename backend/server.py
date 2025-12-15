@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -25,12 +25,12 @@ from settings_manager import settings_manager
 
 # Import RAG module
 try:
-    from rag_module import get_physics_context
+    from rag_module import get_context
     RAG_ENABLED = True
 except Exception as e:
     print(f"RAG not available: {e}")
     RAG_ENABLED = False
-    def get_physics_context(query, k=3):
+    def get_context(query, subject="physics", k=3, randomize=True):
         return []
 
 ROOT_DIR = Path(__file__).parent
@@ -111,12 +111,12 @@ app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 # ===== EVALUATION CRITERIA MODEL =====
 class EvaluationCriteria(BaseModel):
     """6 evaluation criteria as per LangGraph requirements"""
-    Relevance: float = Field(..., ge=1, le=10, description="How relevant is the answer to the question")
-    Clarity: float = Field(..., ge=1, le=10, description="How clear and understandable is the answer")
-    SubjectUnderstanding: float = Field(..., ge=1, le=10, description="Depth of physics understanding")
-    Accuracy: float = Field(..., ge=1, le=10, description="Factual correctness")
-    Completeness: float = Field(..., ge=1, le=10, description="How complete is the answer")
-    CriticalThinking: float = Field(..., ge=1, le=10, description="Analytical and critical thinking")
+    Relevance: float = Field(..., ge=0, le=10, description="How relevant is the answer to the question")
+    Clarity: float = Field(..., ge=0, le=10, description="How clear and understandable is the answer")
+    SubjectUnderstanding: float = Field(..., ge=0, le=10, description="Depth of subject understanding")
+    Accuracy: float = Field(..., ge=0, le=10, description="Factual correctness")
+    Completeness: float = Field(..., ge=0, le=10, description="How complete is the answer")
+    CriticalThinking: float = Field(..., ge=0, le=10, description="Analytical and critical thinking")
 
     @property
     def average(self) -> float:
@@ -140,12 +140,14 @@ class UpdatePhoneRequest(BaseModel):
 
 
 class GenerateQuestionsRequest(BaseModel):
+    subject: str = "physics"
     level: str
     num_questions: int = 5
 
 
 class CreateResultRequest(BaseModel):
     student_id: str
+    subject: str = "physics"
     level: str
     attempts_easy: int = 0
     attempts_medium: int = 0
@@ -159,7 +161,7 @@ class SaveQuestionsRequest(BaseModel):
 
 class SubmitTestRequest(BaseModel):
     result_id: str
-    answers: List[str]
+    answers: Dict[str, str]  # Map: question_id -> student_answer
     is_timeout: bool = False
 
 
@@ -234,7 +236,8 @@ async def get_current_user_with_activity(credentials: HTTPAuthorizationCredentia
 
 
 # ===== PROMPTS (LangGraph style) =====
-generate_questions_prompt = ChatPromptTemplate.from_messages([
+# ===== PROMPTS (LangGraph style) =====
+generate_questions_prompt_physics = ChatPromptTemplate.from_messages([
     ("system", "You are an expert Physics exam question generator. Use the provided context from NCERT Physics textbook. Return ONLY valid JSON."),
     ("human",
      "Context from physics textbook:\n{context}\n\n"
@@ -243,6 +246,7 @@ generate_questions_prompt = ChatPromptTemplate.from_messages([
      "- Each question MUST cover DIFFERENT physics concepts (electromagnetic induction, mechanics, thermodynamics, waves, optics, etc.)\n"
      "- Questions MUST be UNIQUE and NOT repetitive\n"
      "- Use VARIED question formats (conceptual, numerical, experimental observation, comparison, etc.)\n"
+     "- For equations and variables, use LaTeX formatting wrapped in $...$ (e.g., $F=ma$).\n"
      "- Ensure questions are suitable for preventing academic malpractice\n"
      "- DO NOT start questions with phrases like 'Based on the text', 'According to the passage', etc. Questions must stand alone.\n"
      "- Questions should appear as if they are from a standard physics textbook or exam, without referencing any source material.\n\n"
@@ -254,29 +258,132 @@ generate_questions_prompt = ChatPromptTemplate.from_messages([
      "[{{\"question\": \"question text\", \"answer\": \"detailed answer\"}}]")
 ])
 
-evaluate_answer_prompt = ChatPromptTemplate.from_messages([
+generate_questions_prompt_math = ChatPromptTemplate.from_messages([
+    ("system", "You are an expert Mathematics exam question and corresponding answer generator. Use the provided context. Return ONLY valid JSON."),
+    ("human",
+     "Context from mathematics textbook:\n{context}\n\n"
+     "Generate {num_questions} COMPLETELY UNIQUE and DIVERSE math questions and answers at {level} difficulty level.\n\n"
+     "CRITICAL REQUIREMENTS:\n"
+     "- Focus on problem-solving and calculations appropriate for the topic.\n"
+     "- Questions MUST be UNIQUE and NOT repetitive\n"
+     "- For ALL math formulas, equations, and variables, YOU MUST USE Standard LaTeX notation.\n"
+     "- **IMPORTANT**: Wrap all inline math, variables (like 'x', 'y') in single dollar signs like $x$ or $y=mx+c$.\n"
+     "- **IMPORTANT**: Wrap all block math equations in double dollar signs like $$ \\int_{{0}}^{{\\infty}} x^2 dx $$.\n"
+     "- **CRITICAL**: Use DOUBLE BACKSLASHES ('\\\\') for all LaTeX commands (e.g., use \\\\frac{{dy}}{{dx}} instead of \\frac{{dy}}{{dx}}). This is required for valid JSON.\n"
+     "- Ensure questions are suitable for preventing academic malpractice\n"
+     "- Questions should appear as if they are from a standard math textbook or exam.\n\n"
+     "Difficulty guidelines:\n"
+     "- easy: Basic formula application, direct questions\n"
+     "- medium: Multi-step problems, conceptual understanding\n"
+     "- hard: Complex problems, application of deep concepts\n\n"
+     "Return ONLY a JSON array (no markdown, no code blocks):\n"
+     "[{{\"question\": \"question text with LaTeX\", \"answer\": \"detailed step-by-step solution\"}}]")
+])
+
+generate_questions_prompt_chemistry = ChatPromptTemplate.from_messages([
+    ("system", "You are an expert Chemistry exam question generator. Use the provided context. Return ONLY valid JSON."),
+    ("human",
+     "Context from chemistry textbook:\n{context}\n\n"
+     "Generate {num_questions} COMPLETELY UNIQUE and DIVERSE chemistry questions at {level} difficulty level.\n\n"
+     "CRITICAL REQUIREMENTS:\n"
+     "- Cover organic, inorganic, and physical chemistry concepts as relevant to the topics.\n"
+     "- Questions MUST be UNIQUE and NOT repetitive\n"
+     "- Use VARIED question formats (reactions, balancing, conceptual, numerical)\n"
+     "- Ensure questions are suitable for preventing academic malpractice\n"
+     "- Questions should appear as if they are from a standard chemistry textbook or exam.\n\n"
+     "Difficulty guidelines:\n"
+     "- easy: Definitions, basic properties, simple reactions\n"
+     "- medium: Mechanisms, stoichiometry calculations, trends\n"
+     "- hard: Complex synthesis, multi-concept problems, deep analysis\n\n"
+     "Return ONLY a JSON array (no markdown, no code blocks):\n"
+     "[{{\"question\": \"question text\", \"answer\": \"detailed answer\"}}]")
+])
+
+evaluate_answer_prompt_physics = ChatPromptTemplate.from_messages([
     ("system", "You are a STRICT Physics examiner. You must be harsh and accurate in your evaluation. Return ONLY valid JSON."),
     ("human",
-     "Context from physics textbook:\n{context}\n\n"
+     "Context:\n{context}\n\n"
      "Question: {question}\n"
      "Correct Answer: {correct_answer}\n"
      "Student Answer: {student_answer}\n\n"
-     "CRITICAL EVALUATION RULES:\n"
-     "1. If the student answer is gibberish, random text, empty, or completely wrong, give scores of 1.0 for ALL criteria\n"
-     "2. If the student answer shows NO understanding of physics concepts, give scores below 3.0\n"
-     "3. If the answer is partially correct but missing key elements, give scores 3.0-5.0\n"
-     "4. Only give scores above 7.0 if the answer demonstrates clear understanding and correct physics\n"
-     "5. Be STRICT - wrong answers must get low scores (1.0-2.0)\n\n"
-     "Evaluate the student answer on these 6 criteria (1-10 scale):\n"
-     "1. Relevance - How relevant is the answer to the question (1.0 if irrelevant or gibberish)\n"
-     "2. Clarity - How clear and understandable (1.0 if unclear or nonsense)\n"
-     "3. SubjectUnderstanding - Depth of physics understanding shown (1.0 if no understanding)\n"
-     "4. Accuracy - Factual correctness (1.0 if factually wrong or gibberish)\n"
-     "5. Completeness - How complete the answer is (1.0 if incomplete or wrong)\n"
-     "6. CriticalThinking - Analytical and critical thinking demonstrated (1.0 if no thinking shown)\n\n"
-     "Return ONLY a JSON object (no markdown, no code blocks):\n"
-     "{{\"Relevance\": 1.0, \"Clarity\": 1.0, \"SubjectUnderstanding\": 1.0, \"Accuracy\": 1.0, \"Completeness\": 1.0, \"CriticalThinking\": 1.0}}")
+     "Evaluate the student's answer against the correct answer and context.\n"
+     "Criteria (Rate 1-10):\n"
+     "1. Relevance: Answers the specific question asked\n"
+     "2. Clarity: Clear, logical expression\n"
+     "3. SubjectUnderstanding: Demonstrates grasp of physics concepts\n"
+     "4. Accuracy: Factually correct\n"
+     "5. Completeness: Covers all parts of the question\n"
+     "6. CriticalThinking: Applies concepts (if applicable)\n\n"
+     "Return ONLY a JSON object:\n"
+     "{{\n"
+     "  \"Relevance\": score,\n"
+     "  \"Clarity\": score,\n"
+     "  \"SubjectUnderstanding\": score,\n"
+     "  \"Accuracy\": score,\n"
+     "  \"Completeness\": score,\n"
+     "  \"CriticalThinking\": score,\n"
+     "  \"average\": calculated_average\n"
+     "}}")
 ])
+
+evaluate_answer_prompt_math = ChatPromptTemplate.from_messages([
+    ("system", "You are an expert Mathematics examiner. Your primary goal is to verify if the student found the CORRECT VALUE and used VALID LOGIC.\n"
+               "IGNORE formatting differences (e.g., \\bmatrix vs \\pmatrix, \\boxed{{}} vs plain text).\n"
+               "IGNORE visual separators (e.g., '====', '----').\n"
+               "If the final values (e.g., x=2, y=3) match the correct answer, mark it as ACCURATE (10/10) regardless of style.\n"
+               "Return ONLY valid JSON."),
+    ("human",
+     "Context:\n{context}\n\n"
+     "Question: {question}\n"
+     "Correct Answer: {correct_answer}\n"
+     "Student Answer: {student_answer}\n\n"
+     "Evaluate the student's answer.\n"
+     "Criteria (Rate 1-10):\n"
+     "1. Relevance: Addresses the problem asked\n"
+     "2. Clarity: Steps are logical and easy to follow\n"
+     "3. SubjectUnderstanding: Uses correct mathematical concepts/theorems\n"
+     "4. Accuracy: Calculations and final answer are correct\n"
+     "5. Completeness: Showed necessary steps\n"
+     "6. CriticalThinking: Approach is efficent/correct\n\n"
+     "Return ONLY a JSON object:\n"
+     "{{\n"
+     "  \"Relevance\": score,\n"
+     "  \"Clarity\": score,\n"
+     "  \"SubjectUnderstanding\": score,\n"
+     "  \"Accuracy\": score,\n"
+     "  \"Completeness\": score,\n"
+     "  \"CriticalThinking\": score,\n"
+     "  \"average\": calculated_average\n"
+     "}}")
+])
+
+evaluate_answer_prompt_chemistry = ChatPromptTemplate.from_messages([
+    ("system", "You are a STRICT Chemistry examiner. Check for correct formulas, reactions, and conceptual accuracy. Return ONLY valid JSON."),
+    ("human",
+     "Context:\n{context}\n\n"
+     "Question: {question}\n"
+     "Correct Answer: {correct_answer}\n"
+     "Student Answer: {student_answer}\n\n"
+     "Evaluate the student's answer.\n"
+     "Criteria (Rate 1-10):\n"
+     "1. Relevance: Directly answers the question\n"
+     "2. Clarity: Explanations/Reactions are clear\n"
+     "3. SubjectUnderstanding: Demonstrates chemical principles\n"
+     "4. Accuracy: Specific facts/formulas are correct\n"
+     "5. Completeness: Covers all required points\n"
+     "6. CriticalThinking: Application of theory\n\n"
+     "Return ONLY a JSON object:\n"
+     "{{\n"
+     "  \"Relevance\": score,\n"
+     "  \"Clarity\": score,\n"
+     "  \"SubjectUnderstanding\": score,\n"
+     "  \"Accuracy\": score,\n"
+     "  \"Completeness\": score,\n"
+     "  \"CriticalThinking\": score,\n"
+     "  \"average\": calculated_average\n"
+     "}}")
+])
+
 
 
 # ===== BASIC ROUTES =====
@@ -581,19 +688,20 @@ async def create_result(request: CreateResultRequest, current_user: Dict = Depen
             raise HTTPException(status_code=403, detail="Student not found or does not belong to the authenticated user")
         
         # Check for existing PENDING result for this level
-        pending_result = supabase.table("results").select("*").eq("student_id", request.student_id).eq("level", request.level).eq("result", "pending").execute()
+        pending_result = supabase.table("results").select("*").eq("student_id", request.student_id).eq("subject", request.subject).eq("level", request.level).eq("result", "pending").execute()
         
         if pending_result.data and len(pending_result.data) > 0:
             # Found a pending result, return it for resumption
-            logging.info(f"🔄 Resuming existing test for student {request.student_id}, level {request.level}")
+            logging.info(f"🔄 Resuming existing test for {request.subject} - student {request.student_id}, level {request.level}")
             return pending_result.data[0]
 
         # Check max attempts
         settings = settings_manager.get_settings()
-        max_attempts = settings.get("max_attempts", 3)
+        dynamic_max = settings.get("max_attempts", 3)
+        max_attempts = 1 if request.level == 'easy' else dynamic_max
         
         # Count existing attempts for this level
-        existing_attempts = supabase.table("results").select("id", count="exact").eq("student_id", request.student_id).eq("level", request.level).execute()
+        existing_attempts = supabase.table("results").select("id", count="exact").eq("student_id", request.student_id).eq("subject", request.subject).eq("level", request.level).execute()
         current_attempts = existing_attempts.count if existing_attempts.count is not None else 0
         
         if current_attempts >= max_attempts:
@@ -608,6 +716,7 @@ async def create_result(request: CreateResultRequest, current_user: Dict = Depen
         # Create result entry in Supabase
         response = supabase.table("results").insert({
             "student_id": request.student_id,
+            "subject": request.subject,
             "level": request.level,
             "result": "pending",
             "score": None,
@@ -693,7 +802,7 @@ async def save_answer(request: SaveAnswerRequest, current_user: Dict = Depends(g
 
 @api_router.post("/submit-test")
 async def submit_test(request: SubmitTestRequest, current_user: Dict = Depends(get_current_user_with_activity)):
-    """Submit test, calculate score, and update result - Firebase Auth Protected"""
+    """Submit test answers only - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
@@ -704,56 +813,39 @@ async def submit_test(request: SubmitTestRequest, current_user: Dict = Depends(g
             
         questions = questions_response.data
         
-        # 2. Save/Update answers
-        # We assume request.answers matches questions order
-        if len(request.answers) != len(questions):
-            logging.warning(f"Mismatch in answers count: received {len(request.answers)}, expected {len(questions)}")
-            # We proceed anyway, mapping as much as possible
-            
-        correct_count = 0
-        total_questions = len(questions)
+        # 2. Save/Update answers (Robust ID-based mapping)
+        # We now expect a dictionary {question_id: answer_text}
         
-        for i, q in enumerate(questions):
-            if i < len(request.answers):
-                student_ans = request.answers[i]
+        for q in questions:
+            q_id = q['id']
+            
+            # CRITICAL FIX: Only update if the frontend sent an answer for this question
+            # Otherwise we risk overwriting existing saved answers (from save-answer endpoint) with empty strings
+            if q_id in request.answers:
+                student_ans = request.answers[q_id]
                 
                 # Upsert answer
-                existing = supabase.table("student_answers").select("id").eq("question_id", q['id']).execute()
+                existing = supabase.table("student_answers").select("id").eq("question_id", q_id).execute()
                 if existing.data:
-                    supabase.table("student_answers").update({"student_answer": student_ans}).eq("question_id", q['id']).execute()
+                    supabase.table("student_answers").update({"student_answer": student_ans}).eq("question_id", q_id).execute()
                 else:
-                    supabase.table("student_answers").insert({"question_id": q['id'], "student_answer": student_ans}).execute()
-                
-                # Check correctness (Simple exact match for now, case insensitive)
-                # In a real app, use LLM or more robust comparison
-                if student_ans.strip().lower() == q['correct_answer'].strip().lower():
-                    correct_count += 1
-                    
-        # 3. Calculate Score
-        score_percentage = (correct_count / total_questions) * 100 if total_questions > 0 else 0
+                    supabase.table("student_answers").insert({"question_id": q_id, "student_answer": student_ans}).execute()
         
-        # 4. Determine Pass/Fail
-        settings = settings_manager.get_settings()
-        passing_score = settings.get("passing_score", 60)
-        result_status = "pass" if score_percentage >= passing_score else "fail"
-        
-        # 5. Update Result
-        update_data = {
-            "score": score_percentage,
-            "result": result_status,
-            "end_time": datetime.now(timezone.utc).isoformat()
+        # Basic intermediate update (optional, just to show something happened)
+        supabase.table("results").update({
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", request.result_id).execute()
+
+        return {
+            "id": request.result_id,
+            "message": "Answers submitted successfully. Awaiting evaluation."
         }
-        
-        response = supabase.table("results").update(update_data).eq("id", request.result_id).execute()
-        
-        if not response.data:
-            raise HTTPException(status_code=500, detail="Failed to update result")
-            
-        return response.data[0]
         
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        logging.error(f"Error in submit-test: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -779,130 +871,276 @@ async def send_notification(request: NotificationEmailRequest, current_user: Dic
         # Check all test results for this student to determine admission status
         results_response = supabase.table("results").select("*").eq("student_id", request.student_id).order("created_at", desc=True).execute()
         
-        admission_message = ""
-        email_subject = "AdmitAI Test Results"
-        
         if results_response.data and len(results_response.data) > 0:
-            # Get all results to check level statuses
             all_results = results_response.data
+            latest_result = all_results[0]
             
-            # Check which levels were passed
-            easy_passed = any(r.get('level') == 'easy' and r.get('result') == 'pass' for r in all_results)
-            medium_passed = any(r.get('level') == 'medium' and r.get('result') == 'pass' for r in all_results)
-            hard_passed = any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in all_results)
+            # --- 1. Check Multi-Subject Status ---
+            subjects = ['math', 'physics', 'chemistry']
+            all_hard_passed = True
+            all_medium_or_hard_passed = True
             
-            # Determine admission status and fee concession
-            if easy_passed and medium_passed and hard_passed:
-                # Passed all levels - 50% fee concession
-                admission_message = """
-🎉 Congratulations! We are thrilled to inform you that you have successfully passed all test levels!
+            for sub in subjects:
+                sub_results = [r for r in all_results if (r.get('subject') or 'physics').lower() == sub]
+                sub_hard = any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in sub_results)
+                sub_medium = any(r.get('level') == 'medium' and r.get('result') == 'pass' for r in sub_results)
+                
+                if not sub_hard:
+                    all_hard_passed = False
+                if not (sub_medium or sub_hard):
+                    all_medium_or_hard_passed = False
 
-✨ ADMISSION GRANTED ✨
+            # --- 2. Check "Max Attempts Failed" on Latest Result ---
+            # Define max attempts per level (hardcoded to match frontend)
+            max_attempts_map = {"easy": 1, "medium": 2, "hard": 2}
+            
+            latest_level = latest_result.get('level', 'easy')
+            latest_status = latest_result.get('result', 'fail')
+            
+            # Count attempts for this specific subject & level
+            latest_sub = (latest_result.get('subject') or 'physics').lower()
+            attempts_count = 0
+            if latest_level == 'easy':
+                attempts_count = latest_result.get('attempts_easy', 0)
+            elif latest_level == 'medium':
+                attempts_count = latest_result.get('attempts_medium', 0)
+            elif latest_level == 'hard':
+                attempts_count = latest_result.get('attempts_hard', 0)
+                
+            # Fail email for Easy and Medium level max attempts
+            has_failed_max_attempts = (latest_status != 'pass') and \
+                                      (latest_level in ['easy', 'medium']) and \
+                                      (attempts_count >= max_attempts_map.get(latest_level, 1))
 
-You have been accepted into our prestigious institution with a remarkable 50% FEE CONCESSION!
+            # --- 3. Check for Global Completion (All Subjects Done) ---
+            subjects = ['math', 'physics', 'chemistry']
+            settings = settings_manager.get_settings()
+            dynamic_max = settings.get("max_attempts", 3)
+            
+            is_fully_completed = True
+            all_hard_passed = True
+            all_medium_or_hard_passed = True
+            
+            # Helper: Track status for each subject
+            subject_status_map = {}
+            
+            # Use all_results fetched at start (line 880)
+            # Ensure it contains all history. Line 880 had 'order created_at desc', no limit.
+            
+            for sub in subjects:
+                # Get results for this subject
+                sub_results = [r for r in all_results if (r.get('subject') or 'physics').lower() == sub]
+                
+                status = 'not_started'
+                
+                if sub_results:
+                    # Check pass status
+                    has_hard_pass = any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in sub_results)
+                    has_medium_pass = any(r.get('level') == 'medium' and r.get('result') == 'pass' for r in sub_results)
+                    
+                    if has_hard_pass:
+                         status = 'completed_success_hard'
+                    else:
+                        # Check dead end (Max attempts failed at latest attempted level)
+                        # Get latest attempt for this subject (assuming sorted by created_at desc)
+                        latest_sub_res = sub_results[0]
+                        l_level = latest_sub_res.get('level')
+                        l_res = latest_sub_res.get('result')
+                        
+                        # Calculate attempts for this specific level
+                        l_attempts = sum(1 for r in sub_results if r.get('level') == l_level)
+                        
+                        l_max = 1 if l_level == 'easy' else dynamic_max
+                        
+                        if l_res != 'pass' and l_attempts >= l_max:
+                            status = 'completed_failure'
+                        else:
+                            # If Medium passed but Hard not taken?
+                            if has_medium_pass and l_level == 'medium':
+                                # Passed Medium, next is Hard. If no Hard result, it's in progress.
+                                status = 'in_progress'
+                            else:
+                                status = 'in_progress'
 
-This outstanding achievement reflects your exceptional understanding of physics concepts and problem-solving abilities. We are excited to welcome you to our academic community.
+                    # Concession trackers
+                    if not has_hard_pass:
+                        all_hard_passed = False
+                    if not (has_medium_pass or has_hard_pass):
+                        all_medium_or_hard_passed = False
+                else:
+                    status = 'not_started'
+                
+                subject_status_map[sub] = status
+                
+                if status == 'in_progress' or status == 'not_started':
+                    is_fully_completed = False
+
+            # --- 4. Determine Email Type ---
+            should_send = False
+            
+            if is_fully_completed:
+                # FINAL VERDICT EMAIL
+                # Check User Requirement: "pass mail should be only sent when... last subject medium or hard level is passed"
+                
+                # Identify Last Subject (The one that triggered this flow)
+                current_subject = (latest_result.get('subject') or 'physics').lower()
+                
+                # Check validity of current subject completion
+            # ===== NEW STRICT EMAIL & STATUS LOGIC =====
+            
+            # Check for Global Failure Condition (Max attempts reached for Easy or Medium)
+            # Check for Global Failure Condition (Max attempts reached for Easy or Medium)
+            is_rejection = False
+            
+            # Use variables derived from latest_result
+            r_status = latest_result.get('result', 'fail')
+            r_level = latest_result.get('level', 'easy')
+            r_subject = (latest_result.get('subject') or 'physics').lower()
+            
+            if r_status == 'fail' and r_level in ['easy', 'medium']:
+                # Check if this was the last allowed attempt
+                # We already calculated attempts
+                settings = settings_manager.get_settings()
+                max_attempts = 1 if r_level == 'easy' else settings.get("max_attempts", 3)
+                
+                # Fetch current attempts count
+                attempts_response = supabase.table("results").select("id", count="exact").eq("student_id", request.student_id).eq("level", r_level).eq("subject", r_subject).execute()
+                current_attempts = attempts_response.count if attempts_response.count is not None else 0
+                
+                if current_attempts >= max_attempts:
+                    is_rejection = True
+                    global_status = "failed" # Strict Global Failure
+
+            # Check for Global Completion Condition (All subjects done)
+            if not is_rejection:
+                # Fetched all results previously
+                # Logic: Pass Medium in ALL subjects AND (Pass Hard OR attempts exhausted)
+                
+                subjects = ['math', 'physics', 'chemistry']
+                all_subs_cleared = True
+                
+                for sub in subjects:
+                    sub_results = [r for r in all_results if (r.get('subject') or 'physics').lower() == sub]
+                    
+                    # Medium Must be Passed
+                    medium_pass = any(r.get('level') == 'medium' and r.get('result') == 'pass' for r in sub_results)
+                    
+                    # Hard Must be Attempted or Passed (But actually, strict passing is usually required for "Success")
+                    # User criteria: "atleast medium level is passed in all the subjects"
+                    # And "completes all the levels".
+                    
+                    # Let's verify strict user requirement: "A test is said to be passed only when it completes all the levels... and atleast medium level is passed"
+                    
+                    # Check Hard status
+                    hard_pass = any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in sub_results)
+                    hard_attempts_resp = supabase.table("results").select("id", count="exact").eq("student_id", student_id).eq("level", "hard").eq("subject", sub).execute()
+                    hard_attempts = hard_attempts_resp.count if hard_attempts_resp.count is not None else 0
+                    hard_max = settings.get("max_attempts", 3)
+                    
+                    hard_done = hard_pass or (hard_attempts >= hard_max)
+                    
+                    if not (medium_pass and hard_done):
+                        all_subs_cleared = False
+                        break
+                
+                if all_subs_cleared:
+                    global_status = "completed"
+                else:
+                    global_status = "intermediate"
+
+            # Determine Email to Send
+            email_subject = ""
+            admission_message = ""
+            should_send = False
+
+            if global_status == "failed":
+                # REJECTION EMAIL
+                concession = 0
+                email_subject = "AdmitAI Admission Test - Application Status"
+                admission_message = f"""
+Thank you for your interest in AdmitAI.
+
+We have reviewed your performance in the admission test. Unfortunately, you did not meet the required passing criteria for the {level.capitalize()} Level in {current_subject.capitalize()}.
+
+As per our strict admission policy, we are unable to proceed with your application at this time.
+
+We appreciate the time you took to complete the assessment and wish you the best in your future endeavors.
+"""
+                should_send = True
+
+            elif global_status == "completed":
+                # QUALIFYING EMAIL
+                # Calculate Concession
+                # 50% if Hard passed in all subjects
+                # 30% if Medium passed in all (which is guaranteed by completion logic)
+                
+                concession = 30 # Base
+                
+                all_hard_passed = True
+                for sub in ['math', 'physics', 'chemistry']:
+                     sub_results = [r for r in all_results if (r.get('subject') or 'physics').lower() == sub]
+                     if not any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in sub_results):
+                         all_hard_passed = False
+                         break
+                
+                if all_hard_passed:
+                    concession = 50
+                
+                email_subject = f"🎉 Congratulations! Admission Granted with {concession}% Fee Concession"
+                admission_message = f"""
+We are pleased to inform you that you have successfully passed the AdmitAI Admission Test!
+
+Based on your performance, you have been granted a {concession}% Fee Concession.
 
 Next Steps:
-- You will receive detailed admission instructions shortly
-- Please prepare the required documents for enrollment
-- Our admissions team will contact you within 2-3 business days
-
-We look forward to supporting your academic journey!
-"""
-                email_subject = "🎉 Congratulations! Admission Granted with 50% Fee Concession - AdmitAI"
-                
-            elif easy_passed and medium_passed and not hard_passed:
-                # Passed medium but failed hard - 30% fee concession
-                admission_message = """
-🎊 Congratulations! We are pleased to inform you that you have demonstrated strong performance in your admission test!
-
-✨ ADMISSION GRANTED ✨
-
-You have been accepted into our prestigious institution with a 30% FEE CONCESSION!
-
-Your solid grasp of fundamental and intermediate physics concepts showcases your academic potential. We believe you will thrive in our academic environment.
-
-Next Steps:
-- You will receive detailed admission instructions shortly
-- Please prepare the required documents for enrollment
-- Our admissions team will contact you within 2-3 business days
-
-We are excited to have you join our institution!
-"""
-                email_subject = "🎊 Congratulations! Admission Granted with 30% Fee Concession - AdmitAI"
-                
-            elif easy_passed:
-                # Passed only easy level
-                admission_message = """
-Thank you for completing the AdmitAI admission test.
-
-While you have demonstrated understanding of basic physics concepts, we encourage you to strengthen your knowledge in advanced topics for better opportunities.
-
-You may retake the test to improve your results and qualify for fee concessions:
-- Pass Medium & Hard levels: 50% fee concession
-- Pass Medium level: 30% fee concession
-
-We believe in your potential and encourage you to try again!
-"""
-                email_subject = "AdmitAI Test Results - Keep Improving!"
-                
+1. Login to your dashboard to view your detailed report.
+2. Complete the enrollment process.
+""" 
+                should_send = True
+            
             else:
-                # Did not pass or failed
-                admission_message = """
-Thank you for taking the AdmitAI admission test.
+                 # INTERMEDIATE - NO EMAIL
+                 logging.info("Skipping email: Intermediate progress.")
+                 should_send = False
 
-We appreciate your effort and interest in our institution. While your current results don't qualify for admission at this time, we encourage you to review the concepts and retake the test.
-
-Our test review feature provides detailed explanations to help you improve. You can access it from your dashboard.
-
-Don't give up! With dedication and practice, we're confident you can achieve better results.
-"""
-                email_subject = "AdmitAI Test Results - Try Again!"
-        else:
-            # Fallback message if no results found
-            admission_message = f"""
-Dear {request.student_name},
-
-Thank you for completing your AdmitAI admission test.
-
-Result: {request.result.upper()}
-
-Please log in to your dashboard to view detailed results and next steps.
-
-Best regards,
-AdmitAI Team
-"""
-        
-        creds = Credentials(
-            None,
-            refresh_token=refresh_token,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=client_id,
-            client_secret=client_secret,
-            scopes=['https://www.googleapis.com/auth/gmail.send']
-        )
-        
-        creds.refresh(Request())
-        service = build('gmail', 'v1', credentials=creds)
-        
-        message = MIMEText(f"""
+            if should_send:
+                # Send the email
+                creds = Credentials(
+                    None,
+                    refresh_token=refresh_token,
+                    token_uri='https://oauth2.googleapis.com/token',
+                    client_id=client_id,
+                    client_secret=client_secret,
+                    scopes=['https://www.googleapis.com/auth/gmail.send']
+                )
+                
+                creds.refresh(Request())
+                service = build('gmail', 'v1', credentials=creds)
+                
+                message = MIMEText(f"""
 Dear {request.student_name},
 
 {admission_message}
 
 Best regards,
-The AdmitAI Team
-        """)
-        message['to'] = request.to_email
-        message['subject'] = email_subject
-        
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        service.users().messages().send(userId="me", body={'raw': raw}).execute()
-        
-        logging.info(f"✅ Email sent to {request.to_email}")
-        return {"success": True, "message": "Email sent successfully"}
-        
+AdmitAI Team
+                """)
+                message['to'] = request.to_email
+                message['from'] = os.environ.get('GMAIL_FROM_EMAIL', 'noreply@admitai.com')
+                message['subject'] = email_subject
+                
+                raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+                service.users().messages().send(userId="me", body={'raw': raw}).execute()
+                
+                logging.info(f"✅ Notification email sent to {request.to_email}")
+                return {"success": True, "email_sent": True, "message": "Notification email sent successfully", "global_status": global_status}
+            
+            return {"success": True, "email_sent": False, "message": "Email skipped", "global_status": global_status}
+                
+        else:
+             logging.warning("No results found for student")
+             return {"success": False, "message": "No results found"}
+             
     except Exception as e:
         logging.error(f"❌ Email error: {str(e)}")
         return {"success": False, "message": f"Email failed: {str(e)}"}
@@ -955,83 +1193,134 @@ async def generate_questions(request: GenerateQuestionsRequest, current_user: Di
     """Generate questions - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
+        subject = request.subject.lower()
         level = request.level
         num_questions = request.num_questions
         
-        # Generate unique questions by using diverse physics topics with randomization
+        # Generate unique questions by using diverse topics with randomization
         import random
         import time
         import hashlib
         
-        # Diverse physics topics to prevent repetitive questions
-        physics_topics = [
-            "electromagnetic induction and Faraday's law",
-            "Newton's laws of motion and forces",
-            "thermodynamics and heat transfer",
-            "wave motion and sound",
-            "optics and light",
-            "electric circuits and current",
-            "magnetism and magnetic fields",
-            "gravitation and planetary motion",
-            "work energy and power",
-            "electrostatics and electric fields",
-            "quantum mechanics basics",
-            "atomic structure and spectra",
-            "radioactivity and nuclear physics",
-            "mechanical properties of matter",
-            "fluid mechanics and pressure",
-            "kinetic theory of gases",
-            "simple harmonic motion",
-            "rotational dynamics",
-            "interference and diffraction",
-            "semiconductors and devices"
-        ]
+        # Define topics per subject
+        subject_topics = {
+            "physics": [
+                "electromagnetic induction and Faraday's law", "Newton's laws of motion and forces",
+                "thermodynamics and heat transfer", "wave motion and sound",
+                "optics and light", "electric circuits and current",
+                "magnetism and magnetic fields", "gravitation and planetary motion",
+                "work energy and power", "electrostatics and electric fields",
+                "quantum mechanics basics", "atomic structure and spectra",
+                "radioactivity and nuclear physics", "mechanical properties of matter",
+                "fluid mechanics and pressure", "kinetic theory of gases",
+                "simple harmonic motion", "rotational dynamics",
+                "interference and diffraction", "semiconductors and devices"
+            ],
+            "math": [
+                "Calculus (Integration, Differentiation)", "Linear Algebra", 
+                "Probability and Statistics", "Trigonometry", "Coordinate Geometry",
+                "Complex Numbers", "Vectors", "Matrices and Determinants",
+                "Permutations and Combinations", "Sequences and Series"
+            ],
+            "chemistry": [
+                "Periodic Table and Intervals", "Chemical Bonding", 
+                "Thermodynamics", "Chemical Kinetics", "Electrochemistry",
+                "Organic Chemistry - Hydrocarbons", "Coordination Compounds",
+                "Biomolecules", "Solutions and Colligative Properties",
+                "States of Matter"
+            ]
+        }
         
-        # Create unique seed combining user email, timestamp, and level for maximum diversity
-        # This ensures different students AND different attempts get different questions
+        topics = subject_topics.get(subject, subject_topics["physics"]) # Fallback to physics
+        
+        # Create unique seed
         user_identifier = current_user.get('email', 'anonymous')
-        seed_string = f"{user_identifier}-{level}-{int(time.time())}"
+        seed_string = f"{user_identifier}-{subject}-{level}-{int(time.time())}"
         seed_value = int(hashlib.md5(seed_string.encode()).hexdigest(), 16) % (10 ** 8)
         
-        random.seed(seed_value)  # Unique seed per student per attempt
+        random.seed(seed_value)
         
-        # Randomly select 3-5 diverse topics for this test attempt
+        # Randomly select topics
         num_topics = random.randint(3, 5)
-        selected_topics = random.sample(physics_topics, min(num_topics, len(physics_topics)))
+        selected_topics = random.sample(topics, min(num_topics, len(topics)))
         
-        # Create diverse query with randomized topics
-        query = f"Physics {level} level: {', '.join(selected_topics)}"
+        # Create diverse query
+        query = f"{subject.capitalize()} {level} level: {', '.join(selected_topics)}"
         
-        # Retrieve diverse chunks with randomization enabled
+        # Retrieve diverse chunks
         settings = settings_manager.get_settings()
         rag_k = settings.get("rag_k", 3)
-        # Use slightly more than k for generation to ensure good context
-        context_docs = get_physics_context(query, k=rag_k + 2, randomize=True)
-        context = "\n\n".join(context_docs) if context_docs else "General physics concepts"
+        context_docs = get_context(query, subject=subject, k=rag_k + 2, randomize=True)
+        context = "\n\n".join(context_docs) if context_docs else f"General {subject} concepts"
         
-        logging.info(f"🔮 Generating {num_questions} UNIQUE questions at {level} level")
-        logging.info(f"📚 Selected topics: {selected_topics}")
-        logging.info(f"📖 Retrieved {len(context_docs)} diverse context chunks")
+        logging.info(f"🔮 Generating {num_questions} questions for {subject.upper()} at {level} level")
         
-        # Generate questions using LangChain prompt
-        prompt = generate_questions_prompt.format_messages(
-            context=context[:20000],  # Increased limit for k=15 chunks
-            num_questions=num_questions,
-            level=level
-        )
+        # Select Prompt based on subject
+        if subject == "math":
+             prompt = generate_questions_prompt_math.format_messages(
+                context=context[:20000],
+                num_questions=num_questions,
+                level=level
+            )
+        elif subject == "chemistry":
+             prompt = generate_questions_prompt_chemistry.format_messages(
+                context=context[:20000],
+                num_questions=num_questions,
+                level=level
+            )
+        else: # Physics/Default
+             prompt = generate_questions_prompt_physics.format_messages(
+                context=context[:20000],
+                num_questions=num_questions,
+                level=level
+            )
         
         response = safe_invoke(llm, prompt, purpose="generate-questions")
         response_text = response.content.strip()
         
         # Clean up response
-        if response_text.startswith('```'):
-            response_text = response_text.split('```')[1]
-            if response_text.startswith('json'):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
+        import re
+        
+        # 1. Extract potential JSON array
+        json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
+        if json_match:
+            response_text = json_match.group(0)
+        else:
+            if response_text.startswith('```'):
+                response_text = response_text.split('```')[1]
+                if response_text.startswith('json'):
+                    response_text = response_text[4:]
+                response_text = response_text.strip()
+        
+        # 2. Fix JSON escapes for LaTeX (Robust cleanup)
+        # This prevents "Invalid \escape" errors when LLM outputs \sigma, \frac, etc.
+        try:
+             # Strategy: Protect existing valid double-backslashes, then escape invalid single ones
+             response_text = response_text.replace('\\\\', '@@DOUBLE_BS@@')
+             
+             # Escape invalid JSON escapes (standard LaTeX commands like \s, \c, \d)
+             # Matches \ followed by char NOT in valid escape list
+             response_text = re.sub(r'\\(?![/u"\\bfnrt])', r'\\\\', response_text)
+             
+             # Escape invalid unicode usage (e.g. \usepackage vs \u1234)
+             response_text = re.sub(r'\\u(?![0-9a-fA-F]{4})', r'\\\\u', response_text)
+             
+             # Restore protected backslashes
+             response_text = response_text.replace('@@DOUBLE_BS@@', '\\\\')
+        except Exception as e:
+            logging.warning(f"Error during JSON escape fix: {e}")
+            # Continue with best effort
         
         # Parse JSON
-        questions = json.loads(response_text)
+        try:
+            questions = json.loads(response_text)
+        except json.JSONDecodeError:
+             # Last resort fallback
+             match = re.search(r'\[.*\]', response.content.strip(), re.DOTALL)
+             if match:
+                 questions = json.loads(match.group(0))
+             else:
+                 raise
         
         logging.info(f"✅ Generated {len(questions)} questions")
         return {"questions": questions}
@@ -1099,11 +1388,31 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                 # Get relevant context for this question
                 settings = settings_manager.get_settings()
                 rag_k = settings.get("rag_k", 3)
-                context_docs = get_physics_context(q.get('question_text', ''), k=rag_k)
+                # Note: evaluation context retrieval is tricky without knowing subject. 
+                # Ideally, question metadata should store subject. 
+                # For now, we might try to guess or use a generic call.
+                # However, since 'evaluate-answers' only gets result_id, we can look up result -> subject.
+                
+                subject = "physics" # Default
+                # Fetch result to get subject
+                res_meta = supabase.table("results").select("subject").eq("id", result_id).execute()
+                if res_meta.data:
+                    subject = res_meta.data[0].get("subject", "physics")
+                
+                context_docs = get_context(q.get('question_text', ''), subject=subject, k=rag_k)
                 context = "\n\n".join(context_docs) if context_docs else ""
                 
                 # Evaluate using LangChain prompt with strict evaluator LLM
-                prompt = evaluate_answer_prompt.format_messages(
+                subject_lower = subject.lower() if subject else "physics"
+                
+                if subject_lower == "math":
+                    prompt_template = evaluate_answer_prompt_math
+                elif subject_lower == "chemistry":
+                    prompt_template = evaluate_answer_prompt_chemistry
+                else:
+                    prompt_template = evaluate_answer_prompt_physics
+                
+                prompt = prompt_template.format_messages(
                     context=context[:20000],
                     question=q.get('question_text', ''),
                     correct_answer=q.get('correct_answer', ''),
@@ -1228,12 +1537,34 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                 hard_passed = any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in all_results.data)
                 
                 # Calculate concession
-                if easy_passed and medium_passed and hard_passed:
-                    concession = 50  # All levels passed = 50% concession
-                elif easy_passed and medium_passed:
-                    concession = 30  # Easy + Medium passed = 30% concession
+                # Rule: 
+                # 50% if Hard level passed in ALL subjects
+                # 30% if Medium (or Hard) passed in ALL subjects
+                
+                subjects = ['math', 'physics', 'chemistry']
+                
+                all_hard_passed = True
+                all_medium_or_hard_passed = True
+                
+                for sub in subjects:
+                    # Get results for this subject
+                    sub_results = [r for r in all_results.data if (r.get('subject') or 'physics').lower() == sub]
+                    
+                    sub_hard = any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in sub_results)
+                    sub_medium = any(r.get('level') == 'medium' and r.get('result') == 'pass' for r in sub_results)
+                    
+                    if not sub_hard:
+                        all_hard_passed = False
+                    
+                    if not (sub_medium or sub_hard):
+                        all_medium_or_hard_passed = False
+                
+                if all_hard_passed:
+                    concession = 50
+                elif all_medium_or_hard_passed:
+                    concession = 30
                 else:
-                    concession = 0   # No concession
+                    concession = 0
             
             supabase.table("results").update({
                 "score": score_out_of_10,
@@ -1249,12 +1580,162 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
         
         logging.info(f"✅ Evaluation complete: {score_out_of_10:.1f}/10 - {result_status.upper()}")
         
+        # Format criteria as list for Frontend
+        criteria_list = [{"name": k, "score": v} for k, v in criteria_averages.items()]
+
+        # ===== 6. GLOBAL STATUS & EMAIL LOGIC (Migrated from submit-test) =====
+        
+        # Use current_result (fetched above) to get student metadata
+        # We already have student_id
+        
+        # Fetch subject and level from current result
+        res_meta = supabase.table("results").select("subject, level").eq("id", result_id).single().execute()
+        subject = res_meta.data.get("subject", "physics")
+        level = res_meta.data.get("level", "medium")
+        
+        global_status = "intermediate"
+        concession_percent = 0
+        
+        # --- Check Global Failure (Easy/Medium Max Attempts) ---
+        is_rejection = False
+        if result_status == 'fail' and level in ['easy', 'medium']:
+            settings_obj = settings_manager.get_settings()
+            max_attempts = 1 if level == 'easy' else settings_obj.get("max_attempts", 3)
+            
+            attempts_response = supabase.table("results").select("id", count="exact").eq("student_id", student_id).eq("level", level).eq("subject", subject).execute()
+            current_attempts = attempts_response.count if attempts_response.count is not None else 0
+            
+            if current_attempts >= max_attempts:
+                is_rejection = True
+                global_status = "failed"
+        
+        # --- Check Global Completion ---
+        if not is_rejection:
+            # Check all subjects
+            all_subjects = ['math', 'physics', 'chemistry']
+            all_subs_cleared = True
+            
+            # We need FRESH results because the current result was just updated above
+            all_results_fresh = supabase.table("results").select("*").eq("student_id", student_id).execute()
+            
+            for sub in all_subjects:
+                sub_results = [r for r in all_results_fresh.data if (r.get('subject') or 'physics').lower() == sub]
+                medium_pass = any(r.get('level') == 'medium' and r.get('result') == 'pass' for r in sub_results)
+                
+                # Hard Logic: Passed OR Attempts exhausted
+                hard_pass = any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in sub_results)
+                hard_attempts = sum(1 for r in sub_results if r.get('level') == 'hard')
+                hard_done = hard_pass or (hard_attempts >= settings_manager.get_settings().get("max_attempts", 3))
+                
+                if not (medium_pass and hard_done):
+                    all_subs_cleared = False
+                    break
+            
+            if all_subs_cleared:
+                global_status = "completed"
+                
+                # RECALCULATE CONCESSION with FRESH data
+                # Because the initial calculation above used stale data (before this result was saved)
+                
+                fresh_hard_passed = True
+                fresh_med_passed = True
+                
+                for sub in all_subjects:
+                    sub_res = [r for r in all_results_fresh.data if (r.get('subject') or 'physics').lower() == sub]
+                    s_hard = any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in sub_res)
+                    s_med = any(r.get('level') == 'medium' and r.get('result') == 'pass' for r in sub_res)
+                    
+                    if not s_hard: fresh_hard_passed = False
+                    if not (s_med or s_hard): fresh_med_passed = False
+                
+                if fresh_hard_passed:
+                    concession_percent = 50
+                elif fresh_med_passed:
+                    concession_percent = 30
+                else:
+                    concession_percent = 0
+                
+                # Also update the stored concession for this result to match the final verdict
+                try:
+                    supabase.table("results").update({"concession": concession_percent}).eq("id", result_id).execute()
+                except:
+                    pass
+        
+        # --- Email Trigger ---
+        email_sent = False
+        admission_message = ""
+        email_subject = ""
+        
+        # Get Student Email
+        if global_status in ["failed", "completed"]:
+                student_data_resp = supabase.table("students").select("email, first_name").eq("id", student_id).single().execute()
+                if student_data_resp.data:
+                    student_email = student_data_resp.data.get("email")
+                    student_name = student_data_resp.data.get("first_name")
+                    
+                    if global_status == "failed":
+                        email_subject = "AdmitAI Admission Test - Application Status"
+                        admission_message = f"""
+Thank you for your interest in AdmitAI.
+
+We have reviewed your performance in the admission test. Unfortunately, you did not meet the required passing criteria for the {level.capitalize()} Level in {subject.capitalize()}.
+
+As per our strict admission policy, we are unable to proceed with your application at this time.
+"""
+                    elif global_status == "completed":
+                        email_subject = f"🎉 Congratulations! Admission Granted with {concession_percent}% Fee Concession"
+                        admission_message = f"""
+We are pleased to inform you that you have successfully passed the AdmitAI Admission Test!
+
+Based on your performance, you have been granted a {concession_percent}% Fee Concession.
+
+Next Steps:
+1. Login to your dashboard to view your detailed report.
+2. Complete the enrollment process.
+"""
+
+                    # Send Email
+                    if admission_message:
+                        try:
+                            from email.mime.text import MIMEText
+                            
+                            client_id = os.environ.get('GMAIL_CLIENT_ID')
+                            client_secret = os.environ.get('GMAIL_CLIENT_SECRET')
+                            refresh_token = os.environ.get('GMAIL_REFRESH_TOKEN')
+                            
+                            if client_id and client_secret and refresh_token:
+                                from google.oauth2.credentials import Credentials
+                                from google.auth.transport.requests import Request
+                                from googleapiclient.discovery import build
+                                import base64
+                                
+                                creds = Credentials(None, refresh_token=refresh_token, token_uri='https://oauth2.googleapis.com/token', client_id=client_id, client_secret=client_secret)
+                                creds.refresh(Request())
+                                service = build('gmail', 'v1', credentials=creds)
+                                
+                                message = MIMEText(f"Dear {student_name},\n\n{admission_message}\n\nBest regards,\nAdmitAI Team")
+                                message['to'] = student_email
+                                message['from'] = os.environ.get('GMAIL_FROM_EMAIL', 'noreply@admitai.com')
+                                message['subject'] = email_subject
+                                raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+                                service.users().messages().send(userId="me", body={'raw': raw}).execute()
+                                email_sent = True
+                                logging.info("✅ Email sent from evaluate_answers")
+                        except Exception as e:
+                            logging.error(f"Failed to send email: {e}")
+
+    
+        logging.info(f"✅ Evaluation complete: {score_out_of_10:.1f}/10 - {result_status.upper()}")
+        
         return {
             "result_id": result_id,
             "score": score_out_of_10,  # Out of 10
             "result": result_status,
-            "criteria": criteria_averages,  # 6 criteria as overall averages
-            "evaluations": all_evaluations  # Individual question details (for reference)
+            "concession": concession, 
+            "criteria": criteria_list,  # Formatted List
+            "global_status": global_status,
+            "email_sent": email_sent,
+            "evaluations": all_evaluations
         }
         
     except HTTPException:
@@ -1267,7 +1748,7 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
 
 # ===== REVIEW ENDPOINT =====
 @api_router.get("/review/{level}/{student_id}")
-async def get_review_data(level: str, student_id: str, current_user: Dict = Depends(get_current_user)):
+async def get_review_data(level: str, student_id: str, subject: str = Query("physics"), current_user: Dict = Depends(get_current_user)):
     """Get review data for a specific level - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
@@ -1277,14 +1758,16 @@ async def get_review_data(level: str, student_id: str, current_user: Dict = Depe
         if not student_response.data or student_response.data[0]['email'] != current_user.get('email'):
             raise HTTPException(status_code=403, detail="Cannot access other users' data")
         
-        # Find the result for this level and student
-        results_response = supabase.table("results").select("*").eq("student_id", student_id).eq("level", level).order("created_at", desc=True).limit(1).execute()
+        # Find the result for this level and student AND SUBJECT
+        results_response = supabase.table("results").select("*").eq("student_id", student_id).eq("level", level).eq("subject", subject).order("created_at", desc=True).limit(1).execute()
         
         attempted = False
         result_id = None
         can_retake = False
         current_attempts = 0
-        max_attempts = {"easy": 1, "medium": 2, "hard": 2}.get(level, 1)
+        settings = settings_manager.get_settings()
+        dynamic_max = settings.get("max_attempts", 3)
+        max_attempts = 1 if level == 'easy' else dynamic_max
         last_result = None
         
         if results_response.data and len(results_response.data) > 0:
@@ -1293,12 +1776,10 @@ async def get_review_data(level: str, student_id: str, current_user: Dict = Depe
             result_id = last_result['id']
             
             # Get current attempts for this level
-            if level == "easy":
-                current_attempts = last_result.get("attempts_easy", 0)
-            elif level == "medium":
-                current_attempts = last_result.get("attempts_medium", 0)
-            elif level == "hard":
-                current_attempts = last_result.get("attempts_hard", 0)
+            # Get current attempts for this level by counting actual rows for this subject
+            # This avoids issues with legacy data where cumulative columns might be corrupted across subjects
+            attempts_response = supabase.table("results").select("id", count="exact").eq("student_id", student_id).eq("level", level).eq("subject", subject).execute()
+            current_attempts = attempts_response.count if attempts_response.count is not None else 0
             
             # Check if can retake: failed (not passed) AND has attempts remaining
             level_passed = last_result.get("result") == "pass"
@@ -1334,7 +1815,8 @@ async def get_review_data(level: str, student_id: str, current_user: Dict = Depe
                 elif student_answer:
                     # Generate and cache evaluation
                     try:
-                        context_docs = get_physics_context(q['question_text'], k=2)
+                        subject = last_result.get("subject", "physics")
+                        context_docs = get_context(q['question_text'], subject=subject, k=2)
                         context = "\n\n".join(context_docs) if context_docs else ""
 
                         # Basic sanity checks on the student answer to catch gibberish/short inputs
@@ -1421,7 +1903,8 @@ Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT' foll
                 "questions": questions_data,
                 "can_retake": can_retake,
                 "current_attempts": current_attempts,
-                "max_attempts": max_attempts
+                "max_attempts": max_attempts,
+                "subject": last_result.get("subject", "physics") if last_result else "physics"
             }
         else:
             # Level not attempted - generate sample questions to show correct answers
@@ -1443,14 +1926,28 @@ Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT' foll
             response_text = response.content.strip()
             
             # Clean up response
-            if response_text.startswith('```'):
-                response_text = response_text.split('```')[1]
-                if response_text.startswith('json'):
-                    response_text = response_text[4:]
-                response_text = response_text.strip()
+            # Robust JSON extraction
+            import re
+            json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
+            if json_match:
+                response_text = json_match.group(0)
+            else:
+                 if response_text.startswith('```'):
+                    response_text = response_text.split('```')[1]
+                    if response_text.startswith('json'):
+                        response_text = response_text[4:]
+                    response_text = response_text.strip()
             
             # Parse JSON
-            generated_questions = json.loads(response_text)
+            try:
+                generated_questions = json.loads(response_text)
+            except json.JSONDecodeError:
+                 # Last resort fallback if simple strip failed
+                 match = re.search(r'\[.*\]', response.content.strip(), re.DOTALL)
+                 if match:
+                     generated_questions = json.loads(match.group(0))
+                 else:
+                     raise
             
             questions_data = []
             for q in generated_questions:
@@ -1485,6 +1982,7 @@ class AIReviewRequest(BaseModel):
     correct_answer: str
     student_answer: str
     level: str
+    subject: Optional[str] = "physics"
 
 @api_router.post("/ai-review")
 async def generate_ai_review(request: AIReviewRequest, current_user: Dict = Depends(get_current_user)):
@@ -1492,12 +1990,21 @@ async def generate_ai_review(request: AIReviewRequest, current_user: Dict = Depe
     try:
         logging.info(f"🔒 Authenticated AI review request from: {current_user['email']}")
         
-        # Get context from RAG system
-        context_docs = get_physics_context(request.question, k=3)
-        context = "\n\n".join(context_docs) if context_docs else "General physics concepts"
+        subject = request.subject.lower() if request.subject else "physics"
         
+        # Get context from RAG system
+        context_docs = get_context(request.question, subject=subject, k=3)
+        context = "\n\n".join(context_docs) if context_docs else f"General {subject} concepts"
+        
+        # Select Prompt
+        teacher_role = f"experienced {subject} teacher"
+        if subject == "math":
+            teacher_role = "experienced Mathematics teacher"
+        elif subject == "chemistry":
+             teacher_role = "experienced Chemistry teacher"
+             
         # Create detailed review prompt
-        review_prompt = f"""You are an experienced physics teacher providing detailed feedback to a student.
+        review_prompt = f"""You are an {teacher_role} providing detailed feedback to a student.
 
 Question: {request.question}
 
@@ -1505,7 +2012,7 @@ Correct Answer: {request.correct_answer}
 
 Student's Answer: {request.student_answer}
 
-Context from Physics Textbook:
+Context from {subject.capitalize()} Textbook:
 {context[:1500]}
 
 Please provide a comprehensive review that includes:
@@ -1558,6 +2065,7 @@ async def generate_ai_notes(level: str, student_id: str, current_user: Dict = De
             return {"topic_notes": [], "incorrect_count": 0, "cached": False}
         
         result_id = results_response.data[0]['id']
+        subject = results_response.data[0].get('subject', 'physics')
         
         # Check if AI notes already exist for this result
         existing_notes = supabase.table("ai_notes").select("*").eq("result_id", result_id).execute()
@@ -1589,7 +2097,7 @@ async def generate_ai_notes(level: str, student_id: str, current_user: Dict = De
                 student_answer = answer_response.data[0]['student_answer']
                 
                 # Check if answer is incorrect using AI
-                context_docs = get_physics_context(q['question_text'], k=2)
+                context_docs = get_context(q['question_text'], subject=subject, k=2)
                 context = "\n\n".join(context_docs) if context_docs else ""
                 
                 eval_prompt = f"""
@@ -1634,21 +2142,24 @@ Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT'.
         
         # Get comprehensive context
         all_questions_text = " ".join([iq['question'] for iq in incorrect_questions])
-        context_docs = get_physics_context(all_questions_text, k=5)
-        context = "\n\n".join(context_docs) if context_docs else "General physics concepts"
+        context_docs = get_context(all_questions_text, subject=subject, k=5)
+        context = "\n\n".join(context_docs) if context_docs else f"General {subject} concepts"
+        
+        # Select Teacher Role
+        teacher_role = f"expert {subject} teacher"
         
         # Generate topic identification and notes
-        notes_prompt = f"""You are an expert physics teacher creating personalized study notes.
+        notes_prompt = f"""You are an {teacher_role} creating personalized study notes.
 
 The student answered the following questions incorrectly:
 
 {questions_summary}
 
-Context from Physics Textbook:
+Context from {subject.capitalize()} Textbook:
 {context[:3000]}
 
 Your task:
-1. Identify the main physics topics/concepts these questions relate to
+1. Identify the main {subject} topics/concepts these questions relate to
 2. Group questions by topic (if multiple questions relate to the same topic, group them together)
 3. For each topic, generate comprehensive study notes (300-500 words) that:
    - Explain the core concept clearly

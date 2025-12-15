@@ -14,10 +14,11 @@ const Results = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const { studentId, score, result, result_status, level, criteria, timeout, completed } = location.state || {};
+  // Initialize emailSent from backend response to prevent duplicates
+  const { studentId, score = 0, result = '', result_status, level = 'easy', criteria = [], timeout, completed, global_status, email_sent } = location.state || {};
   const [currentAttempts, setCurrentAttempts] = useState<number>(0);
   const [maxAttempts, setMaxAttempts] = useState<number>(0);
-  const [emailSent, setEmailSent] = useState<boolean>(false);
+  const [emailSent, setEmailSent] = useState<boolean>(!!email_sent); // Initialize with backend status
   const [sendingEmail, setSendingEmail] = useState<boolean>(false);
   const [isTestCompleted, setIsTestCompleted] = useState<boolean>(completed || false);
 
@@ -43,34 +44,98 @@ const Results = () => {
     loadAttemptData();
   }, [studentId, score]);
 
+  // Prefer backend result_status, fallback to result, then to score threshold
+  const passStatus = (typeof result_status === 'string' ? result_status : result) || '';
+  const isPassed = passStatus.toLowerCase() === 'pass' || (passStatus === '' && typeof score === 'number' && score >= 6);
+
+
   const loadAttemptData = async () => {
     try {
-      // Get the latest result to check attempts
-      const { data: latestResult } = await supabase
-        .from("results")
-        .select("*")
-        .eq("student_id", studentId)
-        .order("created_at", { ascending: false })
-        .limit(1)
+      // Fetch Admin Settings for dynamic max attempts
+      const { data: adminSettings } = await (supabase as any)
+        .from("admin_settings")
+        .select("setting_key, setting_value")
+        .eq("setting_key", "max_attempts")
         .single();
 
-      if (latestResult) {
+      const dynamicMaxAttempts = adminSettings?.setting_value ? parseInt(adminSettings.setting_value) : 2;
+
+      // Get ALL results to check comprehensive status for scholarships/notifications
+      const { data: allResults } = await supabase
+        .from("results")
+        .select("*")
+        .eq("student_id", studentId);
+
+      if (allResults && allResults.length > 0) {
+        // Find the specific result for this current session/subject/level
+        // We can sort in memory to find latest
+        allResults.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        const latestResult = allResults[0]; // Assuming the one we just finished is the latest
+
         const attemptsField = `attempts_${level}` as keyof typeof latestResult;
         const attempts = latestResult[attemptsField] as number || 0;
         setCurrentAttempts(attempts);
 
-        // Set max attempts based on level
+        // Set max attempts based on level (hardcoded here to match logic)
         const maxAttemptsByLevel = {
           easy: 1,
           medium: 2,
           hard: 2
         };
-        const maxAttempts = maxAttemptsByLevel[level as keyof typeof maxAttemptsByLevel];
+        const maxAttempts = maxAttemptsByLevel[level as keyof typeof maxAttemptsByLevel] || 2;
         setMaxAttempts(maxAttempts);
 
-        // Check if max attempts reached or test passed, send email
-        if (isPassed || attempts >= maxAttempts) {
+        // --- Logic to deciding if we should hit the email API ---
+        // 1. Check if Max Attempts Reached for THIS level (on Failure)
+        // User Requirement Update: Fail email sent for Easy AND Medium level failures.
+        const isMaxFail = !isPassed && (level === 'easy' || level === 'medium') && attempts >= maxAttempts;
+
+        // 2. Check if All Subjects Completed (Final Verdict Trigger)
+        const subjects = ['math', 'physics', 'chemistry'];
+
+        const isSubjectCompleted = (sub: string) => {
+          const subResults = allResults.filter((r: any) => (r.subject || 'physics').toLowerCase() === sub);
+
+          // Completed if:
+          // 1. Passed Hard Level
+          const passedHard = subResults.some((r: any) => r.level === 'hard' && r.result === 'pass');
+          if (passedHard) return true;
+
+          // 2. Or Failed Max Attempts at any level (and thus cannot proceed)
+          // We need to check the LATEST attempt for the subject.
+          const latestSubResult = subResults[0]; // Assuming sorted desc by created_at
+          if (!latestSubResult) return false; // Not started
+
+          const level = latestSubResult.level;
+          const status = latestSubResult.result;
+          const attempts = level === 'easy' ? (latestSubResult.attempts_easy || 0) :
+            level === 'medium' ? (latestSubResult.attempts_medium || 0) :
+              (latestSubResult.attempts_hard || 0);
+
+          const max = level === 'easy' ? 1 :
+            dynamicMaxAttempts; // Use fetched dynamic setting
+
+          // If failed (not passed) and attempts >= max, then it's a dead end -> Completed.
+          if (status !== 'pass' && attempts >= max) return true;
+
+          return false;
+        };
+
+        // We check completion based on the *fetched* results, but we must also account for the CURRENT result
+        // which might not be in 'allResults' yet if it was just created/updated? 
+        // Note: loadAttemptData fetches 'allResults' fresh from DB, so it should include the current one.
+
+        const allSubjectsCompleted = subjects.every(s => isSubjectCompleted(s));
+
+        // 3. Only trigger if one of these is true
+        // isMaxFail -> Immediate Fail Notification (Easy/Medium)
+        // allSubjectsCompleted -> Final Verdict Notification
+        // global_status -> Backend authoritative status (trust mechanism)
+        if (isMaxFail || allSubjectsCompleted || global_status === 'completed' || global_status === 'failed') {
           await handleMaxAttemptsReached();
+        } else {
+          console.log("Skipping email API call: Criteria not met (Intermediate success or attempts remaining).");
         }
       }
     } catch (error) {
@@ -116,15 +181,18 @@ const Results = () => {
           })
         });
 
-        if (response.ok) {
+        const data = await response.json();
+
+        if (response.ok && data.email_sent) {
           setEmailSent(true);
           toast({
             title: "Email Sent",
             description: "A notification email has been sent regarding your test results.",
           });
         } else {
-          console.error("Email sending error");
-          // Still mark as sent to avoid retry loops
+          // Email was skipped or failed
+          console.log("Email notification status:", data.message);
+          // Set to true anyway to prevent further attempts in this session
           setEmailSent(true);
         }
       }
@@ -146,21 +214,16 @@ const Results = () => {
     });
   };
 
-  // Prefer backend result_status, fallback to result, then to score threshold
-  const passStatus = (typeof result_status === 'string' ? result_status : result) || '';
-  const isPassed = passStatus.toLowerCase() === 'pass' || (passStatus === '' && typeof score === 'number' && score >= 6);
-
   // Display 6 evaluation criteria (average scores across all questions)
-  const evaluationCriteria = criteria ? [
-    { name: "Relevance", score: criteria.Relevance || 5 },
-    { name: "Clarity", score: criteria.Clarity || 5 },
-    { name: "Subject Understanding", score: criteria.SubjectUnderstanding || 5 },
-    { name: "Accuracy", score: criteria.Accuracy || 5 },
-    { name: "Completeness", score: criteria.Completeness || 5 },
-    { name: "Critical Thinking", score: criteria.CriticalThinking || 5 }
-  ] : [
-    { name: "Overall Performance", score: score }
-  ];
+  // Display 6 evaluation criteria (average scores across all questions)
+  const evaluationCriteria = Array.isArray(criteria) ? criteria : (criteria ? [
+    { name: "Relevance", score: criteria.Relevance || 0 },
+    { name: "Clarity", score: criteria.Clarity || 0 },
+    { name: "Subject Understanding", score: criteria.SubjectUnderstanding || 0 },
+    { name: "Accuracy", score: criteria.Accuracy || 0 },
+    { name: "Completeness", score: criteria.Completeness || 0 },
+    { name: "Critical Thinking", score: criteria.CriticalThinking || 0 }
+  ] : []);
 
   const getScoreColor = (score: number) => {
     if (score >= 8) return "text-green-600";
@@ -312,26 +375,40 @@ const Results = () => {
           </Card>
 
           {/* Action Buttons - Simplified */}
+          {/* Action Buttons - Simplified */}
           <div className="flex flex-col sm:flex-row gap-4">
-            <Button
-              size="lg"
-              variant="outline"
-              className="flex-1"
-              onClick={() => navigate("/levels")}
-            >
-              <Home className="w-5 h-5 mr-2" />
-              Home
-            </Button>
+            {(global_status === 'failed' || global_status === 'completed') ? (
+              <Button
+                size="lg"
+                className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg animate-pulse"
+                onClick={() => navigate("/final-results", { state: { studentId } })}
+              >
+                <Trophy className="w-5 h-5 mr-2" />
+                View Final Verdict
+              </Button>
+            ) : (
+              <>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => navigate("/levels")}
+                >
+                  <Home className="w-5 h-5 mr-2" />
+                  Home
+                </Button>
 
-            <Button
-              size="lg"
-              variant="glow"
-              className="flex-1"
-              onClick={() => navigate("/levels", { state: { studentId, fromResults: true } })}
-            >
-              <TrendingUp className="w-5 h-5 mr-2" />
-              Detailed Analysis
-            </Button>
+                <Button
+                  size="lg"
+                  variant="glow"
+                  className="flex-1"
+                  onClick={() => navigate("/levels", { state: { studentId, fromResults: true } })}
+                >
+                  <TrendingUp className="w-5 h-5 mr-2" />
+                  Detailed Analysis
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>

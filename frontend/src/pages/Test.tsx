@@ -1,3 +1,4 @@
+import { MathRenderer } from "@/components/MathRenderer";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,7 +34,7 @@ const Test = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { studentId, level } = location.state || {};
+  const { studentId, level, subject } = location.state || {};
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -115,13 +116,25 @@ const Test = () => {
       const token = localStorage.getItem('firebase_token');
       if (!token) throw new Error('Authentication required');
 
+      // Define strict type to avoid recursive type inference errors
+      type ResultRow = {
+        id: string;
+        result: string | null;
+        attempts_easy: number | null;
+        attempts_medium: number | null;
+        attempts_hard: number | null;
+        created_at: string | null;
+      };
+
       // 1. Get or Create Test Session
-      const { data: previousResults } = await supabase
+      const { data: previousResults } = await (supabase as any)
         .from("results")
-        .select("*")
+        .select("id, result, attempts_easy, attempts_medium, attempts_hard, created_at")
         .eq("student_id", studentId)
+        .eq("subject", String(subject || 'physics'))
+        .eq("level", String(level))
         .order("created_at", { ascending: false })
-        .limit(1);
+        .limit(1) as { data: ResultRow[] | null, error: any };
 
       const previousAttempts = previousResults?.[0] || {
         attempts_easy: 0,
@@ -129,75 +142,33 @@ const Test = () => {
         attempts_hard: 0
       };
 
-      const createResponse = await fetch(`${backendUrl}/api/create-result`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          student_id: studentId,
-          level,
-          attempts_easy: (previousAttempts.attempts_easy || 0) + (level === 'easy' ? 1 : 0),
-          attempts_medium: (previousAttempts.attempts_medium || 0) + (level === 'medium' ? 1 : 0),
-          attempts_hard: (previousAttempts.attempts_hard || 0) + (level === 'hard' ? 1 : 0)
-        })
-      });
+      const currentResult = previousResults?.[0];
+      const isResumeable = currentResult && (currentResult.result === 'pending' || currentResult.result === 'in_progress');
 
-      if (!createResponse.ok) throw new Error('Failed to initialize test session');
-      const result = await createResponse.json();
-      setResultId(result.id);
-
-      // 2. Check if Resuming or New
-      const { count } = await supabase
-        .from("questions")
-        .select("*", { count: 'exact', head: true })
-        .eq("result_id", result.id);
-
-      const isResuming = count && count > 0;
-
-      if (isResuming) {
-        // --- RESUME FLOW ---
-        const sessionResponse = await fetch(`${backendUrl}/api/test-session/${result.id}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+      if (isResumeable) {
+        setResultId(currentResult.id);
+        await loadTestSession(currentResult.id, currentResult, token, backendUrl);
+      } else {
+        const createResponse = await fetch(`${backendUrl}/api/create-result`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            student_id: studentId,
+            subject: subject || 'physics',
+            level,
+            attempts_easy: (previousAttempts.attempts_easy || 0) + (level === 'easy' ? 0 : 0), // Use logic handled by backend usually
+            attempts_medium: (previousAttempts.attempts_medium || 0) + (level === 'medium' ? 1 : 0),
+            attempts_hard: (previousAttempts.attempts_hard || 0) + (level === 'hard' ? 1 : 0)
+          })
         });
 
-        if (!sessionResponse.ok) throw new Error('Failed to fetch test session');
-        const sessionData = await sessionResponse.json();
+        if (!createResponse.ok) throw new Error('Failed to initialize test session');
+        const result = await createResponse.json();
+        setResultId(result.id);
 
-        setQuestions(sessionData.questions);
-        setQuestionIds(sessionData.questions.map((q: any) => q.id));
-
-        const restoredAnswers = sessionData.questions.map((q: any) => q.student_answer || "");
-        setAnswers(restoredAnswers);
-        setSubmittedQuestions(restoredAnswers.map((a: string) => !!a));
-
-        let endTime: number;
-
-        if (result.end_time) {
-          endTime = new Date(result.end_time).getTime();
-        } else {
-          // Fallback: Calculate end time from start_time + duration
-          const startTime = new Date(result.start_time || result.created_at).getTime();
-          const duration = TIMER_DURATIONS[level as keyof typeof TIMER_DURATIONS];
-          endTime = startTime + (duration * 1000);
-        }
-
-        const now = Date.now();
-        const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
-
-        setTimeRemaining(remaining);
-        setStartTime(new Date(result.start_time || result.created_at).getTime());
-
-        if (remaining > 0) {
-          setTimerActive(true);
-        } else {
-          setTimeOut(true);
-          handleTimeOut();
-        }
-
-      } else {
-        // --- NEW TEST FLOW ---
         await generateAndSaveQuestions(result.id, token, backendUrl);
         const duration = TIMER_DURATIONS[level as keyof typeof TIMER_DURATIONS];
         setTimeRemaining(duration);
@@ -218,6 +189,57 @@ const Test = () => {
     }
   };
 
+  const loadTestSession = async (rId: string, resultObj: any, token: string, backendUrl: string) => {
+    const { count } = await supabase
+      .from("questions")
+      .select("*", { count: 'exact', head: true })
+      .eq("result_id", rId);
+
+    const hasQuestions = count && count > 0;
+
+    if (hasQuestions) {
+      // --- RESUME FLOW ---
+      const sessionResponse = await fetch(`${backendUrl}/api/test-session/${rId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!sessionResponse.ok) throw new Error('Failed to fetch test session');
+      const sessionData = await sessionResponse.json();
+
+      setQuestions(sessionData.questions);
+      setQuestionIds(sessionData.questions.map((q: any) => q.id));
+
+      const restoredAnswers = sessionData.questions.map((q: any) => q.student_answer || "");
+      setAnswers(restoredAnswers);
+      setSubmittedQuestions(restoredAnswers.map((a: string) => !!a));
+
+      const startTime = new Date(resultObj.created_at).getTime();
+      const duration = TIMER_DURATIONS[level as keyof typeof TIMER_DURATIONS];
+      const endTime = startTime + (duration * 1000);
+
+      const now = Date.now();
+      const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+
+      setTimeRemaining(remaining);
+      setStartTime(startTime);
+
+      if (remaining > 0) {
+        setTimerActive(true);
+      } else {
+        setTimeOut(true);
+        handleTimeOut();
+      }
+
+    } else {
+      // Should not happen for a resumed test, but if so, generate
+      await generateAndSaveQuestions(rId, token, backendUrl);
+      const duration = TIMER_DURATIONS[level as keyof typeof TIMER_DURATIONS];
+      setTimeRemaining(duration);
+      setTimerActive(true);
+      setStartTime(Date.now());
+    }
+  }
+
   const generateAndSaveQuestions = async (resId: string, token: string, backendUrl: string) => {
     const numQuestions = level === "easy" ? 5 : level === "medium" ? 3 : 2;
 
@@ -227,7 +249,11 @@ const Test = () => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({ level, num_questions: numQuestions })
+      body: JSON.stringify({
+        subject: subject || 'physics',
+        level,
+        num_questions: numQuestions
+      })
     });
 
     if (!genResponse.ok) throw new Error('Failed to generate questions');
@@ -344,6 +370,12 @@ const Test = () => {
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
       const token = localStorage.getItem('firebase_token');
 
+      // Create ID-based map for robust saving
+      const answersMap: { [key: string]: string } = {};
+      questions.forEach((q, idx) => {
+        answersMap[q.id] = answers[idx] || "";
+      });
+
       const response = await fetch(`${backendUrl}/api/submit-test`, {
         method: 'POST',
         headers: {
@@ -352,27 +384,54 @@ const Test = () => {
         },
         body: JSON.stringify({
           result_id: resultId,
-          answers: answers,
+          answers: answersMap, // Sending Map instead of List
           is_timeout: isTimeout
         })
       });
 
-      if (!response.ok) throw new Error('Failed to submit test');
+      if (!response.ok) throw new Error('Failed to save answers');
 
-      const resultData = await response.json();
+      // Step 2: Trigger Evaluation
+      toast({
+        title: "Processing Results",
+        description: "AI is evaluating your answers...",
+      });
+
+      const evalResponse = await fetch(`${backendUrl}/api/evaluate-answers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ result_id: resultId })
+      });
+
+      if (!evalResponse.ok) throw new Error('Failed to evaluate answers');
+      const resultData = await evalResponse.json();
 
       toast({
         title: isTimeout ? "Test Timed Out" : "Test Submitted",
-        description: "Your answers have been recorded.",
+        description: "Your answers have been evaluated.",
       });
 
-      navigate("/results", {
-        state: {
-          ...resultData,
-          studentId,
-          completed: true
-        }
-      });
+      if (isTimeout) {
+        navigate(`/review/${level}`, {
+          state: {
+            studentId,
+            subject,
+            fromResults: true
+          }
+        });
+      } else {
+        navigate("/results", {
+          state: {
+            ...resultData,
+            studentId,
+            completed: true,
+            global_status: resultData.global_status
+          }
+        });
+      }
 
     } catch (error: any) {
       console.error('Submission error:', error);
@@ -507,7 +566,7 @@ const Test = () => {
                 <Trees className="w-6 h-6 text-white" />
               </motion.div>
               <div>
-                <h1 className="text-xl font-bold text-green-800 dark:text-slate-100 capitalize leading-tight">{level} Level Test</h1>
+                <h1 className="text-xl font-bold text-green-800 dark:text-slate-100 capitalize leading-tight">{level} Level Test: <span className="text-emerald-600">{subject || 'Physics'}</span></h1>
                 <p className="text-emerald-600 dark:text-slate-400 text-sm font-medium">Question {currentQuestionIndex + 1} of {questions.length}</p>
               </div>
             </div>
@@ -592,9 +651,10 @@ const Test = () => {
           </div>
 
           <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-slate-800/50 dark:to-slate-800/30 border border-green-100 dark:border-slate-700 rounded-xl p-4 mb-4 shrink-0 overflow-y-auto max-h-[15vh]">
-            <p className="text-green-900 dark:text-slate-200 text-base md:text-lg leading-relaxed font-medium">
-              {currentQuestion?.question}
-            </p>
+            <div className="text-green-900 dark:text-slate-200 text-base md:text-lg leading-relaxed font-medium">
+              {/* Robust LaTeX Rendering Integration */}
+              <MathRenderer text={currentQuestion?.question} />
+            </div>
           </div>
 
           <div className="flex-1 flex flex-col min-h-0">
@@ -647,8 +707,8 @@ const Test = () => {
               <Button
                 size="default"
                 className="bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white px-8 rounded-xl shadow-md font-bold transition-all duration-300 transform hover:scale-105"
-                onClick={() => submitAllAnswers()}
-                disabled={submitting}
+                onClick={handleSubmitCurrentAnswer}
+                disabled={submitting || isCurrentSubmitted}
               >
                 {submitting ? (
                   <>
@@ -656,7 +716,7 @@ const Test = () => {
                     Submitting...
                   </>
                 ) : (
-                  "Submit"
+                  "Submit Test"
                 )}
               </Button>
             )}

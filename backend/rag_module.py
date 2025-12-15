@@ -1,22 +1,26 @@
 """
-Lazy-loading RAG module for Physics Questions
+Lazy-loading RAG module for Multiple Subjects (Physics, Math, Chemistry)
 """
 import os
+import random
+import time
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
 from dotenv import load_dotenv
 
 load_dotenv()
 
-persist_dir = os.path.join(os.path.dirname(__file__), "chroma_db")
-_retriever = None
+PERSIST_DIR = os.path.join(os.path.dirname(__file__), "chroma_db")
 
-def get_retriever(k=15):
-    """Get or create retriever (lazy loading)"""
-    global _retriever
+# Cache for retrievers: { "physics": retriever, "math": retriever, ... }
+_retrievers = {}
+
+def get_retriever(subject="physics", k=15):
+    """Get or create retriever for a specific subject (lazy loading)"""
+    global _retrievers
     
-    if _retriever is not None:
-        return _retriever
+    if subject in _retrievers and _retrievers[subject] is not None:
+        return _retrievers[subject]
     
     embeddings = GoogleGenerativeAIEmbeddings(
         model="models/embedding-001",
@@ -24,30 +28,41 @@ def get_retriever(k=15):
     )
     
     # Check if vectorstore exists
-    if os.path.exists(persist_dir):
-        vectorstore = Chroma(
-            embedding_function=embeddings,
-            collection_name="physics",
-            persist_directory=persist_dir
-        )
-        _retriever = vectorstore.as_retriever(search_kwargs={"k": k})
-        return _retriever
+    if os.path.exists(PERSIST_DIR):
+        print(f"🔌 Loading RAG collection for {subject}...")
+        try:
+            vectorstore = Chroma(
+                embedding_function=embeddings,
+                collection_name=subject,
+                persist_directory=PERSIST_DIR
+            )
+            # Basic validation
+            if vectorstore._collection.count() == 0:
+                 print(f"⚠️  Collection {subject} is empty.")
+                 return None
+                 
+            retriever = vectorstore.as_retriever(search_kwargs={"k": k})
+            _retrievers[subject] = retriever
+            return retriever
+        except Exception as e:
+            print(f"❌ Error loading {subject} collection: {e}")
+            return None
     else:
-        # Return None if not initialized - will use fallback
+        # Return None if not initialized
         return None
 
-def get_physics_context(query: str, k: int = 3, randomize: bool = True):
-    """Get relevant physics context for a query with optional randomization
+def get_context(query: str, subject: str = "physics", k: int = 3, randomize: bool = True):
+    """Get relevant context for a query and subject with optional randomization
     
     Args:
-        query: Search query for context retrieval
+        query: Search query
+        subject: Subject to retrieve for (physics, math, chemistry)
         k: Number of documents to retrieve
         randomize: If True, adds diversity by retrieving more docs and randomly sampling
     """
-    retriever = get_retriever(k * 2 if randomize else k)  # Get more docs for diversity
+    retriever = get_retriever(subject, k * 2 if randomize else k)
     
     if retriever is None:
-        # Fallback: return empty context if RAG not set up
         return []
     
     try:
@@ -55,12 +70,15 @@ def get_physics_context(query: str, k: int = 3, randomize: bool = True):
         
         if randomize and len(results) > k:
             # Randomly sample k documents from retrieved results for diversity
-            import random
-            import time
             random.seed(time.time())
             results = random.sample(results, k)
         
         return [doc.page_content for doc in results]
     except Exception as e:
-        print(f"RAG retrieval error: {e}")
+        print(f"RAG retrieval error for {subject}: {e}")
         return []
+
+# Backward compatibility alias
+def get_physics_context(query: str, k: int = 3, randomize: bool = True):
+    """Deprecated: Use get_context(query, subject='physics', ...) instead"""
+    return get_context(query, subject="physics", k=k, randomize=randomize)
