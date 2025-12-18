@@ -1,0 +1,10 @@
+🔍 QWEN 0.5B DIAGNOSTIC REPORT
+================================
+🔑 Token Found: hf_c...rsXc (len=37)
+
+STEP 1: Token Validation
+✅ Token valid. User: Krishnasri2027
+
+STEP 2: Raw HF Router Chat Completion
+❌ Raw call failed (400)
+{"error":{"message":"The requested model 'Qwen/Qwen2.5-0.5B-Instruct' is not supported by provider 'fireworks-ai'.","type":"invalid_request_error","param":"model","code":"model_not_supported"}}

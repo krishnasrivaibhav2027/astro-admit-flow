@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DEFAULT_SETTINGS = {
-    "model": "gemini-2.5-flash",
+    "model": "gemini-2.5-flash-lite",
     "temperature": 0.7,
     "email_notifications": True,
     "passing_score": 70,

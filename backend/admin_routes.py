@@ -14,6 +14,20 @@ supabase_url = os.environ.get('SUPABASE_URL')
 supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY') or os.environ.get('SUPABASE_KEY')
 supabase: Client = create_client(supabase_url, supabase_key)
 
+# Import models
+from models import GenerateQuestionsRequest, GenerateQuestionsRequest
+from question_bank_service import QuestionBankService
+import ai_service
+from rag_supabase import get_context
+
+
+# Import models
+from models import GenerateQuestionsRequest, GenerateQuestionsRequest
+from question_bank_service import QuestionBankService
+import ai_service
+from rag_supabase import get_context
+
+
 class AdminCreate(BaseModel):
     first_name: str
     last_name: str
@@ -66,7 +80,152 @@ class RoleUpdate(BaseModel):
 
 # --- Endpoints ---
 
+
+# --- Question Bank Endpoints ---
+
+@admin_router.post("/question-bank/generate")
+async def generate_questions_bulk(request: GenerateQuestionsRequest, admin: Dict = Depends(get_current_admin)):
+    """Generate questions in bulk for the Question Bank (Guarded)"""
+    try:
+        # Use Guarded Generation to prevent duplicates and ensure coverage
+        # Now respecting request.num_questions as the max limit
+        
+        result = await QuestionBankService.generate_guarded(
+            request.subject, 
+            request.level,
+            max_questions=request.num_questions
+        )
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@admin_router.post("/question-bank/extract-topics")
+async def extract_topics(admin: Dict = Depends(get_current_admin)):
+    """Trigger topic extraction from PDFs"""
+    try:
+        import topic_extractor
+        import logging
+        logging.info("🚀 Starting Manual Topic Extraction via Admin API...")
+        stats = await topic_extractor.run_extraction()
+        logging.info(f"✅ Topic Extraction Complete. Stats: {stats}")
+        return {"success": True, "stats": stats}
+    except Exception as e:
+        import logging
+        logging.error(f"❌ Topic Extraction Failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@admin_router.get("/question-bank/stats")
+async def get_question_bank_stats(admin: Dict = Depends(get_current_admin)):
+    """Get detailed stats for Question Bank cards"""
+    try:
+        stats = await QuestionBankService.get_stats()
+        return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@admin_router.get("/question-bank/questions")
+async def list_questions(subject: str, level: str, admin: Dict = Depends(get_current_admin)):
+    """List questions in the bank (used/unused)"""
+    try:
+        # We need a method to list all questions for the view
+        # Current service only gets unused. We need a list method.
+        # Direct Supabase call here for simplicity
+        response = supabase.table("question_bank")\
+            .select("id, question_content, is_used, created_at")\
+            .eq("subject", subject.lower())\
+            .eq("level", level.lower())\
+            .order("created_at", desc=True)\
+            .limit(50)\
+            .execute()
+        
+        # Parse content
+        data = []
+        for row in response.data:
+            content = row['question_content']
+            data.append({
+                "id": row['id'],
+                "question": content.get("question"),
+                "answer": content.get("answer"),
+                "is_used": row['is_used'],
+                "created_at": row['created_at']
+            })
+            
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@admin_router.get("/student/{student_id}")
+async def get_student_details(student_id: str, admin: Dict = Depends(get_current_admin)):
+    """Get specific student details"""
+    try:
+        response = supabase.table("students").select("*").eq("id", student_id).execute()
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Student not found")
+        return response.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@admin_router.get("/student/{student_id}/questions")
+async def get_student_questions(student_id: str, admin: Dict = Depends(get_current_admin)):
+    """Get questions assigned to a specific student with status"""
+    try:
+        # 1. Get results for student
+        results = supabase.table("results").select("id, subject, level, created_at, score").eq("student_id", student_id).order("created_at", desc=True).execute()
+        
+        if not results.data:
+            return []
+
+        all_questions = []
+        result_ids = [r['id'] for r in results.data]
+        
+        # 2. Get questions for these results
+        # Note: Supabase 'in_' filter expects a list
+        questions_resp = supabase.table("questions").select("*").in_("result_id", result_ids).execute()
+        questions_data = questions_resp.data or []
+        
+        if not questions_data:
+            return []
+
+        # 3. Get answers for these questions
+        question_ids = [q['id'] for q in questions_data]
+        answers_resp = supabase.table("student_answers").select("question_id, student_answer").in_("question_id", question_ids).execute()
+        answers_data = answers_resp.data or []
+        
+        # Map answers by question_id for O(1) lookup
+        answers_map = {a['question_id']: a['student_answer'] for a in answers_data}
+        
+        # Map result details for O(1) lookup
+        results_map = {r['id']: r for r in results.data}
+
+        # 4. Compile final list with logging
+        print(f"Found {len(questions_data)} questions and {len(answers_data)} answers for {student_id}")
+        
+        for q in questions_data:
+            r = results_map.get(q['result_id'], {})
+            student_answer = answers_map.get(q['id'])
+            
+            # Determine status
+            is_attempted = q['id'] in answers_map and student_answer is not None and str(student_answer).strip() != ""
+            
+            all_questions.append({
+                "subject": r.get('subject', 'Unknown'),
+                "level": r.get('level', 'Unknown'),
+                "question": q.get('question_text', ''), # Explicitly get question_text
+                "answer": q.get('correct_answer', ''), # Explicitly get correct_answer
+                "student_answer": student_answer,
+                "status": "Attempted" if is_attempted else "Unattempted"
+            })
+            
+        print(f"Returning {len(all_questions)} formatted questions")
+        return all_questions
+
+    except Exception as e:
+        print(f"Error fetching student questions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @admin_router.get("/stats/overview")
+
 async def get_dashboard_stats(admin: Dict = Depends(get_current_admin)):
     """Get high-level dashboard stats"""
     try:
@@ -78,7 +237,11 @@ async def get_dashboard_stats(admin: Dict = Depends(get_current_admin)):
         active_tests_count = supabase.table("results").select("id", count="exact").execute().count
         
         # 3. Questions in Bank
-        questions_count = supabase.table("questions").select("id", count="exact").execute().count
+        # 3. Questions in Bank (using QuestionBankService)
+        # We can implement a fast count in QB service
+        # For now just use table count directly
+        questions_count = supabase.table("question_bank").select("id", count="exact").execute().count
+
         
         # 4. Flagged Issues (placeholder for now)
         flagged_issues_count = 0
@@ -725,12 +888,9 @@ async def generate_detailed_report(admin: Dict = Depends(get_current_admin)):
         print(f"DEBUG CONTEXT SENT TO AI:\n{context_str}", flush=True)
 
         # 3. Generate AI Report
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            return {"report": "Error: Gemini API Key not found."}
-            
-        # Use gemini-2.5-flash as strictly requested by user
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key)
+        # 3. Generate AI Report
+        from ai_service import get_llm
+        llm = get_llm()
         
         prompt = f"""You are an expert educational data analyst for a physics learning platform.
         Analyze the following data and generate a comprehensive "Executive Summary" report for the administrator.

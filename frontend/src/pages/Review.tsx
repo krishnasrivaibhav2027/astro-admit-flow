@@ -242,7 +242,7 @@ const Review = () => {
           {levelAttempted && (
             <Button
               variant="default"
-              onClick={() => navigate(`/ai-notes/${level}`)}
+              onClick={() => navigate(`/ai-notes/${level}`, { state: { studentId: sessionStorage.getItem('studentId'), subject: subject } })}
               className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
             >
               <Brain className="w-4 h-4 mr-2" />

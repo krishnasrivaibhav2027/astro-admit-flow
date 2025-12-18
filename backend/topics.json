@@ -1,0 +1,41 @@
+{
+    "physics": [
+        "Electric Charges and Fields",
+        "Electrostatic Potential and Capacitance",
+        "Current Electricity",
+        "Moving Charges and Magnetism",
+        "Magnetism and Matter",
+        "Electromagnetic Induction",
+        "Alternating Current",
+        "Electromagnetic Waves"
+    ],
+    "math": [
+        "Relations and Functions",
+        "Inverse Trigonometric Functions",
+        "Matrices",
+        "Determinants",
+        "Continuity and Differentiability",
+        "Application of Derivatives",
+        "Integrals",
+        "Application of Integrals",
+        "Differential Equations",
+        "Vector Algebra",
+        "Three Dimensional Geometry",
+        "Linear Programming",
+        "Probability",
+        "Proofs in Mathematics",
+        "Mathematical Modelling"
+    ],
+    "chemistry": [
+        "Solutions",
+        "Electrochemistry",
+        "Chemical Kinetics",
+        "The d-and f-Block Elements",
+        "Coordination Compounds",
+        "Haloalkanes and Haloarenes",
+        "Alcohols, Phenols and Ethers",
+        "Aldehydes, Ketones and Carboxylic Acids",
+        "Amines",
+        "Biomolecules"
+    ]
+}

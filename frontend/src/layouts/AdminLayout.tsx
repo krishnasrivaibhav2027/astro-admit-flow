@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
     Activity,
     BarChart3,
+    Database,
     FileText,
     LayoutDashboard,
     Megaphone,
@@ -100,7 +101,9 @@ const AdminLayout = () => {
 
     const navItems = [
         { icon: LayoutDashboard, label: "Overview", path: "/admin" },
+        { icon: Database, label: "Question Bank", path: "/admin/question-bank" },
         { icon: BarChart3, label: "Question Analytics", path: "/admin/questions" },
+
         { icon: Activity, label: "Live Monitoring", path: "/admin/monitoring" },
         { icon: Users, label: "Students", path: "/admin/students" },
         { icon: FileText, label: "Reports", path: "/admin/reports" },

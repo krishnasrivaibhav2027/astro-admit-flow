@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, BookOpen, Brain, Lightbulb, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 interface TopicNote {
   topic: string;
@@ -17,15 +17,20 @@ interface TopicNote {
 const AINotesPage = () => {
   const navigate = useNavigate();
   const { level } = useParams<{ level: string }>();
+  const location = useLocation();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [topicNotes, setTopicNotes] = useState<TopicNote[]>([]);
   const [incorrectCount, setIncorrectCount] = useState(0);
 
+  // Get subject from state, default to physics if missing (though it should be passed)
+  const locationState = location.state || {};
+  const subject = locationState.subject;
+
   useEffect(() => {
     generateNotes();
-  }, [level]);
+  }, [level, subject]);
 
   const generateNotes = async () => {
     try {
@@ -46,7 +51,12 @@ const AINotesPage = () => {
       }
 
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
-      const response = await fetch(`${backendUrl}/api/ai-notes/${level}/${studentId}`, {
+      const url = new URL(`${backendUrl}/api/ai-notes/${level}/${studentId}`);
+      if (subject) {
+        url.searchParams.append('subject', subject);
+      }
+
+      const response = await fetch(url.toString(), {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -189,7 +199,7 @@ const AINotesPage = () => {
       <div className="relative z-10 container max-w-6xl mx-auto px-4 py-12">
         <Button
           variant="ghost"
-          onClick={() => navigate(`/review/${level}`, { state: { studentId: sessionStorage.getItem('studentId') } })}
+          onClick={() => navigate(`/review/${level}`, { state: { studentId: sessionStorage.getItem('studentId'), subject: subject } })}
           className="mb-6"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -304,7 +314,7 @@ const AINotesPage = () => {
         <div className="mt-8 flex justify-center">
           <Button
             size="lg"
-            onClick={() => navigate(`/review/${level}`, { state: { studentId: sessionStorage.getItem('studentId') } })}
+            onClick={() => navigate(`/review/${level}`, { state: { studentId: sessionStorage.getItem('studentId'), subject: subject } })}
             className="px-8"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />

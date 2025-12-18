@@ -4,8 +4,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, Filter, Loader2, Search, UserCheck, Users } from "lucide-react";
+import 'katex/dist/katex.min.css';
+import { BookOpen, Calendar, Filter, Loader2, Search, UserCheck, Users } from "lucide-react";
+
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 interface Student {
     id: string;
@@ -17,10 +20,17 @@ interface Student {
 }
 
 const StudentManagement = () => {
+    const navigate = useNavigate();
     const [students, setStudents] = useState<Student[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const { toast } = useToast();
+
+    // Removed Dialog State Logic
+    const [loadingQuestions, setLoadingQuestions] = useState(false);
+
+    // Removed handleViewQuestions function
+
 
     useEffect(() => {
         fetchStudents();
@@ -166,7 +176,9 @@ const StudentManagement = () => {
                                 <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email</TableHead>
                                 <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Role</TableHead>
                                 <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Joined</TableHead>
+                                <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground text-right pr-6">Questions</TableHead>
                             </TableRow>
+
                         </TableHeader>
                         <TableBody>
                             {filteredStudents.map((student) => (
@@ -174,11 +186,11 @@ const StudentManagement = () => {
                                     <TableCell className="pl-6 py-4">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold shadow-lg shadow-emerald-500/20">
-                                                {student.first_name.charAt(0)}
+                                                {(student.first_name || '?').charAt(0)}
                                             </div>
                                             <div>
                                                 <p className="font-medium text-foreground">
-                                                    {student.first_name} {student.last_name}
+                                                    {student.first_name || 'Unknown'} {student.last_name || ''}
                                                 </p>
                                                 <p className="text-xs text-muted-foreground">ID: {student.id.slice(0, 8)}</p>
                                             </div>
@@ -192,16 +204,23 @@ const StudentManagement = () => {
                                     <TableCell>
                                         <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20">
                                             <UserCheck className="w-3 h-3 mr-1" />
-                                            Student
+                                            {student.role || 'Student'}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-muted-foreground">
                                         <div className="flex items-center gap-2">
                                             <Calendar className="w-4 h-4 opacity-50" />
-                                            {new Date(student.created_at).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}
+                                            {student.created_at ? new Date(student.created_at).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" }) : 'N/A'}
                                         </div>
                                     </TableCell>
+                                    <TableCell className="text-right pr-6">
+                                        <Button variant="outline" size="sm" onClick={() => navigate(`/admin/students/${student.id}/questions`)}>
+                                            <BookOpen className="w-4 h-4 mr-2" />
+                                            Questions
+                                        </Button>
+                                    </TableCell>
                                 </TableRow>
+
                             ))}
                             {filteredStudents.length === 0 && (
                                 <TableRow>
@@ -214,7 +233,10 @@ const StudentManagement = () => {
                     </Table>
                 </div>
             </Card>
+
+
         </div>
+
     );
 };
 

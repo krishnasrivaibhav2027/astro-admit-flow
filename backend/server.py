@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Query, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -19,13 +19,16 @@ from email.mime.multipart import MIMEMultipart
 
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from firebase_config import initialize_firebase, verify_firebase_token
 from settings_manager import settings_manager
 
 # Import RAG module
+from question_bank_service import QuestionBankService
+
 try:
-    from rag_module import get_context
+    from rag_supabase import get_context
+
     RAG_ENABLED = True
 except Exception as e:
     print(f"RAG not available: {e}")
@@ -46,58 +49,32 @@ supabase: Client = create_client(supabase_url, supabase_key)
 
 # Initialize LangChain LLM (Dynamic)
 llm = None
-evaluator_llm = None
-
-def initialize_llms():
-    global llm, evaluator_llm
-    model_name = settings_manager.get_model_name()
-    temperature = settings_manager.get_temperature()
-    
-    logging.info(f"🔄 Initializing LLMs with model: {model_name}, temp: {temperature}")
-    
-    llm = ChatGoogleGenerativeAI(
-        model=model_name,
-        temperature=temperature,
-        api_key=os.environ.get('GEMINI_API_KEY')
-    )
-
-    # Evaluator always uses low temp for consistency, but follows model selection
-    evaluator_llm = ChatGoogleGenerativeAI(
-        model=model_name,
-        temperature=0.1,
-        api_key=os.environ.get('GEMINI_API_KEY')
-    )
-
-# Initial setup
-initialize_llms()
+# Imports moved to ai_service
+import ai_service
 
 
-def safe_invoke(model, prompt_or_messages, purpose: str = "LLM call"):
-    """Invoke the LLM and translate common service errors into HTTPExceptions with helpful messages.
 
-    Returns the model response object on success. Raises HTTPException on known failures.
-    """
-    try:
-        response = model.invoke(prompt_or_messages)
-        return response
-    except Exception as e:
-        msg = str(e)
-        logging.error(f"LLM error during {purpose}: {msg}")
+# safe_invoke moved to ai_service
+from ai_service import safe_invoke
 
-        # Detect leaked/invalid API key errors from Gemini / Google client
-        if "leaked" in msg.lower() or ("api key" in msg.lower() and "leaked" in msg.lower()) or "403" in msg:
-            # Provide actionable guidance to the operator (do not reveal keys)
-            raise HTTPException(status_code=502, detail=(
-                "AI provider rejected the API key (reported leaked or invalid). "
-                "Please set a valid GEMINI_API_KEY in the environment and restart the server."
-            ))
-
-        # Generic upstream AI provider error
-        raise HTTPException(status_code=502, detail=f"AI provider error: {msg}")
 
 # Create the main app
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
+
+@app.on_event("startup")
+async def startup_event():
+    """Preload model if local setting is active"""
+    try:
+        settings = settings_manager.get_settings()
+        model_name = settings.get("model", "")
+        if "Local" in model_name or "Qwen" in model_name and "fireworks" not in model_name:
+            logging.info(f"🚀 Pre-loading Local Model: {model_name}...")
+            # Import here to avoid circular dependency issues if any
+            from local_llm_engine import engine
+            engine.load_model()
+    except Exception as e:
+        logging.error(f"⚠️ Failed to preload local model: {e}")
 
 # Include Admin Router
 from admin_routes import admin_router
@@ -107,282 +84,41 @@ app.include_router(admin_router)
 from chat_routes import router as chat_router
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 
-
-# ===== EVALUATION CRITERIA MODEL =====
-class EvaluationCriteria(BaseModel):
-    """6 evaluation criteria as per LangGraph requirements"""
-    Relevance: float = Field(..., ge=0, le=10, description="How relevant is the answer to the question")
-    Clarity: float = Field(..., ge=0, le=10, description="How clear and understandable is the answer")
-    SubjectUnderstanding: float = Field(..., ge=0, le=10, description="Depth of subject understanding")
-    Accuracy: float = Field(..., ge=0, le=10, description="Factual correctness")
-    Completeness: float = Field(..., ge=0, le=10, description="How complete is the answer")
-    CriticalThinking: float = Field(..., ge=0, le=10, description="Analytical and critical thinking")
-
-    @property
-    def average(self) -> float:
-        scores = self.model_dump().values()
-        return sum(scores) / len(scores)
-
-
-# ===== REQUEST/RESPONSE MODELS =====
-class StudentCreate(BaseModel):
-    first_name: str
-    last_name: str
-    age: int
-    dob: str
-    email: str
-    phone: str
-
-
-class UpdatePhoneRequest(BaseModel):
-    student_id: str
-    phone: str
-
-
-class GenerateQuestionsRequest(BaseModel):
-    subject: str = "physics"
-    level: str
-    num_questions: int = 5
-
-
-class CreateResultRequest(BaseModel):
-    student_id: str
-    subject: str = "physics"
-    level: str
-    attempts_easy: int = 0
-    attempts_medium: int = 0
-    attempts_hard: int = 0
-
-
-class SaveQuestionsRequest(BaseModel):
-    result_id: str
-    questions: List[Dict[str, str]]
-
-
-class SubmitTestRequest(BaseModel):
-    result_id: str
-    answers: Dict[str, str]  # Map: question_id -> student_answer
-    is_timeout: bool = False
-
-
-class EvaluateAnswersRequest(BaseModel):
-    result_id: str
-
-
-class NotificationEmailRequest(BaseModel):
-    to_email: str
-    student_name: str
-    result: str
-    score: Optional[float] = None
-    student_id: Optional[str] = None
+# Import Models and Prompts
+from models import (
+    EvaluationCriteria, StudentCreate, UpdatePhoneRequest, GenerateQuestionsRequest,
+    CreateResultRequest, SaveQuestionsRequest, SubmitTestRequest, EvaluateAnswersRequest,
+    NotificationEmailRequest, SendConfirmationEmailRequest, LogoutRequest, SettingsUpdateRequest
+)
+from prompts import (
+    generate_questions_prompt_physics, generate_questions_prompt_math, generate_questions_prompt_chemistry,
+    evaluate_answer_prompt_physics, evaluate_answer_prompt_math, evaluate_answer_prompt_chemistry
+)
 
 
 
+# Models and Prompts imported from external files
 
-
-class SendConfirmationEmailRequest(BaseModel):
-    to_email: str
-    student_name: str
-    user_id: str
-
-class LogoutRequest(BaseModel):
-    email: str
-
-
-class SettingsUpdateRequest(BaseModel):
-    model: str
-    temperature: float
-    email_notifications: bool
-    passing_score: int
-    max_attempts: int
-    rag_k: int
-
-
-# ===== FIREBASE AUTHENTICATION =====
+# ===== AUTHENTICATION =====
 security = HTTPBearer()
 
-
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict:
-    """Dependency to get current authenticated user from Firebase token"""
+    """Verify Firebase token and return user data"""
     token = credentials.credentials
     try:
         decoded_token = verify_firebase_token(token)
-        logging.info(f"✅ Firebase token verified successfully for: {decoded_token.get('email')}")
         return decoded_token
-    except ValueError as e:
-        logging.warning(f"Authentication failed: {e}")
-        raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
-        logging.error(f"Unexpected authentication error: {e}")
-        raise HTTPException(status_code=401, detail="Authentication failed")
-
-async def update_last_active(user: Dict):
-    """Background task to update last_active_at for students"""
-    try:
-        email = user.get('email')
-        if email:
-            # We don't await this to avoid blocking the response, or we can just fire and forget
-            # For simplicity in this sync/async mix, we'll just execute it.
-            supabase.table("students").update({"last_active_at": datetime.now().isoformat()}).eq("email", email).execute()
-    except Exception as e:
-        logging.error(f"Failed to update activity: {e}")
+        logging.error(f"Auth error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
 
 async def get_current_user_with_activity(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict:
-    """Dependency that also updates activity"""
-    user = await get_current_user(credentials)
-    # Update activity
-    await update_last_active(user)
-    return user
+    """Verify Firebase token and update activity"""
+    # For now, just alias to get_current_user. 
+    # In future, we can add DB activity logging here.
+    return await get_current_user(credentials)
 
 
-# ===== PROMPTS (LangGraph style) =====
-# ===== PROMPTS (LangGraph style) =====
-generate_questions_prompt_physics = ChatPromptTemplate.from_messages([
-    ("system", "You are an expert Physics exam question generator. Use the provided context from NCERT Physics textbook. Return ONLY valid JSON."),
-    ("human",
-     "Context from physics textbook:\n{context}\n\n"
-     "Generate {num_questions} COMPLETELY UNIQUE and DIVERSE physics questions at {level} difficulty level.\n\n"
-     "CRITICAL REQUIREMENTS:\n"
-     "- Each question MUST cover DIFFERENT physics concepts (electromagnetic induction, mechanics, thermodynamics, waves, optics, etc.)\n"
-     "- Questions MUST be UNIQUE and NOT repetitive\n"
-     "- Use VARIED question formats (conceptual, numerical, experimental observation, comparison, etc.)\n"
-     "- For equations and variables, use LaTeX formatting wrapped in $...$ (e.g., $F=ma$).\n"
-     "- Ensure questions are suitable for preventing academic malpractice\n"
-     "- DO NOT start questions with phrases like 'Based on the text', 'According to the passage', etc. Questions must stand alone.\n"
-     "- Questions should appear as if they are from a standard physics textbook or exam, without referencing any source material.\n\n"
-     "Difficulty guidelines:\n"
-     "- easy: Fundamental concepts, basic applications, definitions\n"
-     "- medium: Problem-solving, application of multiple concepts\n"
-     "- hard: Advanced reasoning, integration of concepts, critical analysis\n\n"
-     "Return ONLY a JSON array (no markdown, no code blocks):\n"
-     "[{{\"question\": \"question text\", \"answer\": \"detailed answer\"}}]")
-])
-
-generate_questions_prompt_math = ChatPromptTemplate.from_messages([
-    ("system", "You are an expert Mathematics exam question and corresponding answer generator. Use the provided context. Return ONLY valid JSON."),
-    ("human",
-     "Context from mathematics textbook:\n{context}\n\n"
-     "Generate {num_questions} COMPLETELY UNIQUE and DIVERSE math questions and answers at {level} difficulty level.\n\n"
-     "CRITICAL REQUIREMENTS:\n"
-     "- Focus on problem-solving and calculations appropriate for the topic.\n"
-     "- Questions MUST be UNIQUE and NOT repetitive\n"
-     "- For ALL math formulas, equations, and variables, YOU MUST USE Standard LaTeX notation.\n"
-     "- **IMPORTANT**: Wrap all inline math, variables (like 'x', 'y') in single dollar signs like $x$ or $y=mx+c$.\n"
-     "- **IMPORTANT**: Wrap all block math equations in double dollar signs like $$ \\int_{{0}}^{{\\infty}} x^2 dx $$.\n"
-     "- **CRITICAL**: Use DOUBLE BACKSLASHES ('\\\\') for all LaTeX commands (e.g., use \\\\frac{{dy}}{{dx}} instead of \\frac{{dy}}{{dx}}). This is required for valid JSON.\n"
-     "- Ensure questions are suitable for preventing academic malpractice\n"
-     "- Questions should appear as if they are from a standard math textbook or exam.\n\n"
-     "Difficulty guidelines:\n"
-     "- easy: Basic formula application, direct questions\n"
-     "- medium: Multi-step problems, conceptual understanding\n"
-     "- hard: Complex problems, application of deep concepts\n\n"
-     "Return ONLY a JSON array (no markdown, no code blocks):\n"
-     "[{{\"question\": \"question text with LaTeX\", \"answer\": \"detailed step-by-step solution\"}}]")
-])
-
-generate_questions_prompt_chemistry = ChatPromptTemplate.from_messages([
-    ("system", "You are an expert Chemistry exam question generator. Use the provided context. Return ONLY valid JSON."),
-    ("human",
-     "Context from chemistry textbook:\n{context}\n\n"
-     "Generate {num_questions} COMPLETELY UNIQUE and DIVERSE chemistry questions at {level} difficulty level.\n\n"
-     "CRITICAL REQUIREMENTS:\n"
-     "- Cover organic, inorganic, and physical chemistry concepts as relevant to the topics.\n"
-     "- Questions MUST be UNIQUE and NOT repetitive\n"
-     "- Use VARIED question formats (reactions, balancing, conceptual, numerical)\n"
-     "- Ensure questions are suitable for preventing academic malpractice\n"
-     "- Questions should appear as if they are from a standard chemistry textbook or exam.\n\n"
-     "Difficulty guidelines:\n"
-     "- easy: Definitions, basic properties, simple reactions\n"
-     "- medium: Mechanisms, stoichiometry calculations, trends\n"
-     "- hard: Complex synthesis, multi-concept problems, deep analysis\n\n"
-     "Return ONLY a JSON array (no markdown, no code blocks):\n"
-     "[{{\"question\": \"question text\", \"answer\": \"detailed answer\"}}]")
-])
-
-evaluate_answer_prompt_physics = ChatPromptTemplate.from_messages([
-    ("system", "You are a STRICT Physics examiner. You must be harsh and accurate in your evaluation. Return ONLY valid JSON."),
-    ("human",
-     "Context:\n{context}\n\n"
-     "Question: {question}\n"
-     "Correct Answer: {correct_answer}\n"
-     "Student Answer: {student_answer}\n\n"
-     "Evaluate the student's answer against the correct answer and context.\n"
-     "Criteria (Rate 1-10):\n"
-     "1. Relevance: Answers the specific question asked\n"
-     "2. Clarity: Clear, logical expression\n"
-     "3. SubjectUnderstanding: Demonstrates grasp of physics concepts\n"
-     "4. Accuracy: Factually correct\n"
-     "5. Completeness: Covers all parts of the question\n"
-     "6. CriticalThinking: Applies concepts (if applicable)\n\n"
-     "Return ONLY a JSON object:\n"
-     "{{\n"
-     "  \"Relevance\": score,\n"
-     "  \"Clarity\": score,\n"
-     "  \"SubjectUnderstanding\": score,\n"
-     "  \"Accuracy\": score,\n"
-     "  \"Completeness\": score,\n"
-     "  \"CriticalThinking\": score,\n"
-     "  \"average\": calculated_average\n"
-     "}}")
-])
-
-evaluate_answer_prompt_math = ChatPromptTemplate.from_messages([
-    ("system", "You are an expert Mathematics examiner. Your primary goal is to verify if the student found the CORRECT VALUE and used VALID LOGIC.\n"
-               "IGNORE formatting differences (e.g., \\bmatrix vs \\pmatrix, \\boxed{{}} vs plain text).\n"
-               "IGNORE visual separators (e.g., '====', '----').\n"
-               "If the final values (e.g., x=2, y=3) match the correct answer, mark it as ACCURATE (10/10) regardless of style.\n"
-               "Return ONLY valid JSON."),
-    ("human",
-     "Context:\n{context}\n\n"
-     "Question: {question}\n"
-     "Correct Answer: {correct_answer}\n"
-     "Student Answer: {student_answer}\n\n"
-     "Evaluate the student's answer.\n"
-     "Criteria (Rate 1-10):\n"
-     "1. Relevance: Addresses the problem asked\n"
-     "2. Clarity: Steps are logical and easy to follow\n"
-     "3. SubjectUnderstanding: Uses correct mathematical concepts/theorems\n"
-     "4. Accuracy: Calculations and final answer are correct\n"
-     "5. Completeness: Showed necessary steps\n"
-     "6. CriticalThinking: Approach is efficent/correct\n\n"
-     "Return ONLY a JSON object:\n"
-     "{{\n"
-     "  \"Relevance\": score,\n"
-     "  \"Clarity\": score,\n"
-     "  \"SubjectUnderstanding\": score,\n"
-     "  \"Accuracy\": score,\n"
-     "  \"Completeness\": score,\n"
-     "  \"CriticalThinking\": score,\n"
-     "  \"average\": calculated_average\n"
-     "}}")
-])
-
-evaluate_answer_prompt_chemistry = ChatPromptTemplate.from_messages([
-    ("system", "You are a STRICT Chemistry examiner. Check for correct formulas, reactions, and conceptual accuracy. Return ONLY valid JSON."),
-    ("human",
-     "Context:\n{context}\n\n"
-     "Question: {question}\n"
-     "Correct Answer: {correct_answer}\n"
-     "Student Answer: {student_answer}\n\n"
-     "Evaluate the student's answer.\n"
-     "Criteria (Rate 1-10):\n"
-     "1. Relevance: Directly answers the question\n"
-     "2. Clarity: Explanations/Reactions are clear\n"
-     "3. SubjectUnderstanding: Demonstrates chemical principles\n"
-     "4. Accuracy: Specific facts/formulas are correct\n"
-     "5. Completeness: Covers all required points\n"
-     "6. CriticalThinking: Application of theory\n\n"
-     "Return ONLY a JSON object:\n"
-     "{{\n"
-     "  \"Relevance\": score,\n"
-     "  \"Clarity\": score,\n"
-     "  \"SubjectUnderstanding\": score,\n"
-     "  \"Accuracy\": score,\n"
-     "  \"Completeness\": score,\n"
-     "  \"CriticalThinking\": score,\n"
-     "  \"average\": calculated_average\n"
-     "}}")
-])
 
 
 
@@ -619,8 +355,8 @@ async def update_settings(settings: SettingsUpdateRequest, current_user: Dict = 
             details=details
         )
         
-        # Re-initialize LLMs with new settings
-        initialize_llms()
+
+
         
         return {"success": True, "settings": new_settings}
     except Exception as e:
@@ -751,7 +487,8 @@ async def save_questions(request: SaveQuestionsRequest, current_user: Dict = Dep
             questions_to_insert.append({
                 "result_id": request.result_id,
                 "question_text": q.get("question", ""),
-                "correct_answer": q.get("answer", "")
+                "correct_answer": q.get("answer", ""),
+                "bank_id": q.get("bank_id") # Store link to bank if available
             })
         
         # Insert questions into Supabase
@@ -1189,7 +926,11 @@ async def get_test_session(result_id: str, current_user: Dict = Depends(get_curr
 
 
 @api_router.post("/generate-questions")
-async def generate_questions(request: GenerateQuestionsRequest, current_user: Dict = Depends(get_current_user_with_activity)):
+async def generate_questions(
+    request: GenerateQuestionsRequest, 
+    background_tasks: BackgroundTasks,
+    current_user: Dict = Depends(get_current_user_with_activity)
+):
     """Generate questions - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
@@ -1197,141 +938,79 @@ async def generate_questions(request: GenerateQuestionsRequest, current_user: Di
         level = request.level
         num_questions = request.num_questions
         
-        # Generate unique questions by using diverse topics with randomization
-        import random
-        import time
-        import hashlib
+        # Resolve Student ID
+        email = current_user.get('email')
+        student_resp = supabase.table("students").select("id").eq("email", email).execute()
         
-        # Define topics per subject
-        subject_topics = {
-            "physics": [
-                "electromagnetic induction and Faraday's law", "Newton's laws of motion and forces",
-                "thermodynamics and heat transfer", "wave motion and sound",
-                "optics and light", "electric circuits and current",
-                "magnetism and magnetic fields", "gravitation and planetary motion",
-                "work energy and power", "electrostatics and electric fields",
-                "quantum mechanics basics", "atomic structure and spectra",
-                "radioactivity and nuclear physics", "mechanical properties of matter",
-                "fluid mechanics and pressure", "kinetic theory of gases",
-                "simple harmonic motion", "rotational dynamics",
-                "interference and diffraction", "semiconductors and devices"
-            ],
-            "math": [
-                "Calculus (Integration, Differentiation)", "Linear Algebra", 
-                "Probability and Statistics", "Trigonometry", "Coordinate Geometry",
-                "Complex Numbers", "Vectors", "Matrices and Determinants",
-                "Permutations and Combinations", "Sequences and Series"
-            ],
-            "chemistry": [
-                "Periodic Table and Intervals", "Chemical Bonding", 
-                "Thermodynamics", "Chemical Kinetics", "Electrochemistry",
-                "Organic Chemistry - Hydrocarbons", "Coordination Compounds",
-                "Biomolecules", "Solutions and Colligative Properties",
-                "States of Matter"
-            ]
-        }
-        
-        topics = subject_topics.get(subject, subject_topics["physics"]) # Fallback to physics
-        
-        # Create unique seed
-        user_identifier = current_user.get('email', 'anonymous')
-        seed_string = f"{user_identifier}-{subject}-{level}-{int(time.time())}"
-        seed_value = int(hashlib.md5(seed_string.encode()).hexdigest(), 16) % (10 ** 8)
-        
-        random.seed(seed_value)
-        
-        # Randomly select topics
-        num_topics = random.randint(3, 5)
-        selected_topics = random.sample(topics, min(num_topics, len(topics)))
-        
-        # Create diverse query
-        query = f"{subject.capitalize()} {level} level: {', '.join(selected_topics)}"
-        
-        # Retrieve diverse chunks
-        settings = settings_manager.get_settings()
-        rag_k = settings.get("rag_k", 3)
-        context_docs = get_context(query, subject=subject, k=rag_k + 2, randomize=True)
-        context = "\n\n".join(context_docs) if context_docs else f"General {subject} concepts"
-        
-        logging.info(f"🔮 Generating {num_questions} questions for {subject.upper()} at {level} level")
-        
-        # Select Prompt based on subject
-        if subject == "math":
-             prompt = generate_questions_prompt_math.format_messages(
-                context=context[:20000],
-                num_questions=num_questions,
-                level=level
-            )
-        elif subject == "chemistry":
-             prompt = generate_questions_prompt_chemistry.format_messages(
-                context=context[:20000],
-                num_questions=num_questions,
-                level=level
-            )
-        else: # Physics/Default
-             prompt = generate_questions_prompt_physics.format_messages(
-                context=context[:20000],
-                num_questions=num_questions,
-                level=level
-            )
-        
-        response = safe_invoke(llm, prompt, purpose="generate-questions")
-        response_text = response.content.strip()
-        
-        # Clean up response
-        import re
-        
-        # 1. Extract potential JSON array
-        json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
-        if json_match:
-            response_text = json_match.group(0)
+        if not student_resp.data:
+            logging.warning(f"⚠️ Student ID not found for email {email}. Using UID as fallback.")
+            student_id = current_user.get('uid')
         else:
-            if response_text.startswith('```'):
-                response_text = response_text.split('```')[1]
-                if response_text.startswith('json'):
-                    response_text = response_text[4:]
-                response_text = response_text.strip()
+            student_id = student_resp.data[0]['id']
+
+        # Use Exam Assembly Service
+        from exam_assembly_service import ExamAssemblyService
+        questions = await ExamAssemblyService.get_or_create_exam(student_id, subject, level, num_questions)
         
-        # 2. Fix JSON escapes for LaTeX (Robust cleanup)
-        # This prevents "Invalid \escape" errors when LLM outputs \sigma, \frac, etc.
-        try:
-             # Strategy: Protect existing valid double-backslashes, then escape invalid single ones
-             response_text = response_text.replace('\\\\', '@@DOUBLE_BS@@')
-             
-             # Escape invalid JSON escapes (standard LaTeX commands like \s, \c, \d)
-             # Matches \ followed by char NOT in valid escape list
-             response_text = re.sub(r'\\(?![/u"\\bfnrt])', r'\\\\', response_text)
-             
-             # Escape invalid unicode usage (e.g. \usepackage vs \u1234)
-             response_text = re.sub(r'\\u(?![0-9a-fA-F]{4})', r'\\\\u', response_text)
-             
-             # Restore protected backslashes
-             response_text = response_text.replace('@@DOUBLE_BS@@', '\\\\')
-        except Exception as e:
-            logging.warning(f"Error during JSON escape fix: {e}")
-            # Continue with best effort
+        if not questions:
+             logging.error("❌ ExamAssemblyService returned empty list.")
+             raise HTTPException(status_code=500, detail="Failed to generate questions")
+
+        logging.info(f"✅ Served {len(questions)} questions via ExamAssemblyService")
         
-        # Parse JSON
-        try:
-            questions = json.loads(response_text)
-        except json.JSONDecodeError:
-             # Last resort fallback
-             match = re.search(r'\[.*\]', response.content.strip(), re.DOTALL)
-             if match:
-                 questions = json.loads(match.group(0))
-             else:
-                 raise
+        # Trigger replenishment check in background
+        background_tasks.add_task(replenishment_task, subject, level)
         
-        logging.info(f"✅ Generated {len(questions)} questions")
         return {"questions": questions}
-        
-    except json.JSONDecodeError as e:
-        logging.error(f"JSON parsing error: {e}")
-        logging.error(f"Response text: {response_text}")
-        raise HTTPException(status_code=500, detail="Failed to parse AI response")
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.error(f"Error generating questions: {e}")
+        logging.error(f"Error in generate_questions: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+
+# Global Replenishment Tracker
+LAST_REPLENISHMENT = {}
+
+async def replenishment_task(subject: str, level: str):
+    """Background task to check and replenish question bank"""
+    try:
+        # 1. Artificial Delay (Decoupling)
+        # Ensure main request is fully flushed
+        import asyncio
+        import time
+        await asyncio.sleep(10)
+        
+        # 2. Throttling (Frequency Control)
+        key = f"{subject}_{level}"
+        last_time = LAST_REPLENISHMENT.get(key, 0)
+        current_time = time.time()
+        
+        # Cooldown: 5 minutes (300 seconds)
+        if current_time - last_time < 300:
+            logging.info(f"⏳ Throttling replenishment for {key}. Last check was {int(current_time - last_time)}s ago.")
+            return
+
+        from question_bank_service import QuestionBankService
+        logging.info(f"🔄 Background Replenishment Check: {subject}/{level}")
+        
+        # Update timestamp immediately to prevent race conditions
+        LAST_REPLENISHMENT[key] = current_time
+        
+        # We use generate_guarded for "smart" replenishment
+        # It internally checks saturation and only generates if needed.
+        # Target per topic can be conservative (e.g. 5) to keep bank healthy but not bloated
+        result = await QuestionBankService.generate_guarded(subject, level, target_per_topic=5)
+        
+        if result.get("generated_count", 0) > 0:
+            logging.info(f"✨ Replenished {result['generated_count']} questions for {subject}/{level}")
+        else:
+            logging.info(f"💤 Bank sufficient for {subject}/{level}. No generation needed.")
+            
+    except Exception as e:
+        logging.error(f"❌ Replenishment task error: {e}")
 
 
 # ===== AI-POWERED ANSWER EVALUATION WITH 6 CRITERIA =====
@@ -1394,10 +1073,12 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                 # However, since 'evaluate-answers' only gets result_id, we can look up result -> subject.
                 
                 subject = "physics" # Default
-                # Fetch result to get subject
-                res_meta = supabase.table("results").select("subject").eq("id", result_id).execute()
+                student_id_val = None
+                # Fetch result to get subject and student_id
+                res_meta = supabase.table("results").select("subject, student_id").eq("id", result_id).execute()
                 if res_meta.data:
                     subject = res_meta.data[0].get("subject", "physics")
+                    student_id_val = res_meta.data[0].get("student_id")
                 
                 context_docs = get_context(q.get('question_text', ''), subject=subject, k=rag_k)
                 context = "\n\n".join(context_docs) if context_docs else ""
@@ -1419,7 +1100,13 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                     student_answer=student_answer
                 )
                 
+                # Dynamic Evaluator
+                # Dynamic Evaluator via Central Service
+                from ai_service import get_llm
+                evaluator_llm = get_llm(override_temperature=0.1)
+
                 response = safe_invoke(evaluator_llm, prompt, purpose=f"evaluate-answers Q{idx}")
+
                 response_text = response.content.strip()
                 
                 # Clean up response
@@ -1435,17 +1122,41 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                     evaluation = EvaluationCriteria(**scores_json)
                     
                     # Double-check: if student answer looks like gibberish, override scores
-                    if len(student_answer.strip()) < 10 or student_answer.count('O') > len(student_answer) * 0.5:
+                    if len(student_answer.strip()) < 10 and student_answer.count('O') > len(student_answer) * 0.5:
                         logging.warning(f"Q{idx}: Gibberish detected - overriding to fail scores")
                         evaluation = EvaluationCriteria(
-                            Relevance=1.0,
-                            Clarity=1.0,
-                            SubjectUnderstanding=1.0,
-                            Accuracy=1.0,
-                            Completeness=1.0,
-                            CriticalThinking=1.0
+                            Relevance=1.0, Clarity=1.0, SubjectUnderstanding=1.0,
+                            Accuracy=1.0, Completeness=1.0, CriticalThinking=1.0
                         )
                     
+                    # --- PERSIST REVIEW FOR FRONTEND Consistency ---
+                    # Determine correctness based on rubric
+                    # We use a threshold of 6.0 for Accuracy or 5.0 Average to be generous but fair
+                    is_ans_correct = evaluation.Accuracy >= 6.0 and evaluation.average >= 5.0
+                    
+                    explanation_text = (
+                        f"**Evaluation Score:** {evaluation.average:.1f}/10\n"
+                        f"**Analysis:**\n"
+                        f"- Accuracy: {evaluation.Accuracy}/10\n"
+                        f"- Clarity: {evaluation.Clarity}/10\n"
+                        f"- Completeness: {evaluation.Completeness}/10\n"
+                        f"- Reasoning: {evaluation.CriticalThinking}/10"
+                    )
+                    
+                    if student_id_val:
+                        try:
+                            supabase.table("question_reviews").upsert({
+                                "question_id": q['id'],
+                                "result_id": result_id,
+                                "student_id": student_id_val,
+                                "is_correct": is_ans_correct,
+                                "explanation": explanation_text,
+                                "created_at": datetime.now(timezone.utc).isoformat()
+                            }, on_conflict="question_id").execute()
+                            logging.info(f"✅ Persisted review for Q{idx} (Correct: {is_ans_correct})")
+                        except Exception as db_err:
+                            logging.error(f"Failed to persist review for Q{idx}: {db_err}")
+
                     all_evaluations.append({
                         "question_number": idx,
                         "question": q.get('question_text', ''),
@@ -1462,12 +1173,8 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                         "question": q.get('question_text', ''),
                         "student_answer": student_answer,
                         "scores": {
-                            "Relevance": 1.0,
-                            "Clarity": 1.0,
-                            "SubjectUnderstanding": 1.0,
-                            "Accuracy": 1.0,
-                            "Completeness": 1.0,
-                            "CriticalThinking": 1.0
+                            "Relevance": 1.0, "Clarity": 1.0, "SubjectUnderstanding": 1.0,
+                            "Accuracy": 1.0, "Completeness": 1.0, "CriticalThinking": 1.0
                         },
                         "average": 1.0
                     })
@@ -1479,12 +1186,8 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                     "question": "Error",
                     "student_answer": "",
                     "scores": {
-                        "Relevance": 1.0,
-                        "Clarity": 1.0,
-                        "SubjectUnderstanding": 1.0,
-                        "Accuracy": 1.0,
-                        "Completeness": 1.0,
-                        "CriticalThinking": 1.0
+                        "Relevance": 1.0, "Clarity": 1.0, "SubjectUnderstanding": 1.0,
+                        "Accuracy": 1.0, "Completeness": 1.0, "CriticalThinking": 1.0
                     },
                     "average": 1.0
                 })
@@ -1911,15 +1614,29 @@ Is the student's answer correct? Respond with ONLY 'CORRECT' or 'INCORRECT' foll
             # Get number of questions based on level
             num_questions = {"easy": 5, "medium": 3, "hard": 2}.get(level, 5)
             
+            # Initialize LLM
+            from ai_service import get_llm
+            llm = get_llm()
+
+            # Select prompt based on subject
+            subject_lower = subject.lower()
+            if subject_lower == "math":
+                gen_prompt = generate_questions_prompt_math
+            elif subject_lower == "chemistry":
+                gen_prompt = generate_questions_prompt_chemistry
+            else:
+                gen_prompt = generate_questions_prompt_physics
+
             # Generate questions
-            query = f"Physics {level} level questions concepts topics"
-            context_docs = get_physics_context(query, k=3)
-            context = "\n\n".join(context_docs) if context_docs else "General physics concepts"
+            query = f"{subject} {level} level questions concepts topics"
+            context_docs = get_context(query, subject=subject, k=3)
+            context = "\n\n".join(context_docs) if context_docs else f"General {subject} concepts"
             
-            prompt = generate_questions_prompt.format_messages(
+            prompt = gen_prompt.format_messages(
                 context=context[:2000],
                 num_questions=num_questions,
-                level=level
+                level=level,
+                topic=f"General {subject} {level} concepts"
             )
             
             response = safe_invoke(llm, prompt, purpose="generate-sample-questions")
@@ -1992,6 +1709,10 @@ async def generate_ai_review(request: AIReviewRequest, current_user: Dict = Depe
         
         subject = request.subject.lower() if request.subject else "physics"
         
+        # Initialize LLM
+        from ai_service import get_llm
+        llm = get_llm()
+        
         # Get context from RAG system
         context_docs = get_context(request.question, subject=subject, k=3)
         context = "\n\n".join(context_docs) if context_docs else f"General {subject} concepts"
@@ -2048,10 +1769,14 @@ Provide a detailed, educational review (200-300 words) that helps the student le
 
 # ===== AI NOTES GENERATION =====
 @api_router.get("/ai-notes/{level}/{student_id}")
-async def generate_ai_notes(level: str, student_id: str, current_user: Dict = Depends(get_current_user)):
+async def generate_ai_notes(level: str, student_id: str, subject: Optional[str] = Query(None), current_user: Dict = Depends(get_current_user)):
     """Generate AI study notes based on incorrect answers - Firebase Auth Protected"""
     try:
         logging.info(f"🔒 Authenticated AI notes request from: {current_user['email']}")
+        
+        # Initialize LLM
+        from ai_service import get_llm
+        llm = get_llm()
         
         # Verify user is requesting their own data
         student_response = supabase.table("students").select("email").eq("id", student_id).execute()
@@ -2059,13 +1784,18 @@ async def generate_ai_notes(level: str, student_id: str, current_user: Dict = De
             raise HTTPException(status_code=403, detail="Cannot access other users' data")
         
         # Find the result for this level and student
-        results_response = supabase.table("results").select("*").eq("student_id", student_id).eq("level", level).order("created_at", desc=True).limit(1).execute()
+        query = supabase.table("results").select("*").eq("student_id", student_id).eq("level", level)
+        
+        if subject:
+            query = query.eq("subject", subject)
+            
+        results_response = query.order("created_at", desc=True).limit(1).execute()
         
         if not results_response.data or len(results_response.data) == 0:
             return {"topic_notes": [], "incorrect_count": 0, "cached": False}
         
         result_id = results_response.data[0]['id']
-        subject = results_response.data[0].get('subject', 'physics')
+        actual_subject = results_response.data[0].get('subject', 'physics')
         
         # Check if AI notes already exist for this result
         existing_notes = supabase.table("ai_notes").select("*").eq("result_id", result_id).execute()
@@ -2097,7 +1827,7 @@ async def generate_ai_notes(level: str, student_id: str, current_user: Dict = De
                 student_answer = answer_response.data[0]['student_answer']
                 
                 # Check if answer is incorrect using AI
-                context_docs = get_context(q['question_text'], subject=subject, k=2)
+                context_docs = get_context(q['question_text'], subject=actual_subject, k=2)
                 context = "\n\n".join(context_docs) if context_docs else ""
                 
                 eval_prompt = f"""

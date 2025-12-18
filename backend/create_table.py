@@ -23,7 +23,7 @@ try:
     cur = conn.cursor()
     
     # Read the fix SQL file
-    with open(Path(__file__).parent / 'fix_messages_permissions.sql', 'r') as f:
+    with open(Path(__file__).parent / 'migrations/005_create_exam_locks_table.sql', 'r') as f:
         sql = f.read()
     
     cur.execute(sql)

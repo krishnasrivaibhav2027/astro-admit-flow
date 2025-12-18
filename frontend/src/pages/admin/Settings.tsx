@@ -15,7 +15,7 @@ const Settings = () => {
     const [saving, setSaving] = useState(false);
 
     const [settings, setSettings] = useState({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-lite",
         temperature: 0.7,
         email_notifications: true,
         passing_score: 70,
@@ -24,9 +24,10 @@ const Settings = () => {
     });
 
     const models = [
-        { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Next-Gen Fast)" },
-        { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (Advanced Reasoning)" },
-        { id: "gemini-3.0-pro", name: "Gemini 3.0 Pro (Ultra Capability)" },
+        { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+        { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
+        { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro (High Reasoning)" },
+        { id: "Qwen/Qwen2.5-0.5B-Instruct", name: "Qwen 2.5 0.5B (Local Microservice)" },
     ];
 
     useEffect(() => {

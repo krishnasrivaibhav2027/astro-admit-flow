@@ -31,9 +31,14 @@ import ContactStudent from "./pages/admin/ContactStudent";
 import DetailedReport from "./pages/admin/DetailedReport";
 import LiveMonitoring from "./pages/admin/LiveMonitoring";
 import QuestionAnalytics from "./pages/admin/QuestionAnalytics";
+import QuestionBank from "./pages/admin/QuestionBank";
+import QuestionBankSubject from "./pages/admin/QuestionBankSubject";
 import Reports from "./pages/admin/Reports";
 import Settings from "./pages/admin/Settings";
 import StudentManagement from "./pages/admin/StudentManagement";
+import StudentQuestions from "./pages/admin/StudentQuestions";
+
+
 
 
 const FinalResults = React.lazy(() => import("./pages/FinalResults"));
@@ -78,12 +83,17 @@ const App = () => (
             <Route path="questions" element={<QuestionAnalytics />} />
             <Route path="monitoring" element={<LiveMonitoring />} />
             <Route path="students" element={<StudentManagement />} />
+            <Route path="students/:studentId/questions" element={<StudentQuestions />} />
             <Route path="announcements" element={<Announcements />} />
             <Route path="contact" element={<ContactStudent />} />
             <Route path="reports" element={<Reports />} />
             <Route path="reports/detailed" element={<DetailedReport />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="question-bank" element={<QuestionBank />} />
+            <Route path="question-bank/:subject" element={<QuestionBankSubject />} />
           </Route>
+
+
 
           <Route path="*" element={<NotFound />} />
         </Routes>
