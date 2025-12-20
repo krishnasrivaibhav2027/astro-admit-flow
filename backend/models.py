@@ -76,7 +76,7 @@ class SendConfirmationEmailRequest(BaseModel):
     user_id: str
 
 class LogoutRequest(BaseModel):
-    email: str
+    email: Optional[str] = None
 
 
 class SettingsUpdateRequest(BaseModel):

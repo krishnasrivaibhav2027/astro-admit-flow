@@ -2,6 +2,7 @@ import { ChatInterface } from "@/components/ChatInterface";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { supabase } from "@/integrations/supabase/client";
 import { Search, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -55,7 +56,8 @@ const ContactStudent = () => {
 
     const fetchCurrentAdmin = async () => {
         try {
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
             if (!token) return;
 
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
@@ -76,7 +78,8 @@ const ContactStudent = () => {
 
     const fetchStudents = async () => {
         try {
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
             const headers: HeadersInit = {};
             if (token) {

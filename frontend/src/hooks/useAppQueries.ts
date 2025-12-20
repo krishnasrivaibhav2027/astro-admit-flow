@@ -30,7 +30,9 @@ export const useStudentAnnouncements = (studentEmail: string | null) => {
         queryFn: async () => {
             if (!studentEmail) return [];
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+            if (!token) throw new Error("No token");
 
             const response = await fetch(`${backendUrl}/api/student/announcements`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -52,7 +54,9 @@ export const useAdminStats = () => {
         queryKey: ["adminStats"],
         queryFn: async () => {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+            if (!token) throw new Error("No token");
 
             const [statsRes, activityRes] = await Promise.all([
                 fetch(`${backendUrl}/api/admin/stats/overview`, {
@@ -80,7 +84,9 @@ export const useAdmins = () => {
         queryKey: ["adminsList"],
         queryFn: async () => {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+            if (!token) throw new Error("No token");
 
             const response = await fetch(`${backendUrl}/api/chat/admins`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -109,7 +115,9 @@ export const useAppSettings = () => {
         queryKey: ["appSettings"],
         queryFn: async () => {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
-            const token = localStorage.getItem("firebase_token"); // Use same token as student
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token; // Use same token as student
+            if (!token) throw new Error("No token");
 
             const response = await fetch(`${backendUrl}/api/admin/settings`, {
                 headers: { 'Authorization': `Bearer ${token}` }

@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import 'katex/dist/katex.min.css';
 import { BookOpen, Calendar, Filter, Loader2, Search, UserCheck, Users } from "lucide-react";
 
@@ -38,7 +39,8 @@ const StudentManagement = () => {
 
     const fetchStudents = async () => {
         try {
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
             const response = await fetch(`${backendUrl}/api/admin/users`, {

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import "katex/dist/katex.min.css";
 import { BookOpen, Database, Plus, RefreshCw, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -43,7 +44,8 @@ const QuestionBank = () => {
     const fetchStats = async () => {
         try {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
             const response = await fetch(`${backendUrl}/api/admin/question-bank/stats`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -61,7 +63,8 @@ const QuestionBank = () => {
         setGenerating(true);
         try {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
             const response = await fetch(`${backendUrl}/api/admin/question-bank/generate`, {
                 method: 'POST',
                 headers: {
@@ -101,7 +104,8 @@ const QuestionBank = () => {
         setExtracting(true);
         try {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
             const response = await fetch(`${backendUrl}/api/admin/question-bank/extract-topics`, {
                 method: 'POST',
                 headers: {

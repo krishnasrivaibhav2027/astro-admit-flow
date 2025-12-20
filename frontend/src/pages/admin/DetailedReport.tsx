@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft, Download, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -17,7 +18,8 @@ const DetailedReport = () => {
 
     const generateReport = async () => {
         try {
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
             const response = await fetch(`${backendUrl}/api/admin/reports/generate-detailed`, {

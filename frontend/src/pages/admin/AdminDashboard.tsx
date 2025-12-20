@@ -88,7 +88,7 @@ const AdminDashboard = () => {
                         <CardTitle className="text-base">Recent Activity</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-4 min-h-[200px] flex flex-col">
+                        <div className="space-y-4 h-[200px] overflow-y-auto pr-2 flex flex-col custom-scrollbar">
                             {activities.length > 0 ? (
                                 activities.map((activity, i) => (
                                     <div key={i} className="flex items-center gap-4 border-b border-border/50 pb-3 last:border-0 last:pb-0">

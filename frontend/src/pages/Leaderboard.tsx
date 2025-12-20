@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
 import { ArrowLeft, Crown, Medal, Sparkles, Target, Timer, Trophy } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -25,16 +26,21 @@ const Leaderboard = () => {
   const [mediumLeaderboard, setMediumLeaderboard] = useState<LeaderboardEntry[]>([]);
 
   useEffect(() => {
-    // Check authentication first
-    const token = localStorage.getItem('firebase_token');
-    const studentId = sessionStorage.getItem('studentId');
+    const checkAuth = async () => {
+      // Check authentication first
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const studentId = sessionStorage.getItem('studentId');
 
-    if (!token || !studentId) {
-      navigate("/login");
-      return;
-    }
+      if (!token || !studentId) {
+        navigate("/login");
+        return;
+      }
 
-    loadLeaderboard();
+      loadLeaderboard();
+    };
+
+    checkAuth();
   }, []);
 
   const loadLeaderboard = async () => {

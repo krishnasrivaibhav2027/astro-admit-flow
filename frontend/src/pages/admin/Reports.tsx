@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { AlertTriangle, BarChart3, Brain, FileText, Loader2, TrendingUp, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -39,7 +40,8 @@ const Reports = () => {
 
     const fetchReports = async () => {
         try {
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
             const response = await fetch(`${backendUrl}/api/admin/reports/comprehensive`, {

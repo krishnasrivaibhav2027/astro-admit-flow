@@ -5,8 +5,7 @@ from datetime import datetime
 import os
 import json
 from supabase import create_client, Client
-from firebase_config import verify_firebase_token
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from auth_dependencies import get_current_user, security
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Initialize Supabase client (re-use env vars)
@@ -35,25 +34,15 @@ class AdminCreate(BaseModel):
 
 
 admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
-security = HTTPBearer()
+
 
 # --- Admin Middleware ---
-async def get_firebase_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict:
-    """Verify Firebase token only (for registration)"""
-    token = credentials.credentials
-    try:
-        return verify_firebase_token(token)
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
-
-async def get_current_admin(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict:
+async def get_current_admin(current_user: Dict = Depends(get_current_user)) -> Dict:
     """
-    Verify Firebase token AND check if user is in admins table.
+    Verify Token AND check if user is in admins table.
     """
-    token = credentials.credentials
     try:
-        decoded_token = verify_firebase_token(token)
-        email = decoded_token.get('email', '')
+        email = current_user.get('email', '')
         
         # Check admins table
         response = supabase.table("admins").select("*").eq("email", email).execute()
@@ -62,7 +51,7 @@ async def get_current_admin(credentials: HTTPAuthorizationCredentials = Depends(
             raise HTTPException(status_code=403, detail="Access denied: Admin profile not found")
             
         admin_data = response.data[0]
-        return {**decoded_token, "admin_id": admin_data['id'], "role": admin_data['role']}
+        return {**current_user, "admin_id": admin_data['id'], "role": admin_data['role']}
         
     except HTTPException as he:
         raise he
@@ -335,7 +324,7 @@ async def get_recent_activity(admin: Dict = Depends(get_current_admin)):
 
 
 @admin_router.post("/register")
-async def register_admin(admin_data: AdminCreate, user: Dict = Depends(get_firebase_user)):
+async def register_admin(admin_data: AdminCreate, user: Dict = Depends(get_current_user)):
     """Register a new admin"""
     try:
         # Verify email matches token
@@ -349,7 +338,7 @@ async def register_admin(admin_data: AdminCreate, user: Dict = Depends(get_fireb
             
         # Create admin
         new_admin = {
-            "firebase_uid": user['uid'],
+            "firebase_uid": user['uid'], # Using Supabase UID for legacy column compatibility
             "email": admin_data.email,
             "first_name": admin_data.first_name,
             "last_name": admin_data.last_name,

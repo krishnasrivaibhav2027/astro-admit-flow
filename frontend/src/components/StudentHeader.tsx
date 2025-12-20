@@ -8,10 +8,8 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { auth } from "@/config/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { sendPasswordResetEmail } from "firebase/auth";
 import { ArrowRight, ChevronRight, KeyRound, LogOut, Trophy, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -59,24 +57,25 @@ export const StudentHeader = () => {
 
     const handleLogout = async () => {
         try {
-            const token = localStorage.getItem("firebase_token");
-            const email = sessionStorage.getItem('studentEmail');
+            // Call backend to track logout
+            const backendUrl = import.meta.env.VITE_BACKEND_URL;
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
 
-            if (token && email) {
-                const backendUrl = import.meta.env.VITE_BACKEND_URL;
+            if (token && backendUrl) {
                 await fetch(`${backendUrl}/api/logout`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({ email })
+                    body: JSON.stringify({})
                 });
             }
-        } catch (error) {
-            console.error("Logout error:", error);
-        } finally {
-            localStorage.removeItem('firebase_token');
+
+            await supabase.auth.signOut();
+
+            localStorage.removeItem('firebase_token'); // Cleanup legacy
             sessionStorage.removeItem('studentId');
             sessionStorage.removeItem('studentEmail');
 
@@ -85,6 +84,10 @@ export const StudentHeader = () => {
                 description: "You have been successfully logged out.",
             });
 
+            navigate("/");
+        } catch (error) {
+            console.error("Logout error:", error);
+            // Force navigation even if error
             navigate("/");
         }
     };
@@ -101,7 +104,11 @@ export const StudentHeader = () => {
                 return;
             }
 
-            await sendPasswordResetEmail(auth, email);
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: `${window.location.origin}/reset-password?type=update`,
+            });
+
+            if (error) throw error;
 
             toast({
                 title: "Password Reset Email Sent!",

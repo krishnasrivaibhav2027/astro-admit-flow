@@ -113,7 +113,8 @@ const Test = () => {
     try {
       setLoading(true);
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
-      const token = localStorage.getItem('firebase_token');
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       if (!token) throw new Error('Authentication required');
 
       // Define strict type to avoid recursive type inference errors
@@ -315,7 +316,8 @@ const Test = () => {
 
     try {
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
-      const token = localStorage.getItem('firebase_token');
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
       if (resultId && questionIds[currentQuestionIndex]) {
         await fetch(`${backendUrl}/api/save-answer`, {
@@ -368,7 +370,9 @@ const Test = () => {
       setTimerActive(false);
 
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
-      const token = localStorage.getItem('firebase_token');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
       // Create ID-based map for robust saving
       const answersMap: { [key: string]: string } = {};
@@ -453,7 +457,8 @@ const Test = () => {
     if (answers[currentQuestionIndex]?.trim() && !submittedQuestions[currentQuestionIndex]) {
       try {
         const backendUrl = import.meta.env.VITE_BACKEND_URL;
-        const token = localStorage.getItem('firebase_token');
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
         if (resultId && questionIds[currentQuestionIndex]) {
           await fetch(`${backendUrl}/api/save-answer`, {
             method: 'POST',

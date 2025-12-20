@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { supabase } from "@/integrations/supabase/client";
 import { Bell, Calendar, Megaphone, MessageSquare, Pin } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -66,7 +67,8 @@ export function NotificationBell() {
 
     const fetchAnnouncements = async () => {
         try {
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
             if (!token) return;
 
             const backendUrl = import.meta.env.VITE_BACKEND_URL;

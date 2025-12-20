@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React, { Suspense } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AINotesPage from "./pages/AINotesPage";
 import About from "./pages/About";
 import Blog from "./pages/Blog";
@@ -17,15 +17,17 @@ import Levels from "./pages/Levels";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import Profile from "./pages/Profile";
-import Registration from "./pages/Registration";
+import ResetPassword from "./pages/ResetPassword";
 import Results from "./pages/Results";
 import Review from "./pages/Review";
+import Signup from "./pages/Signup";
 import Test from "./pages/Test";
 
 // Admin Imports
 import AdminLayout from "./layouts/AdminLayout";
 import StudentLayout from "./layouts/StudentLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminProfile from "./pages/admin/AdminProfile";
 import Announcements from "./pages/admin/Announcements";
 import ContactStudent from "./pages/admin/ContactStudent";
 import DetailedReport from "./pages/admin/DetailedReport";
@@ -58,8 +60,10 @@ const App = () => (
           <Route path="/blog/:slug" element={<BlogPost />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/help" element={<Help />} />
-          <Route path="/registration" element={<Registration />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/registration" element={<Navigate to="/signup" replace />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           {/* Student Routes */}
           <Route element={<StudentLayout />}>
             <Route path="/levels" element={<Levels />} />
@@ -91,6 +95,7 @@ const App = () => (
             <Route path="settings" element={<Settings />} />
             <Route path="question-bank" element={<QuestionBank />} />
             <Route path="question-bank/:subject" element={<QuestionBankSubject />} />
+            <Route path="profile" element={<AdminProfile />} />
           </Route>
 
 

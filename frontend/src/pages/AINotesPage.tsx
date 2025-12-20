@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft, BookOpen, Brain, Lightbulb, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
@@ -38,7 +39,9 @@ const AINotesPage = () => {
       setGenerating(true);
 
       const studentId = sessionStorage.getItem('studentId');
-      const token = localStorage.getItem('firebase_token');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
       if (!studentId || !token) {
         toast({

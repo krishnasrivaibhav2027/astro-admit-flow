@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { Activity, Clock, Loader2, RefreshCw, Search, User, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -36,7 +37,8 @@ const LiveMonitoring = () => {
     const fetchLiveSessions = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
             const response = await fetch(`${backendUrl}/api/admin/monitoring/live`, {

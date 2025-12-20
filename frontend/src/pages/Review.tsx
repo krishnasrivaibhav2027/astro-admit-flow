@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { AlertCircle, ArrowLeft, Brain, CheckCircle2, Lightbulb, RotateCcw, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
@@ -43,8 +44,10 @@ const Review = () => {
 
   const loadReviewData = async () => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
       const studentId = sessionStorage.getItem('studentId');
-      const token = localStorage.getItem('firebase_token');
 
       if (!studentId || !token) {
         toast({
@@ -149,7 +152,8 @@ const Review = () => {
     }));
 
     try {
-      const token = localStorage.getItem('firebase_token');
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
       const response = await fetch(`${backendUrl}/api/ai-review`, {

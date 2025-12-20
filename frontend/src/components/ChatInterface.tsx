@@ -2,6 +2,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { Maximize2, Minimize2, Send, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -41,6 +43,7 @@ export function ChatInterface({
     const [newMessage, setNewMessage] = useState("");
     const [loading, setLoading] = useState(true);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const { toast } = useToast();
 
     useEffect(() => {
         fetchHistory();
@@ -125,8 +128,17 @@ export function ChatInterface({
     const fetchHistory = async () => {
         try {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
+            const headers: HeadersInit = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
             const response = await fetch(
-                `${backendUrl}/api/chat/history?user1_id=${currentUserId}&user1_type=${currentUserType}&user2_id=${targetUserId}&user2_type=${targetUserType}`
+                `${backendUrl}/api/chat/history?user1_id=${currentUserId}&user1_type=${currentUserType}&user2_id=${targetUserId}&user2_type=${targetUserType}`,
+                { headers }
             );
             if (response.ok) {
                 const data = await response.json();
@@ -161,9 +173,15 @@ export function ChatInterface({
     const markAsRead = async (messageIds: string[]) => {
         try {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
             await fetch(`${backendUrl}/api/chat/mark_read`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
                 body: JSON.stringify({ message_ids: messageIds })
             });
         } catch (error) {
@@ -176,9 +194,24 @@ export function ChatInterface({
 
         try {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
+            if (!token) {
+                toast({
+                    variant: "destructive",
+                    title: "Authentication Error",
+                    description: "You are not logged in or session expired."
+                });
+                return;
+            }
+
             const response = await fetch(`${backendUrl}/api/chat/send`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     sender_id: currentUserId,
                     sender_type: currentUserType,
@@ -191,12 +224,25 @@ export function ChatInterface({
             if (response.ok) {
                 const sentMessage = await response.json();
                 setMessages([...messages, sentMessage]);
-                prevMessagesLength.current = messages.length + 1; // Update ref to avoid double sound or missed sound logic
+                prevMessagesLength.current = messages.length + 1;
                 setNewMessage("");
                 playSentSound();
+            } else {
+                const errText = await response.text();
+                console.error("Send failed:", errText);
+                toast({
+                    variant: "destructive",
+                    title: "Send Failed",
+                    description: `Server error: ${response.status}`
+                });
             }
         } catch (error) {
             console.error("Failed to send message:", error);
+            toast({
+                variant: "destructive",
+                title: "Network Error",
+                description: "Failed to reach the chat server. Check if backend is running."
+            });
         }
     };
 

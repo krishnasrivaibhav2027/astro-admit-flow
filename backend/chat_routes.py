@@ -1,10 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends, Header
+from typing import List, Dict, Optional
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone
 from supabase import Client
 import os
-from firebase_config import verify_firebase_token
+from auth_dependencies import get_current_user, get_current_user_optional
 
 router = APIRouter()
 
@@ -26,7 +27,7 @@ class MarkReadRequest(BaseModel):
     message_ids: List[str]
 
 @router.get("/admins")
-async def get_admins(authorization: str = Header(None)):
+async def get_admins(current_user: Optional[Dict] = Depends(get_current_user_optional)):
     try:
         # 1. Fetch all admins
         admins_response = supabase.table("admins").select("id, first_name, last_name, email, role").execute()
@@ -34,11 +35,9 @@ async def get_admins(authorization: str = Header(None)):
         
         # 2. Identify the requesting student (if applicable)
         student_id = None
-        if authorization:
+        if current_user:
             try:
-                token = authorization.split("Bearer ")[1]
-                decoded_token = verify_firebase_token(token)
-                email = decoded_token.get("email")
+                email = current_user.get("email")
                 
                 # Find student by email
                 student_res = supabase.table("students").select("id").eq("email", email).execute()
@@ -98,7 +97,7 @@ async def get_admins(authorization: str = Header(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/students")
-async def get_students(authorization: str = Header(None)):
+async def get_students(current_user: Optional[Dict] = Depends(get_current_user_optional)):
     try:
         # 1. Fetch all students
         students_response = supabase.table("students").select("id, first_name, last_name, email, role").execute()
@@ -162,34 +161,38 @@ async def get_chat_history(
     user1_type: str,
     user2_id: str,
     user2_type: str,
-    authorization: str = Header(None)
+    current_user: Optional[Dict] = Depends(get_current_user_optional)
 ):
     try:
-        # Fetch messages where (sender=user1 AND receiver=user2) OR (sender=user2 AND receiver=user1)
-        # Supabase doesn't support complex OR queries easily in one go with the JS/Python client sometimes,
-        # but we can try using the 'or' filter.
+        # Simplification: Fetch sent and received messages separately to avoid complex OR syntax issues
+        # and ensure reliability.
         
-        # Format: sender_id.eq.user1_id,receiver_id.eq.user2_id,sender_type.eq.user1_type,receiver_type.eq.user2_type
-        # This is getting complicated with types.
-        # Let's just fetch all messages involving these two users and filter in python if needed, 
-        # or use a raw SQL query if possible (rpc).
-        # But for now, let's try to fetch sent and received separately and merge, or use the 'or' syntax.
+        # 1. Messages sent by user1 to user2
+        response_sent = supabase.table("messages").select("*").match({
+            "sender_id": user1_id,
+            "receiver_id": user2_id
+        }).execute()
         
-        # Using Supabase 'or' syntax:
-        # sender_id.eq.uid1,receiver_id.eq.uid2...
+        # 2. Messages sent by user2 to user1
+        response_received = supabase.table("messages").select("*").match({
+            "sender_id": user2_id,
+            "receiver_id": user1_id
+        }).execute()
         
-        # Let's try to fetch all messages for the conversation
-        response = supabase.table("messages").select("*").or_(
-            f"and(sender_id.eq.{user1_id},receiver_id.eq.{user2_id}),and(sender_id.eq.{user2_id},receiver_id.eq.{user1_id})"
-        ).order("created_at", desc=False).execute()
+        # Merge and Sort
+        all_messages = (response_sent.data or []) + (response_received.data or [])
         
-        return response.data
+        # Sort by created_at (ascending)
+        all_messages.sort(key=lambda x: x['created_at'])
+        
+        return all_messages
     except Exception as e:
         print(f"Error fetching history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/send")
-async def send_message(message: Message, authorization: str = Header(None)):
+async def send_message(message: Message, current_user: Dict = Depends(get_current_user)):
+    print(f"DEBUG: Receiving message send request from {current_user.get('email')}")
     try:
         data = message.dict()
         data['created_at'] = datetime.now(timezone.utc).isoformat()
@@ -202,7 +205,7 @@ async def send_message(message: Message, authorization: str = Header(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/mark_read")
-async def mark_messages_read(request: MarkReadRequest, authorization: str = Header(None)):
+async def mark_messages_read(request: MarkReadRequest, current_user: Dict = Depends(get_current_user)):
     try:
         if not request.message_ids:
             return {"message": "No messages to mark"}
@@ -213,7 +216,7 @@ async def mark_messages_read(request: MarkReadRequest, authorization: str = Head
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/unread")
-async def get_unread_count(user_id: str, user_type: str, authorization: str = Header(None)):
+async def get_unread_count(user_id: str, user_type: str, current_user: Optional[Dict] = Depends(get_current_user_optional)):
     try:
         # Count messages where receiver is user and is_read is false
         response = supabase.table("messages").select("id", count="exact").eq("receiver_id", user_id).eq("receiver_type", user_type).eq("is_read", False).execute()

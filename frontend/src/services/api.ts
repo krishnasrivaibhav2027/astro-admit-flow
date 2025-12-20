@@ -1,3 +1,5 @@
+import { supabase } from "@/integrations/supabase/client";
+
 export const api = {
     createResult: async (data: {
         student_id: string;
@@ -8,7 +10,8 @@ export const api = {
         attempts_hard: number;
     }) => {
         const backendUrl = import.meta.env.VITE_BACKEND_URL;
-        const token = localStorage.getItem('firebase_token');
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
 
         if (!token) {
             throw new Error("Authentication credential missing");

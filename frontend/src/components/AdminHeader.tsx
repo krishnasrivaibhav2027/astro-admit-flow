@@ -7,10 +7,8 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { auth } from "@/config/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { sendPasswordResetEmail } from "firebase/auth";
 import { ArrowRight, ChevronRight, KeyRound, LogOut, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -33,11 +31,10 @@ export const AdminHeader = () => {
 
         const fetchAdminData = async () => {
             try {
-                const token = localStorage.getItem("firebase_token");
-                if (!token) return;
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session?.user?.email) return;
 
-                const payload = JSON.parse(atob(token.split('.')[1]));
-                const email = payload.email;
+                const email = session.user.email;
                 setAdminEmail(email);
 
                 const { data: adminData } = await supabase
@@ -49,7 +46,6 @@ export const AdminHeader = () => {
                 if (adminData) {
                     setAdminName(`${(adminData as any).first_name} ${(adminData as any).last_name}`);
                 } else {
-                    // Fallback if not in admins table yet (e.g. super admin)
                     setAdminName("Admin");
                 }
             } catch (error) {
@@ -62,28 +58,37 @@ export const AdminHeader = () => {
 
     const handleLogout = async () => {
         try {
-            const token = localStorage.getItem("firebase_token");
-            const email = adminEmail;
+            // Call backend to track logout
+            const backendUrl = import.meta.env.VITE_BACKEND_URL;
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
 
-            if (token && email) {
-                const backendUrl = import.meta.env.VITE_BACKEND_URL;
-                await fetch(`${backendUrl}/api/logout`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ email })
-                });
+            if (token && backendUrl) {
+                try {
+                    await fetch(`${backendUrl}/api/logout`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({})
+                    });
+                } catch (apiError) {
+                    console.error("Backend logout failed:", apiError);
+                    // Continue with local logout
+                }
             }
-        } catch (error) {
-            console.error("Logout error:", error);
-        } finally {
+
+            await supabase.auth.signOut();
             localStorage.removeItem('firebase_token');
+
             toast({
                 title: "Logged Out",
                 description: "You have been successfully logged out.",
             });
+            navigate("/");
+        } catch (error) {
+            console.error("Logout error:", error);
             navigate("/");
         }
     };
@@ -99,7 +104,11 @@ export const AdminHeader = () => {
                 return;
             }
 
-            await sendPasswordResetEmail(auth, adminEmail);
+            const { error } = await supabase.auth.resetPasswordForEmail(adminEmail, {
+                redirectTo: `${window.location.origin}/update-password`,
+            });
+
+            if (error) throw error;
 
             toast({
                 title: "Password Reset Email Sent!",
@@ -168,6 +177,20 @@ export const AdminHeader = () => {
 
                         {/* Menu Items */}
                         <div className="space-y-1">
+                            <DropdownMenuItem
+                                onClick={() => navigate("/admin/profile")}
+                                className="p-3 focus:bg-muted rounded-lg cursor-pointer group border border-transparent focus:border-border"
+                            >
+                                <div className="w-8 h-8 rounded-lg bg-muted group-hover:bg-background flex items-center justify-center mr-3 transition-colors border border-border/50">
+                                    <User className="w-4 h-4 text-emerald-500" />
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-sm font-medium text-foreground">Profile</p>
+                                    <p className="text-xs text-muted-foreground">View your profile</p>
+                                </div>
+                                <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
+                            </DropdownMenuItem>
+
                             <DropdownMenuItem
                                 onClick={handleChangePassword}
                                 className="p-3 focus:bg-muted rounded-lg cursor-pointer group border border-transparent focus:border-border"

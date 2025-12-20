@@ -3,7 +3,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { auth } from "@/config/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { CheckCircle2, Clock, Home, Mail, TrendingUp, Trophy, XCircle } from "lucide-react";
@@ -23,19 +22,24 @@ const Results = () => {
   const [isTestCompleted, setIsTestCompleted] = useState<boolean>(completed || false);
 
   useEffect(() => {
-    // Check authentication first
-    const token = localStorage.getItem('firebase_token');
-    const sessionStudentId = sessionStorage.getItem('studentId');
+    const checkAuth = async () => {
+      // Check authentication first
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const sessionStudentId = sessionStorage.getItem('studentId');
 
-    if (!token || !sessionStudentId) {
-      toast({
-        title: "Authentication Required",
-        description: "Please login to view results.",
-        variant: "destructive"
-      });
-      navigate("/login");
-      return;
-    }
+      if (!token || !sessionStudentId) {
+        toast({
+          title: "Authentication Required",
+          description: "Please login to view results.",
+          variant: "destructive"
+        });
+        navigate("/login");
+        return;
+      }
+    };
+
+    checkAuth();
 
     if (!studentId || score === undefined) {
       navigate("/levels");
@@ -157,12 +161,13 @@ const Results = () => {
 
       if (studentData) {
         // Get current user token
-        const user = auth.currentUser;
-        if (!user) {
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) {
           console.error("User not authenticated");
           return;
         }
-        const token = await user.getIdToken();
+        const token = session.access_token;
 
         // Send email notification via backend API
         const backendUrl = import.meta.env.VITE_BACKEND_URL;

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import 'katex/dist/katex.min.css';
 import { ArrowLeft, BookOpen, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -25,7 +26,8 @@ const StudentQuestions = () => {
 
     const fetchData = async () => {
         try {
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
             // Fetch student details for name

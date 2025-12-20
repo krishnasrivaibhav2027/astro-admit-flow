@@ -20,7 +20,7 @@ from email.mime.multipart import MIMEMultipart
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
-from firebase_config import initialize_firebase, verify_firebase_token
+# from firebase_config import initialize_firebase, verify_firebase_token
 from settings_manager import settings_manager
 
 # Import RAG module
@@ -40,7 +40,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # Initialize Firebase Admin SDK
-initialize_firebase()
+
 
 # Initialize Supabase client
 supabase_url = os.environ.get('SUPABASE_URL')
@@ -60,6 +60,72 @@ from ai_service import safe_invoke
 
 # Create the main app
 app = FastAPI()
+
+# Add temporary route to restore admin
+# Add temporary route to restore admin
+@app.get("/restore-admin")
+async def restore_admin_route(email: str = "vasudevguptha@gmail.com"):
+    # Use Service Role Key if available for admin actions
+    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not service_role_key:
+        return {"error": "SUPABASE_SERVICE_ROLE_KEY not found in env. Cannot perform admin text."}
+    
+    # Create a separate admin client with the service role key
+    # Note: Standard 'supabase' client uses anon key usually.
+    admin_supabase: Client = create_client(supabase_url, service_role_key)
+
+    try:
+        logging.info(f"Restoring/Fixing Admin: {email}")
+        
+        # 1. Check if user exists in Auth
+        response = admin_supabase.auth.admin.list_users()
+        users = response if isinstance(response, list) else response.users
+        target_user = next((u for u in users if u.email == email), None)
+        
+        if not target_user:
+             return {"error": f"User {email} not found in Auth. Please Signup first."}
+        
+        # 2. Force Confirm Email
+        if not target_user.email_confirmed_at:
+            logging.info(f"Confirming email for {target_user.id}")
+            admin_supabase.auth.admin.update_user_by_id(target_user.id, {"email_confirm": True})
+        
+        # 3. Ensure in public.admins table
+        admin_res = admin_supabase.table("admins").select("*").eq("id", target_user.id).execute()
+        if not admin_res.data:
+             logging.info("Inserting into public.admins table...")
+             first = "Admin"
+             last = "User"
+             if "vasudev" in email: 
+                 first = "Vasudev"
+                 last = "Guptha"
+             
+             admin_supabase.table("admins").insert({
+                 "id": target_user.id,
+                 "email": email,
+                 "first_name": first,
+                 "last_name": last,
+                 "role": "admin"
+             }).execute()
+             
+        return {"message": f"SUCCESS: User {email} is now CONFIRMED and linked in admins table. You can login."}
+
+    except Exception as e:
+        logging.error(f"Restore Admin Error: {e}")
+        return {"error": str(e)}
+
+# Add CORS Middleware
+# Add CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex="https?://.*",  # Allow all origins (regex) to support credentials
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], # Explicitly allow frontend
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 api_router = APIRouter(prefix="/api")
 
 @app.on_event("startup")
@@ -100,23 +166,7 @@ from prompts import (
 # Models and Prompts imported from external files
 
 # ===== AUTHENTICATION =====
-security = HTTPBearer()
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict:
-    """Verify Firebase token and return user data"""
-    token = credentials.credentials
-    try:
-        decoded_token = verify_firebase_token(token)
-        return decoded_token
-    except Exception as e:
-        logging.error(f"Auth error: {e}")
-        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
-
-async def get_current_user_with_activity(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict:
-    """Verify Firebase token and update activity"""
-    # For now, just alias to get_current_user. 
-    # In future, we can add DB activity logging here.
-    return await get_current_user(credentials)
+from auth_dependencies import get_current_user, get_current_user_with_activity, security
 
 
 
@@ -153,7 +203,7 @@ async def health_check():
 # ===== STUDENT ENDPOINTS =====
 @api_router.post("/students")
 async def create_student(student: StudentCreate, current_user: Dict = Depends(get_current_user_with_activity)):
-    """Create student - Firebase Auth Protected"""
+    """Create student - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
@@ -200,7 +250,7 @@ async def create_student(student: StudentCreate, current_user: Dict = Depends(ge
         if role == 'admin':
             try:
                 admin_data = {
-                    "firebase_uid": current_user.get('uid'),
+                    "firebase_uid": current_user.get('uid'), # Using Supabase UID for legacy column compatibility
                     "email": student.email,
                     "first_name": student.first_name,
                     "last_name": student.last_name,
@@ -228,7 +278,7 @@ async def create_student(student: StudentCreate, current_user: Dict = Depends(ge
 
 @api_router.get("/students/by-email/{email}")
 async def get_student_by_email(email: str, current_user: Dict = Depends(get_current_user_with_activity)):
-    """Get student by email - Firebase Auth Protected"""
+    """Get student by email - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
@@ -252,7 +302,7 @@ async def get_student_by_email(email: str, current_user: Dict = Depends(get_curr
 
 @api_router.put("/students/{student_id}/phone")
 async def update_student_phone(student_id: str, request: UpdatePhoneRequest, current_user: Dict = Depends(get_current_user_with_activity)):
-    """Update student phone number - Firebase Auth Protected"""
+    """Update student phone number - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
@@ -278,9 +328,47 @@ async def update_student_phone(student_id: str, request: UpdatePhoneRequest, cur
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@api_router.put("/students/{student_id}")
+async def update_student(student_id: str, student: StudentCreate, current_user: Dict = Depends(get_current_user_with_activity)):
+    """Update full student profile - Authenticated (Force Reload)"""
+    try:
+        logging.info(f"🔒 Authenticated request from: {current_user['email']}")
+        
+        # Verify ownership (via email match)
+        # Note: 'student' model contains the new email, but we should verify the ID matches the logged-in user's DB record
+        
+        # Fetch current student to verify ID matches Auth Email
+        current_student_res = supabase.table("students").select("email").eq("id", student_id).execute()
+        if not current_student_res.data or current_student_res.data[0]['email'] != current_user['email']:
+             raise HTTPException(status_code=403, detail="Cannot update other users' data")
+        
+        # Update data
+        update_data = {
+            "first_name": student.first_name,
+            "last_name": student.last_name,
+            "age": student.age,
+            "dob": student.dob,
+            "phone": student.phone
+            # We explicitly do NOT update email here to avoid auth issues, or needs separate flow
+        }
+        
+        response = supabase.table("students").update(update_data).eq("id", student_id).execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Student not found")
+            
+        return response.data[0]
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error updating student: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @api_router.get("/students/{student_id}")
 async def get_student(student_id: str, current_user: Dict = Depends(get_current_user)):
-    """Get student by ID - Firebase Auth Protected"""
+    """Get student by ID - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         response = supabase.table("students").select("*").eq("id", student_id).execute()
@@ -296,7 +384,7 @@ async def get_student(student_id: str, current_user: Dict = Depends(get_current_
 
 @api_router.get("/students")
 async def list_students(current_user: Dict = Depends(get_current_user)):
-    """List all students - Firebase Auth Protected"""
+    """List all students - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         response = supabase.table("students").select("*").order("created_at", desc=True).execute()
@@ -309,15 +397,34 @@ async def list_students(current_user: Dict = Depends(get_current_user)):
 async def logout(request: LogoutRequest, user: Dict = Depends(get_current_user)):
     """Logout user and update logout_time"""
     try:
-        # Update student logout time
-        supabase.table("students").update({
-            "logout_time": datetime.now().isoformat(),
-            "last_active_at": datetime.now().isoformat() # Also update active so we know when they left
-        }).eq("email", user['email']).execute()
+        email = user['email']
+        logout_time = datetime.now(timezone.utc).isoformat()
+        
+        # Try to update student
+        student_res = supabase.table("students").update({
+            "logout_time": logout_time,
+            "last_active_at": logout_time
+        }).eq("email", email).execute()
+        
+        # If not found in students (or even if found, to be safe for admins who might be in both),
+        # try to update admin
+        # We don't error if not found in students, just try admins.
+        
+        # Check if updated any student
+        if not student_res.data:
+            # Try admins
+            supabase.table("admins").update({
+                "logout_time": logout_time,
+                "last_active_at": logout_time
+            }).eq("email", email).execute()
         
         return {"message": "Logged out successfully"}
     except Exception as e:
         logging.error(f"Logout error: {e}")
+        # We don't want to block the frontend logout if backend tracking fails
+        # so we log and return success or raise simple error.
+        # But raising 500 might stop frontend from clearing token if not handled well.
+        # Ideally frontend wipes token regardless of backend response.
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -414,7 +521,7 @@ class SaveAnswerRequest(BaseModel):
 
 @api_router.post("/create-result")
 async def create_result(request: CreateResultRequest, current_user: Dict = Depends(get_current_user_with_activity)):
-    """Create test result entry or resume existing - Firebase Auth Protected"""
+    """Create test result entry or resume existing - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
@@ -477,7 +584,7 @@ async def create_result(request: CreateResultRequest, current_user: Dict = Depen
 
 @api_router.post("/save-questions")
 async def save_questions(request: SaveQuestionsRequest, current_user: Dict = Depends(get_current_user_with_activity)):
-    """Save test questions - Firebase Auth Protected"""
+    """Save test questions - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
@@ -508,7 +615,7 @@ async def save_questions(request: SaveQuestionsRequest, current_user: Dict = Dep
 
 @api_router.post("/save-answer")
 async def save_answer(request: SaveAnswerRequest, current_user: Dict = Depends(get_current_user_with_activity)):
-    """Save a single student answer - Firebase Auth Protected"""
+    """Save a single student answer - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
@@ -539,7 +646,7 @@ async def save_answer(request: SaveAnswerRequest, current_user: Dict = Depends(g
 
 @api_router.post("/submit-test")
 async def submit_test(request: SubmitTestRequest, current_user: Dict = Depends(get_current_user_with_activity)):
-    """Submit test answers only - Firebase Auth Protected"""
+    """Submit test answers only - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
@@ -588,7 +695,7 @@ async def submit_test(request: SubmitTestRequest, current_user: Dict = Depends(g
 
 @api_router.post("/send-notification")
 async def send_notification(request: NotificationEmailRequest, current_user: Dict = Depends(get_current_user_with_activity)):
-    """Send email notification - Firebase Auth Protected"""
+    """Send email notification - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         from email.mime.text import MIMEText
@@ -885,7 +992,7 @@ AdmitAI Team
 
 @api_router.get("/test-session/{result_id}")
 async def get_test_session(result_id: str, current_user: Dict = Depends(get_current_user_with_activity)):
-    """Get questions and saved answers for a session - Firebase Auth Protected"""
+    """Get questions and saved answers for a session - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
@@ -931,7 +1038,7 @@ async def generate_questions(
     background_tasks: BackgroundTasks,
     current_user: Dict = Depends(get_current_user_with_activity)
 ):
-    """Generate questions - Firebase Auth Protected"""
+    """Generate questions - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         subject = request.subject.lower()
@@ -1016,7 +1123,7 @@ async def replenishment_task(subject: str, level: str):
 # ===== AI-POWERED ANSWER EVALUATION WITH 6 CRITERIA =====
 @api_router.post("/evaluate-answers")
 async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict = Depends(get_current_user_with_activity)):
-    """Evaluate student answers - Firebase Auth Protected"""
+    """Evaluate student answers - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         result_id = request.result_id
@@ -1452,7 +1559,7 @@ Next Steps:
 # ===== REVIEW ENDPOINT =====
 @api_router.get("/review/{level}/{student_id}")
 async def get_review_data(level: str, student_id: str, subject: str = Query("physics"), current_user: Dict = Depends(get_current_user)):
-    """Get review data for a specific level - Firebase Auth Protected"""
+    """Get review data for a specific level - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated request from: {current_user['email']}")
         
@@ -1703,7 +1810,7 @@ class AIReviewRequest(BaseModel):
 
 @api_router.post("/ai-review")
 async def generate_ai_review(request: AIReviewRequest, current_user: Dict = Depends(get_current_user)):
-    """Generate detailed AI review comparing student answer with correct answer - Firebase Auth Protected"""
+    """Generate detailed AI review comparing student answer with correct answer - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated AI review request from: {current_user['email']}")
         
@@ -1770,7 +1877,7 @@ Provide a detailed, educational review (200-300 words) that helps the student le
 # ===== AI NOTES GENERATION =====
 @api_router.get("/ai-notes/{level}/{student_id}")
 async def generate_ai_notes(level: str, student_id: str, subject: Optional[str] = Query(None), current_user: Dict = Depends(get_current_user)):
-    """Generate AI study notes based on incorrect answers - Firebase Auth Protected"""
+    """Generate AI study notes based on incorrect answers - Authenticated"""
     try:
         logging.info(f"🔒 Authenticated AI notes request from: {current_user['email']}")
         

@@ -3,6 +3,7 @@ import { HowItWorks } from "@/components/landing/HowItWorks";
 import { LandingHeader } from "@/components/landing/LandingHeader";
 import { ParallaxCarousel } from "@/components/landing/ParallaxCarousel";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import {
   ArrowRight,
   Check,
@@ -12,12 +13,28 @@ import {
   Star,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const Landing = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  useEffect(() => {
+    // Check for hash parameters from Supabase email confirmation
+    const hash = window.location.hash;
+    if (hash && hash.includes("type=signup")) {
+      toast({
+        title: "Email Verified Successfully!",
+        description: "Your account has been confirmed. Please login to continue.",
+        duration: 5000,
+        className: "bg-emerald-50 border-emerald-200 text-emerald-800",
+      });
+      // Clear the hash to prevent toast from showing on refresh
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col font-sans">

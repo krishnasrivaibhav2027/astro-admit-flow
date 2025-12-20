@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { Bot, Database, GraduationCap, Save, Settings as SettingsIcon, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -37,7 +38,8 @@ const Settings = () => {
     const fetchSettings = async () => {
         try {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
 
             const response = await fetch(`${backendUrl}/api/admin/settings`, {
                 headers: {
@@ -66,7 +68,8 @@ const Settings = () => {
         setSaving(true);
         try {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
-            const token = localStorage.getItem("firebase_token");
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
 
             const response = await fetch(`${backendUrl}/api/admin/settings`, {
                 method: 'POST',

@@ -1,0 +1,7 @@
+-- Ensure tracking columns exist for ADMINS
+ALTER TABLE admins ADD COLUMN IF NOT EXISTS logout_time TIMESTAMP WITH TIME ZONE;
+ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+
+-- Ensure tracking columns exist for STUDENTS (Just in case)
+ALTER TABLE students ADD COLUMN IF NOT EXISTS logout_time TIMESTAMP WITH TIME ZONE;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
