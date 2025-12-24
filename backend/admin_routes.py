@@ -20,11 +20,6 @@ import ai_service
 from rag_supabase import get_context
 
 
-# Import models
-from models import GenerateQuestionsRequest, GenerateQuestionsRequest
-from question_bank_service import QuestionBankService
-import ai_service
-from rag_supabase import get_context
 
 
 class AdminCreate(BaseModel):

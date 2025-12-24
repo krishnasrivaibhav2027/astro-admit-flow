@@ -7,227 +7,87 @@ from typing import List, Dict, Optional, Callable
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from settings_manager import settings_manager
-
-# Import Supabase-based RAG module (with Auto-Ingestion)
-try:
-    from rag_supabase import get_context
-except ImportError:
-    # Fallback if module missing
-    def get_context(query, subject="physics", k=3, randomize=True):
-        return []
-
+from utils_llm import get_llm, safe_invoke
 from prompts import (
-    generate_questions_prompt_physics, 
-    generate_questions_prompt_math, 
-    generate_questions_prompt_chemistry,
-    evaluate_answer_prompt_physics, 
-    evaluate_answer_prompt_math, 
-    evaluate_answer_prompt_chemistry
+    generate_questions_prompt_physics, generate_questions_prompt_math, generate_questions_prompt_chemistry,
+    evaluate_answer_prompt_physics, evaluate_answer_prompt_math, evaluate_answer_prompt_chemistry
 )
 
-# Initialize LLM (Client)
-llm_client = None
+# ... (imports)
 
-# Import OpenAI client for HuggingFace/Fireworks support
+# Import Hybrid RAG module (Redis + Supabase)
 try:
-    from langchain_openai import ChatOpenAI
+    from rag_hybrid import get_context, check_and_ingest
 except ImportError:
-    try:
-        from langchain_community.chat_models import ChatOpenAI
-    except ImportError:
-        ChatOpenAI = None
-        logging.warning("⚠️ ChatOpenAI not available. HuggingFace models will fail.")
+# ...    # Fallback if module missing
+    def get_context(query, subject="physics", k=3, randomize=True):
+        return []
+    async def check_and_ingest(subject):
+        pass
 
-# Custom Local LLM Wrapper (Internal)
-from local_llm_engine import engine
+from graph_service import GraphService
 
-class LocalQwenLLM:
-    def __init__(self, temperature=0.7):
-        self.temperature = temperature
-        # Ensure engine is loaded (lazy load check)
-        # engine.load_model() # Optional here, better to do at startup
+# ... (rest of imports) ...
 
-    def invoke(self, prompt):
-        # Convert LangChain prompt to string
-        if isinstance(prompt, list):
-             text = "\n".join([m.content for m in prompt])
-        elif hasattr(prompt, "to_string"):
-             text = prompt.to_string()
-        else:
-             text = str(prompt)
-        
-        try:
-            logging.info("🧠 Invoking Local Qwen Engine (Internal)...")
-            content = engine.generate(text, temperature=self.temperature)
-        except Exception as e:
-            logging.error(f"❌ Local LLM Internal Error: {e}")
-            content = ""
-
-        # Return compatible object
-        class Result:
-            pass
-        r = Result()
-        r.content = content
-        return r
-
-    def batch(self, prompts):
-        """Batch generation for multiple prompts"""
-        # Convert prompts to strings
-        texts = []
-        for p in prompts:
-            if isinstance(p, list): # Message list
-                 texts.append("\n".join([m.content for m in p]))
-            elif hasattr(p, "to_string"):
-                 texts.append(p.to_string())
-            else:
-                 texts.append(str(p))
-                 
-        try:
-            logging.info(f"🧠 Invoking Local Qwen Engine (Batch {len(texts)})...")
-            contents = engine.generate(texts, temperature=self.temperature) # Returns list of strings
-        except Exception as e:
-            logging.error(f"❌ Local LLM Batch Error: {e}")
-            contents = [""] * len(texts)
-
-        results = []
-        class Result:
-            pass
-             
-        for c in contents:
-            r = Result()
-            r.content = c
-            results.append(r)
-            
-        return results
-
-def get_llm(override_model=None, override_temperature=None):
-    """Get or initialize LLM client with current settings or overrides"""
-    # Always re-fetch settings to ensure dynamic updates without restart
-    settings = settings_manager.get_settings()
-    
-    # Use settings_manager as the primary source of truth
-    default_model = settings.get("model", "gemini-2.5-flash-lite")
-    model_name = override_model or default_model
-    temperature = override_temperature if override_temperature is not None else settings.get("temperature", 0.3)
-    
-    # 1. Local Qwen Service (Priority if selected)
-    if "Local" in model_name or "Qwen" in model_name and "fireworks" not in model_name:
-        logging.info(f"💻 Using Local Qwen Service: {model_name} (Temp: {temperature})")
-        return LocalQwenLLM(temperature=temperature)
-
-    # 2. HuggingFace / Fireworks (Qwen, Llama via HF Router)
-    if "fireworks" in model_name:
-        if not ChatOpenAI:
-             logging.error("❌ Cannot load Qwen model: langchain-openai package missing.")
-             # Fallback to configured default model
-             return ChatGoogleGenerativeAI(
-                model=default_model, 
-                temperature=temperature, 
-                google_api_key=os.getenv("GEMINI_API_KEY")
-             )
-             
-        hf_token = os.getenv("HF_TOKEN")
-        if not hf_token:
-             logging.error("❌ HF_TOKEN is missing. Cannot use HuggingFace Router.")
-        
-        logging.info(f"🤖 Initializing HuggingFace Model: {model_name}")
-        return ChatOpenAI(
-            model=model_name,
-            openai_api_key=hf_token or "dummy_key_if_missing",
-            openai_api_base="https://router.huggingface.co/v1",
-            temperature=temperature
-        )
-
-    # 3. Google Gemini (Default)
-    return ChatGoogleGenerativeAI(
-        model=model_name,
-        temperature=temperature,
-        google_api_key=os.getenv("GEMINI_API_KEY"),
-        max_output_tokens=15000
-    )
-
-def safe_invoke(llm, prompt, purpose=""):
-    """Invoke LLM with error handling"""
-    try:
-        return llm.invoke(prompt)
-    except Exception as e:
-        logging.error(f"LLM Invoke Error ({purpose}): {e}")
-        # Return a dummy response object with content
-        class DummyResponse:
-            content = ""
-        return DummyResponse()
-
+# --- Helper Functions ---
 def get_subject_topics(subject: str) -> List[str]:
-    """Get list of topics for a subject"""
-    # 1. Try to load from generated topics.json
-    try:
-        topics_file = os.path.join(os.path.dirname(__file__), "topics.json")
-        if os.path.exists(topics_file):
-            with open(topics_file, 'r') as f:
-                data = json.load(f)
-                # Check directly or lowercase, ensuring robust match
-                sub_key = subject.lower()
-                if sub_key in data and isinstance(data[sub_key], list) and len(data[sub_key]) > 0:
-                    logging.info(f"📂 Loaded {len(data[sub_key])} topics for '{subject}' from topics.json")
-                    return data[sub_key]
-    except Exception as e:
-        logging.error(f"Error reading topics.json: {e}")
-
-    # 2. Fallback to hardcoded list (Safety Net)
-    logging.warning(f"⚠️ Using HARDCODED fallback topics for '{subject}'")
-    subject_topics = {
-        "physics": [
-            "electromagnetic induction and Faraday's law", "Newton's laws of motion and forces",
-            "thermodynamics and heat transfer", "wave motion and sound",
-            "optics and light", "electric circuits and current",
-            "magnetism and magnetic fields", "gravitation and planetary motion",
-            "work energy and power", "electrostatics and electric fields",
-            "quantum mechanics basics", "atomic structure and spectra",
-            "radioactivity and nuclear physics", "mechanical properties of matter",
-            "fluid mechanics and pressure", "kinetic theory of gases",
-            "simple harmonic motion", "rotational dynamics",
-            "interference and diffraction", "semiconductors and devices"
-        ],
-        "math": [
-            "Calculus (Integration, Differentiation)", "Linear Algebra", 
-            "Probability and Statistics", "Trigonometry", "Coordinate Geometry",
-            "Complex Numbers", "Vectors", "Matrices and Determinants",
-            "Permutations and Combinations", "Sequences and Series"
-        ],
-        "chemistry": [
-            "Periodic Table and Intervals", "Chemical Bonding", 
-            "Thermodynamics", "Equilibrium", "Solutions", 
-            "Electrochemistry", "Chemical Kinetics", "Surface Chemistry",
-            "Coordination Compounds", "Organic Chemistry Basics"
+    """Return default topics for a subject if graph traversal fails."""
+    subject = subject.lower()
+    if subject == 'physics':
+        return [
+            "Kinematics", "Newton's Laws", "Energy and Work", "Momentum", 
+            "Rotational Motion", "Gravitation", "Thermodynamics", "Waves", 
+            "Electrostatics", "Current Electricity", "Magnetism", "Optics", "Modern Physics"
         ]
-    }
-    return subject_topics.get(subject.lower(), subject_topics["physics"])
+    elif subject == 'math':
+        return [
+            "Algebra", "Trigonometry", "Calculus", "Coordinate Geometry", 
+            "Vectors", "Probability", "Statistics", "Complex Numbers", 
+            "Matrices and Determinants", "Quadratic Equations"
+        ]
+    elif subject == 'chemistry':
+        return [
+            "Atomic Structure", "Chemical Bonding", "Thermodynamics", "Equilibrium", 
+            "Redox Reactions", "Electrochemistry", "Chemical Kinetics", 
+            "Surface Chemistry", "Periodic Table", "Coordination Compounds", 
+            "Organic Chemistry Basics", "Hydrocarbons", "Alcohols and Ethers"
+        ]
+    return ["General Concepts"]
+
+
 
 async def _generate_questions_internal(subject, level, num_questions, context_func=None, specific_topics: List[str] = None):
     """
     Core logic to generate questions using RAG and LLM.
-    Now uses topic-specific generation.
+    Now uses topic-specific generation via Graph Service.
     """
     try:
-        # 1. Get Subject Topics
+        # 0. Lazy Ingestion Check
+        # Ensure documents exist for this subject before proceeding
+        try:
+            await check_and_ingest(subject)
+        except Exception as e:
+            logging.error(f"⚠️ Ingestion check failed: {e}. Proceeding with existing data (if any).")
+
+        # 1. Get Topics (Graph-Aware)
         if specific_topics and len(specific_topics) > 0:
             logging.info(f"🎯 Using provided specific topics: {specific_topics}")
-            topics = specific_topics
+            # If specific topics provided, we might still want to traverse a bit? 
+            # No, respect explicit request.
+            selected_topics_list = specific_topics
         else:
-            topics = get_subject_topics(subject)
+            # Use Graph Traversal
+            logging.info(f"🕸️ Traversing Knowledge Graph for {subject}...")
+            selected_topics_list = GraphService.get_traversal_path(subject)
+            
+            # Fallback to hardcoded/json if graph is empty
+            if not selected_topics_list:
+                logging.warning("⚠️ Graph empty, falling back to static topics.")
+                topics = get_subject_topics(subject)
+                num_topics_to_select = min(len(topics), 3)
+                selected_topics_list = random.sample(topics, num_topics_to_select)
         
-        # 2. Select Random Topics for this Batch if not specific
-        # We select up to 3 topics to ensure diversity
-        num_topics_to_select = min(len(topics), 3)
-        if specific_topics:
-             # If specific topics were passed, use them all (up to a reasonable limit for prompt context)
-             # If too many, maybe sample? But usually caller handles batching.
-             selected_topics_list = topics[:5] 
-        else:
-             selected_topics_list = random.sample(topics, num_topics_to_select)
-             
         selected_topics = ", ".join(selected_topics_list)
-        
         logging.info(f"🎯 Selected Topics for {subject}: {selected_topics}")
 
         # 3. Get Context using the Selected Topics
@@ -240,7 +100,7 @@ async def _generate_questions_internal(subject, level, num_questions, context_fu
             context = "\n\n".join(context_docs) if context_docs else f"General {subject} concepts related to {selected_topics}"
         else:
             # Fallback
-            from rag_supabase import get_context as rag_get_context
+            from rag_hybrid import get_context as rag_get_context
             settings = settings_manager.get_settings()
             rag_k = settings.get("rag_k", 3)
             context_docs = rag_get_context(selected_topics, subject=subject, k=rag_k)
@@ -348,7 +208,7 @@ async def _generate_questions_internal(subject, level, num_questions, context_fu
                 content = re.sub(r'(?<!\\)\\(?!["\\/bfnrtu])', r'\\\\', content)
                 
                 try:
-                    q_batch = json.loads(content)
+                    q_batch = json.loads(content, strict=False)
                     if isinstance(q_batch, dict) and "questions" in q_batch:
                         q_batch = q_batch["questions"]
                     if isinstance(q_batch, list):
@@ -382,7 +242,7 @@ async def _generate_questions_internal(subject, level, num_questions, context_fu
             content = re.sub(r'(?<!\\)\\(?!["\\/bfnrtu])', r'\\\\', content)
             
             try:
-                questions = json.loads(content)
+                questions = json.loads(content, strict=False)
                 # Ensure it's a list
                 if isinstance(questions, dict) and "questions" in questions:
                     questions = questions["questions"]
@@ -448,7 +308,7 @@ async def evaluate_answer_logic(student_answer, correct_answer, question_text, s
         content = response.content.replace('```json', '').replace('```', '').strip()
         
         try:
-            return json.loads(content)
+            return json.loads(content, strict=False)
         except:
             return {
                 "correct": False, 

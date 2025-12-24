@@ -29,7 +29,7 @@ export const useStudentAnnouncements = (studentEmail: string | null) => {
         queryKey: ["studentAnnouncements", studentEmail],
         queryFn: async () => {
             if (!studentEmail) return [];
-            const backendUrl = import.meta.env.VITE_BACKEND_URL;
+            const backendUrl = 'http://localhost:8001';
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
             if (!token) throw new Error("No token");

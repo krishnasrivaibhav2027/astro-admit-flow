@@ -1,0 +1,18 @@
+INFO:root:\U0001f9ea Testing Hybrid RAG Components...
+Traceback (most recent call last):
+  File "d:\GitRepos\astro-admit-flow\backend\verify_hybrid.py", line 63, in <module>
+    asyncio.run(test_components())
+  File "C:\Users\VAIBHAV\AppData\Local\Programs\Python\Python311\Lib\asyncio\runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\VAIBHAV\AppData\Local\Programs\Python\Python311\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\VAIBHAV\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 650, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "d:\GitRepos\astro-admit-flow\backend\verify_hybrid.py", line 14, in test_components
+    from redis_client import redis_manager
+  File "d:\GitRepos\astro-admit-flow\backend\redis_client.py", line 4, in <module>
+    import redis
+ModuleNotFoundError: No module named 'redis'

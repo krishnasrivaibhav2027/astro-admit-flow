@@ -14,12 +14,15 @@ import { ArrowRight, ChevronRight, KeyRound, LogOut, Trophy, User } from "lucide
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { WeatherIcon } from "./WeatherIcons";
+
 export const StudentHeader = () => {
     const navigate = useNavigate();
     const { toast } = useToast();
     const [studentName, setStudentName] = useState<string>("");
     const [studentEmail, setStudentEmail] = useState<string>("");
     const [greeting, setGreeting] = useState<string>("");
+    const [weather, setWeather] = useState<{ type: 'sunny' | 'rainy' | 'cloudy' | 'windy' | 'clear-night'; temp?: number } | null>(null);
 
     useEffect(() => {
         const updateGreeting = () => {
@@ -29,6 +32,42 @@ export const StudentHeader = () => {
             else setGreeting("Good Evening");
         };
         updateGreeting();
+
+        // Weather Logic
+        const fetchWeather = async (lat: number, lon: number) => {
+            try {
+                const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+                const data = await response.json();
+                const code = data.current_weather?.weathercode;
+                const temp = data.current_weather?.temperature;
+                const isDay = data.current_weather?.is_day; // 1 for Day, 0 for Night
+
+                // WMO Code Mapping
+                let type: 'sunny' | 'rainy' | 'cloudy' | 'windy' | 'clear-night' = 'sunny';
+
+                if (code === 0 || code === 1) {
+                    type = isDay === 1 ? 'sunny' : 'clear-night';
+                }
+                else if (code === 2 || code === 3) type = 'cloudy';
+                else if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || (code >= 95)) type = 'rainy';
+                else type = 'windy';
+
+                setWeather({ type, temp });
+            } catch (e) {
+                console.error("Weather fetch failed", e);
+            }
+        };
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    fetchWeather(position.coords.latitude, position.coords.longitude);
+                },
+                (error) => {
+                    console.log("Location access denied or failed", error);
+                }
+            );
+        }
 
         const fetchStudentData = async () => {
             try {
@@ -128,7 +167,15 @@ export const StudentHeader = () => {
         <div className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b px-6 py-4 flex items-center justify-between">
             {/* Left: Greeting */}
             <div>
-                <h2 className="text-xl font-semibold text-foreground">{greeting},</h2>
+                <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-semibold text-foreground">{greeting},</h2>
+                    {weather && (
+                        <div className="flex items-center gap-1 animate-in fade-in duration-700">
+                            <WeatherIcon type={weather.type} />
+                            <span className="text-sm font-medium text-muted-foreground">{weather.temp}°C</span>
+                        </div>
+                    )}
+                </div>
                 <p className="text-muted-foreground font-medium">{studentName || "Student"}</p>
             </div>
 

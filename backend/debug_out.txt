@@ -1,0 +1,6 @@
+Redis Version: 7.1.0
+Redis File: C:\Users\VAIBHAV\AppData\Local\Programs\Python\Python311\Lib\site-packages\redis\__init__.py
+Import 1 Failed: No module named 'redis.commands.search.indexDefinition'
+Import 2 Success: redis.commands.search.index_definition
+Contents of redis.commands.search:
+['AGGREGATE_CMD', 'AsyncPipeline', 'AsyncSearch', 'AsyncSearchCommands', 'AsyncioPipeline', 'CONFIG_CMD', 'HYBRID_CMD', 'INFO_CMD', 'PROFILE_CMD', 'Pipeline', 'RedisPipeline', 'SEARCH_CMD', 'SPELLCHECK_CMD', 'SYNDUMP_CMD', 'Search', 'SearchCommands', '__builtins__', '__cached__', '__doc__', '__file__', '__loader__', '__name__', '__package__', '__path__', '__spec__', '_util', 'aggregation', 'commands', 'dialect', 'document', 'field', 'hybrid_query', 'hybrid_result', 'index_definition', 'profile_information', 'query', 'result', 'suggestion']

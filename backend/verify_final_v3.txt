@@ -1,0 +1,9 @@
+INFO:root:\U0001f9ea Testing Hybrid RAG Components...
+ERROR:root:\u274c Failed to connect to Redis: Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.
+ERROR:root:\u274c Failed to connect to Redis: Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.
+WARNING:root:\u26a0\ufe0f Redis Connection: Failed. Testing Fallback Mode.
+INFO:httpx:HTTP Request: GET https://uminpkhjsrfogjtwqqfn.supabase.co/rest/v1/admin_settings?select=value&key=eq.global_settings "HTTP/2 200 OK"
+INFO:root:\U0001f9ea Testing Hybrid Retrieval (Context)...
+INFO:root:\U0001f422 Falling back to Supabase Vector Search...
+INFO:httpx:HTTP Request: POST https://uminpkhjsrfogjtwqqfn.supabase.co/rest/v1/rpc/match_documents "HTTP/2 200 OK"
+INFO:root:   Context Retrieved: 3 docs

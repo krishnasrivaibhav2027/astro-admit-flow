@@ -43,11 +43,18 @@ const QuestionBank = () => {
 
     const fetchStats = async () => {
         try {
-            const backendUrl = import.meta.env.VITE_BACKEND_URL;
+            const backendUrl = 'http://localhost:8001';
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
-            const response = await fetch(`${backendUrl}/api/admin/question-bank/stats`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            // Add timestamp/cache-control to force fresh fetch
+            const response = await fetch(`${backendUrl}/api/admin/question-bank/stats?t=${new Date().getTime()}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                },
+                cache: 'no-store'
             });
             if (response.ok) {
                 setStats(await response.json());
@@ -62,7 +69,7 @@ const QuestionBank = () => {
     const handleGenerate = async () => {
         setGenerating(true);
         try {
-            const backendUrl = import.meta.env.VITE_BACKEND_URL;
+            const backendUrl = 'http://localhost:8001';
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
             const response = await fetch(`${backendUrl}/api/admin/question-bank/generate`, {
@@ -103,7 +110,7 @@ const QuestionBank = () => {
     const handleExtractTopics = async () => {
         setExtracting(true);
         try {
-            const backendUrl = import.meta.env.VITE_BACKEND_URL;
+            const backendUrl = 'http://localhost:8001';
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
             const response = await fetch(`${backendUrl}/api/admin/question-bank/extract-topics`, {

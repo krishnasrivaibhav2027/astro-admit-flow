@@ -5,6 +5,13 @@ from starlette.middleware.cors import CORSMiddleware
 import os
 import logging
 from pathlib import Path
+
+# Log Suppression for Socket.IO
+class EndpointFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.getMessage().find("/socket.io") == -1
+
+logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 from datetime import datetime, timezone
@@ -26,15 +33,20 @@ from settings_manager import settings_manager
 # Import RAG module
 from question_bank_service import QuestionBankService
 
-try:
-    from rag_supabase import get_context
+# Initialize Redis
+from redis_client import redis_manager
+from socket_manager import socket_manager
 
+try:
+    from rag_hybrid import get_context, check_and_ingest
     RAG_ENABLED = True
 except Exception as e:
     print(f"RAG not available: {e}")
     RAG_ENABLED = False
     def get_context(query, subject="physics", k=3, randomize=True):
         return []
+    async def check_and_ingest(subject):
+        pass
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -53,18 +65,18 @@ llm = None
 import ai_service
 
 
-
-# safe_invoke moved to ai_service
-from ai_service import safe_invoke
+# safe_invoke moved to utils_llm
+from utils_llm import safe_invoke
 
 
 # Create the main app
 app = FastAPI()
+app.mount("/socket.io", socket_manager.app)
 
-# Add temporary route to restore admin
 # Add temporary route to restore admin
 @app.get("/restore-admin")
 async def restore_admin_route(email: str = "vasudevguptha@gmail.com"):
+    # (Rest of admin logic unchanged)
     # Use Service Role Key if available for admin actions
     service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
@@ -115,12 +127,34 @@ async def restore_admin_route(email: str = "vasudevguptha@gmail.com"):
         logging.error(f"Restore Admin Error: {e}")
         return {"error": str(e)}
 
-# Add CORS Middleware
+# ... imports
+
+# ... imports
+
+# Custom Logging Dependency (Safe & Non-blocking)
+from fastapi import Request
+async def log_request_info(request: Request):
+    # Print directly to console to bypass any logger config issues
+    print(f"📥 REQUEST: {request.method} {request.url.path}")
+
+# Create the main app with global logging dependency
+app = FastAPI(dependencies=[Depends(log_request_info)])
+
+# ... (rest of app setup)
+
 # Add CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex="https?://.*",  # Allow all origins (regex) to support credentials
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], # Explicitly allow frontend
+    allow_origins=[
+        "http://localhost:5173", "http://127.0.0.1:5173",
+        "http://localhost:3000", "http://127.0.0.1:3000",
+        "http://localhost:3001", "http://127.0.0.1:3001",
+        "http://localhost:3002", "http://127.0.0.1:3002",
+        "http://localhost:3003", 
+        "http://localhost:3004", 
+        "http://localhost:3005"
+    ], # Explicitly allow frontend ports
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -130,17 +164,47 @@ api_router = APIRouter(prefix="/api")
 
 @app.on_event("startup")
 async def startup_event():
-    """Preload model if local setting is active"""
+    """Startup tasks: Connect Redis, Check RAG, Verify DB"""
+    print("\n" + "="*50)
+    print("🚀 STARTING SERVER STARTUP TASKS")
+    print("="*50 + "\n")
+    
+    # 1. Verify Supabase Connection
+    try:
+        print("🔌 Testing Supabase DB Connection...")
+        # Simple query to check connectivity
+        res = supabase.table("students").select("count", count="exact").limit(1).execute()
+        print(f"✅ Supabase DB Connected! (Response: {res.count} students)")
+    except Exception as e:
+        print(f"❌ Supabase DB Connection Failed: {e}")
+
+    # 2. Redis
+    redis_manager._initialize()
+    
+    # 3. Trigger RAG Ingestion in Background
+    # REMOVED per user request: Ingestion is now lazy-loaded on "Generate Questions".
+    pass
+
     try:
         settings = settings_manager.get_settings()
         model_name = settings.get("model", "")
         if "Local" in model_name or "Qwen" in model_name and "fireworks" not in model_name:
-            logging.info(f"🚀 Pre-loading Local Model: {model_name}...")
+            print(f"🚀 Pre-loading Local Model: {model_name}...")
             # Import here to avoid circular dependency issues if any
             from local_llm_engine import engine
             engine.load_model()
     except Exception as e:
-        logging.error(f"⚠️ Failed to preload local model: {e}")
+        print(f"⚠️ Failed to preload local model: {e}")
+        
+    print("\n✅ SERVER STARTUP COMPLETE. READY.\n")
+    
+    # DEBUG: Print all registered routes to verify paths
+    print("\n🔍 REGISTERED ROUTES:")
+    for route in app.routes:
+        if hasattr(route, "path"):
+            methods = ", ".join(route.methods) if hasattr(route, "methods") else "ANY"
+            print(f"   {methods:<10} {route.path}")
+    print("="*50 + "\n")
 
 # Include Admin Router
 from admin_routes import admin_router
@@ -149,6 +213,10 @@ app.include_router(admin_router)
 # Include Chat Router
 from chat_routes import router as chat_router
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
+
+# CRITICAL: Include the main API router (Student, Auth, Health, etc.)
+# This was missing, causing 404s for /api/logout, /api/students, etc.
+app.include_router(api_router)
 
 # Import Models and Prompts
 from models import (
@@ -877,7 +945,7 @@ async def send_notification(request: NotificationEmailRequest, current_user: Dic
                     
                     # Check Hard status
                     hard_pass = any(r.get('level') == 'hard' and r.get('result') == 'pass' for r in sub_results)
-                    hard_attempts_resp = supabase.table("results").select("id", count="exact").eq("student_id", student_id).eq("level", "hard").eq("subject", sub).execute()
+                    hard_attempts_resp = supabase.table("results").select("id", count="exact").eq("student_id", request.student_id).eq("level", "hard").eq("subject", sub).execute()
                     hard_attempts = hard_attempts_resp.count if hard_attempts_resp.count is not None else 0
                     hard_max = settings.get("max_attempts", 3)
                     
@@ -904,7 +972,7 @@ async def send_notification(request: NotificationEmailRequest, current_user: Dic
                 admission_message = f"""
 Thank you for your interest in AdmitAI.
 
-We have reviewed your performance in the admission test. Unfortunately, you did not meet the required passing criteria for the {level.capitalize()} Level in {current_subject.capitalize()}.
+We have reviewed your performance in the admission test. Unfortunately, you did not meet the required passing criteria for the {r_level.capitalize()} Level in {r_subject.capitalize()}.
 
 As per our strict admission policy, we are unable to proceed with your application at this time.
 

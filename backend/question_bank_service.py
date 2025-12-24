@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from supabase import create_client, Client
 from pydantic import BaseModel
+import time
 
 # Initialize Supabase client
 supabase_url = os.environ.get('SUPABASE_URL')
@@ -270,133 +271,137 @@ class QuestionBankService:
         import ai_service
         from rag_supabase import get_context
         
-        logging.info(f"🛡️ Starting Guarded Generation for {subject}/{level} (Target/Topic: {target_per_topic}, Max: {max_questions})...")
+        print(f"🛡️ Starting Guarded Generation for {subject}/{level} (Target/Topic: {target_per_topic}, Max: {max_questions})...", flush=True)
+        start_time = time.time()
         
-        topics = await QuestionBankService.get_all_topics(subject)
-        if not topics:
-            logging.warning("⚠️ No topics found. Aborting guarded generation.")
-            return {"success": False, "message": "No topics found"}
-            
-        # 1. Bulk Check Saturation (Optimization)
-        # Fetch all questions for this subject/level to count topics in memory
-        # This avoids N calls to DB and fixes potential textSearch issues
         try:
-            # We only need the question_content to check topics
-            # Fetching all might be heavy if bank is huge (e.g. 10k), but for <1000 it's fine.
-            # Improvement: Use a dedicated RPC or maintain a stats table. 
-            # For now: limit 1000 is reasonable safety.
-            q_resp = supabase.table("question_bank")\
-                .select("question_content")\
-                .eq("subject", subject)\
-                .eq("level", level.lower())\
-                .execute()
+            topics = await QuestionBankService.get_all_topics(subject)
+            if not topics:
+                print("⚠️ No topics found. Aborting guarded generation.", flush=True)
+                return {"success": False, "message": "No topics found"}
+                
+            # 1. Bulk Check Saturation (Optimization)
+            # Fetch all questions for this subject/level to count topics in memory
+            try:
+                # We only need the question_content to check topics
+                q_resp = supabase.table("question_bank")\
+                    .select("question_content")\
+                    .eq("subject", subject)\
+                    .eq("level", level.lower())\
+                    .execute()
+                
+                existing_questions = q_resp.data or []
+                topic_counts = {}
+                
+                for q in existing_questions:
+                    content = q.get("question_content", {})
+                    t = content.get("topic")
+                    if t:
+                        topic_counts[t] = topic_counts.get(t, 0) + 1
+                        
+                print(f"📊 Current Topic Counts: {topic_counts}", flush=True)
+    
+            except Exception as e:
+                print(f"Error bulk fetching saturation: {e}", flush=True)
+                topic_counts = {}
+    
+            # Filter and Prioritize Underserved
+            # We create a list of tuples: (count, topic)
+            scored_topics = []
+            for topic in topics:
+                count = topic_counts.get(topic, 0)
+                if count < target_per_topic:
+                    scored_topics.append((count, topic))
             
-            existing_questions = q_resp.data or []
-            topic_counts = {}
+            if not scored_topics:
+                print("✅ Bank is fully saturated for all topics. No generation needed.", flush=True)
+                return {"success": True, "generated_count": 0, "message": "Bank saturated"}
+                
+            # Smart Sort + Shuffle
+            # 1. Sort by count ASC (so 0s come first)
+            scored_topics.sort(key=lambda x: x[0])
             
-            for q in existing_questions:
-                # Safer retrieval of topic from different JSON structures
-                content = q.get("question_content", {})
-                t = content.get("topic")
-                if t:
-                    topic_counts[t] = topic_counts.get(t, 0) + 1
+            # 2. Shuffle items with same count to ensure variety among the "empties"
+            from itertools import groupby
+            final_underserved_topics = []
+            
+            for count, group in groupby(scored_topics, key=lambda x: x[0]):
+                group_list = list(group)
+                random.shuffle(group_list)
+                final_underserved_topics.extend([x[1] for x in group_list])
+                
+            underserved_topics = final_underserved_topics
+                
+            print(f"📉 Found {len(underserved_topics)}/{len(topics)} underserved topics. Processing Order: {underserved_topics[:5]}...", flush=True)
+            
+            # 2. Parallel Batch Generation
+            # Group into batches of 3 topics
+            batch_size = 3
+            total_generated = 0
+            
+            # Determine number of needed questions
+            remaining_needed = max_questions
+            
+            # Prepare valid batches
+            batches = []
+            for i in range(0, len(underserved_topics), batch_size):
+                if remaining_needed <= 0:
+                    break
                     
-            logging.info(f"📊 Current Topic Counts: {topic_counts}")
+                batch_topics = underserved_topics[i:i + batch_size]
+                ask_count = min(5, remaining_needed)
+                batches.append((batch_topics, ask_count))
+                remaining_needed -= ask_count
+    
+            print(f"⚡ Parallelizing {len(batches)} batches...", flush=True)
+            
+            import asyncio
+            from settings_manager import settings_manager
+            
+            # Get concurrency from settings (default 3)
+            settings = settings_manager.get_settings()
+            limit = settings.get("max_concurrency", 3)
+            
+            print(f"🚦 Concurrency Limit: {limit}", flush=True)
+            semaphore = asyncio.Semaphore(limit) 
+    
+            async def process_batch(topics_chunk, count):
+                async with semaphore:
+                    try:
+                        q_list = await ai_service.generate_questions_logic(
+                            subject, 
+                            level, 
+                            num_questions=count, 
+                            context_func=get_context,
+                            specific_topics=topics_chunk
+                        )
+                        if q_list:
+                            await QuestionBankService.add_questions(q_list, subject, level, status="STAGING")
+                            return len(q_list)
+                        return 0
+                    except Exception as e:
+                        print(f"❌ Batch failed: {e}", flush=True)
+                        return 0
+    
+            # Execute parallel tasks
+            tasks = [process_batch(b[0], b[1]) for b in batches]
+            results = await asyncio.gather(*tasks)
+            
+            total_generated = sum(results)
+            
+            if total_generated > 0:
+                # 3. ATOMIC PROMOTION
+                await QuestionBankService.promote_staging_to_active(subject, level)
+            
+            print(f"✅ GENERATION COMPLETE: Generated {total_generated} questions.", flush=True)
+            return {"success": True, "generated_count": total_generated, "message": f"Generated {total_generated} questions in parallel"}
 
         except Exception as e:
-            logging.error(f"Error bulk fetching saturation: {e}")
-            topic_counts = {}
-
-        # Filter and Prioritize Underserved
-        # We create a list of tuples: (count, topic)
-        scored_topics = []
-        for topic in topics:
-            count = topic_counts.get(topic, 0)
-            if count < target_per_topic:
-                scored_topics.append((count, topic))
-        
-        if not scored_topics:
-            logging.info("✅ Bank is fully saturated for all topics. No generation needed.")
-            return {"success": True, "generated_count": 0, "message": "Bank saturated"}
-            
-        # Smart Sort + Shuffle
-        # 1. Sort by count ASC (so 0s come first)
-        scored_topics.sort(key=lambda x: x[0])
-        
-        # 2. Shuffle items with same count to ensure variety among the "empties"
-        # We group by count
-        from itertools import groupby
-        final_underserved_topics = []
-        
-        for count, group in groupby(scored_topics, key=lambda x: x[0]):
-            group_list = list(group)
-            random.shuffle(group_list)
-            final_underserved_topics.extend([x[1] for x in group_list])
-            
-        underserved_topics = final_underserved_topics
-            
-        logging.info(f"📉 Found {len(underserved_topics)}/{len(topics)} underserved topics. Processing Order (Starts with 0-count): {underserved_topics[:5]}...")
-        
-        # 2. Parallel Batch Generation
-        # Group into batches of 3 topics
-        batch_size = 3
-        total_generated = 0
-        
-        # Determine number of needed questions
-        remaining_needed = max_questions
-        
-        # Prepare valid batches
-        batches = []
-        for i in range(0, len(underserved_topics), batch_size):
-            if remaining_needed <= 0:
-                break
-                
-            batch_topics = underserved_topics[i:i + batch_size]
-            ask_count = min(5, remaining_needed)
-            batches.append((batch_topics, ask_count))
-            remaining_needed -= ask_count
-
-        logging.info(f"⚡ Parallelizing {len(batches)} batches...")
-        
-        import asyncio
-        from settings_manager import settings_manager
-        
-        # Get concurrency from settings (default 3)
-        settings = settings_manager.get_settings()
-        limit = settings.get("max_concurrency", 3)
-        
-        logging.info(f"🚦 Concurrency Limit: {limit}")
-        semaphore = asyncio.Semaphore(limit) 
-
-        async def process_batch(topics_chunk, count):
-            async with semaphore:
-                try:
-                    q_list = await ai_service.generate_questions_logic(
-                        subject, 
-                        level, 
-                        num_questions=count, 
-                        context_func=get_context,
-                        specific_topics=topics_chunk
-                    )
-                    if q_list:
-                        await QuestionBankService.add_questions(q_list, subject, level, status="STAGING")
-                        return len(q_list)
-                    return 0
-                except Exception as e:
-                    logging.error(f"❌ Batch failed: {e}")
-                    return 0
-
-        # Execute parallel tasks
-        tasks = [process_batch(b[0], b[1]) for b in batches]
-        results = await asyncio.gather(*tasks)
-        
-        total_generated = sum(results)
-        
-        if total_generated > 0:
-            # 3. ATOMIC PROMOTION
-            await QuestionBankService.promote_staging_to_active(subject, level)
-        
-        return {"success": True, "generated_count": total_generated, "message": f"Generated {total_generated} questions in parallel"}
+            print(f"❌ Generation Error: {e}", flush=True)
+            raise e
+        finally:
+            total_duration = time.time() - start_time
+            print(f"⏱️ Total Generation Latency: {total_duration:.2f} seconds", flush=True)
         
     @staticmethod
     async def replenish_check(subject, level):

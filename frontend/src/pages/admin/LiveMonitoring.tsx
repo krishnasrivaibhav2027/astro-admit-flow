@@ -39,7 +39,8 @@ const LiveMonitoring = () => {
         try {
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
-            const backendUrl = import.meta.env.VITE_BACKEND_URL;
+            // HARDCODED DEBUG: Force connection to backend port 8001
+            const backendUrl = 'http://localhost:8001';
 
             const response = await fetch(`${backendUrl}/api/admin/monitoring/live`, {
                 headers: {

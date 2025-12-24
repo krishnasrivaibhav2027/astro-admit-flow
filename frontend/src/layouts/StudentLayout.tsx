@@ -1,5 +1,6 @@
 import { ContactAdminModal } from "@/components/ContactAdminModal";
 import { StudentHeader } from "@/components/StudentHeader";
+import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -7,6 +8,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 const StudentLayout = () => {
     const location = useLocation();
     const navigate = useNavigate();
+    const { toast } = useToast();
     const [checking, setChecking] = useState(true);
 
     useEffect(() => {
@@ -36,6 +38,20 @@ const StudentLayout = () => {
                     const studentData = await response.json();
                     sessionStorage.setItem('studentId', studentData.id);
                     sessionStorage.setItem('studentEmail', studentData.email);
+
+                    // CHECK FOR INCOMPLETE PROFILE
+                    // New users created via Google Auth trigger have age=0, phone=""
+                    const isProfileIncomplete = studentData.age === 0 || !studentData.phone;
+
+                    if (isProfileIncomplete) {
+                        if (location.pathname !== '/profile') {
+                            toast({
+                                title: "Profile Incomplete",
+                                description: "Please complete your profile details to continue.",
+                            });
+                            navigate('/profile');
+                        }
+                    }
 
                     // If everything is good, we stop checking
                     setChecking(false);

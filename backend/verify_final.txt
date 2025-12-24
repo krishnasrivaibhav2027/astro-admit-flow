@@ -1,0 +1,4 @@
+INFO:root:\U0001f9ea Testing Hybrid RAG Components...
+ERROR:root:\u274c Failed to connect to Redis: Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.
+ERROR:root:\u274c Failed to connect to Redis: Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.
+ERROR:root:\u274c Redis Connection: Failed

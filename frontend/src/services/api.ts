@@ -9,7 +9,8 @@ export const api = {
         attempts_medium: number;
         attempts_hard: number;
     }) => {
-        const backendUrl = import.meta.env.VITE_BACKEND_URL;
+        // HARDCODED DEBUG: Force connection to backend port 8001 (Changed due to Redis Insight conflict on 8001)
+        const backendUrl = 'http://localhost:8001';
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
 

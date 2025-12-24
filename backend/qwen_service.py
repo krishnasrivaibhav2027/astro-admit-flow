@@ -112,5 +112,5 @@ def chat(req: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    # Run on 8001 to avoid conflicting with main backend (8000)
-    uvicorn.run(app, host="127.0.0.1", port=8001)
+    # Run on 8002 to avoid conflicting with main backend (8001)
+    uvicorn.run(app, host="127.0.0.1", port=8002)
