@@ -160,6 +160,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files for generated images
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+
+# Create static directory if it doesn't exist
+static_images_dir = Path("static/generated_images")
+static_images_dir.mkdir(parents=True, exist_ok=True)
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 api_router = APIRouter(prefix="/api")
 
 @app.on_event("startup")
@@ -181,7 +192,16 @@ async def startup_event():
     # 2. Redis
     redis_manager._initialize()
     
-    # 3. Trigger RAG Ingestion in Background
+    # 3. Initialize Checkpointer (Async)
+    try:
+        from chatbot_graph import get_checkpointer
+        checkpointer = await get_checkpointer()
+        if checkpointer:
+            print("✅ LangGraph Redis Checkpointer initialized.")
+    except Exception as e:
+        print(f"⚠️ Checkpointer init warning: {e}")
+    
+    # 4. Trigger RAG Ingestion in Background
     # REMOVED per user request: Ingestion is now lazy-loaded on "Generate Questions".
     pass
 
@@ -213,6 +233,10 @@ app.include_router(admin_router)
 # Include Chat Router
 from chat_routes import router as chat_router
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
+
+# Include LangGraph Chatbot Router
+from chatbot_routes import router as chatbot_graph_router
+app.include_router(chatbot_graph_router, prefix="/api/bot", tags=["bot"])
 
 # CRITICAL: Include the main API router (Student, Auth, Health, etc.)
 # This was missing, causing 404s for /api/logout, /api/students, etc.
@@ -1250,10 +1274,11 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                 subject = "physics" # Default
                 student_id_val = None
                 # Fetch result to get subject and student_id
-                res_meta = supabase.table("results").select("subject, student_id").eq("id", result_id).execute()
+                res_meta = supabase.table("results").select("subject, student_id, level").eq("id", result_id).execute()
                 if res_meta.data:
                     subject = res_meta.data[0].get("subject", "physics")
                     student_id_val = res_meta.data[0].get("student_id")
+                    level = res_meta.data[0].get("level", "medium")
                 
                 context_docs = get_context(q.get('question_text', ''), subject=subject, k=rag_k)
                 context = "\n\n".join(context_docs) if context_docs else ""
@@ -1284,12 +1309,21 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
 
                 response_text = response.content.strip()
                 
-                # Clean up response
-                if response_text.startswith('```'):
-                    response_text = response_text.split('```')[1]
-                    if response_text.startswith('json'):
-                        response_text = response_text[4:]
-                    response_text = response_text.strip()
+                # Clean up response - Robust JSON extraction
+                import re
+                try:
+                    # Try to find JSON block in markdown code fences first
+                    json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", response_text, re.DOTALL)
+                    if json_match:
+                        response_text = json_match.group(1)
+                    else:
+                        # Fallback: try to find the first '{' and the last '}'
+                        start_idx = response_text.find('{')
+                        end_idx = response_text.rfind('}')
+                        if start_idx != -1 and end_idx != -1:
+                            response_text = response_text[start_idx:end_idx+1]
+                except Exception as parse_err:
+                    logging.warning(f"Regex JSON extraction failed: {parse_err}. Using original text.")
                 
                 # Parse evaluation
                 try:
@@ -1355,6 +1389,8 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
                     })
             except Exception as e:
                 logging.error(f"Error evaluating question {idx}: {e}")
+                import traceback
+                logging.error(traceback.format_exc())
                 # Strict fallback: fail on error
                 all_evaluations.append({
                     "question_number": idx,
@@ -1457,6 +1493,88 @@ async def evaluate_answers(request: EvaluateAnswersRequest, current_user: Dict =
             # Continue even if update fails
         
         logging.info(f"✅ Evaluation complete: {score_out_of_10:.1f}/10 - {result_status.upper()}")
+        
+        # --- CHATBOT NOTIFICATION TRIGGER ---
+        try:
+            from chatbot_graph import get_graph
+            from langchain_core.messages import AIMessage
+            
+            # --- ENHANCED: Extract specific insights for proactive message ---
+            wrong_questions = [e for e in all_evaluations if e['average'] < 6.0]
+            wrong_count = len(wrong_questions)
+            total_count = len(all_evaluations)
+            
+            # Identify weak topics from wrong questions
+            from chatbot_tools import _extract_topic_from_question
+            weak_topics_set = set()
+            for wq in wrong_questions:
+                topic = _extract_topic_from_question(wq.get('question', ''), subject)
+                if topic != "General Concepts":
+                    weak_topics_set.add(topic)
+            weak_topics_list = list(weak_topics_set)[:3]  # Top 3
+            
+            # Build a specific, actionable message
+            if result_status == 'pass':
+                msg_content = f"""🌟 **Congratulations!** You passed the {level.capitalize()} level of {subject.capitalize()}!
+
+**📊 Your Score:** {score_out_of_10:.1f}/10
+
+**📈 Performance Breakdown:**
+- Correct: {total_count - wrong_count}/{total_count} questions
+- Areas of strength: Great job overall!
+
+**💡 What's Next?**
+Ask me to "analyze my test" for detailed insights, or prepare for the next level!
+"""
+            else:
+                # Build specific weak areas message
+                topics_str = ', '.join(weak_topics_list) if weak_topics_list else 'various topics'
+                
+                msg_content = f"""📝 **Test Completed:** {subject.capitalize()} - {level.capitalize()}
+
+**📊 Your Score:** {score_out_of_10:.1f}/10 ({wrong_count}/{total_count} questions need review)
+
+**🔍 Areas Needing Attention:**
+{chr(10).join(f'• {topic}' for topic in weak_topics_list) if weak_topics_list else '• Review the fundamentals'}
+
+**💬 I'm here to help! Try asking:**
+- "What did I get wrong?"
+- "Explain question {wrong_questions[0]['question_number'] if wrong_questions else 1}"
+- "Give me a study plan for {weak_topics_list[0] if weak_topics_list else subject}"
+- "Show me videos on {topics_str}"
+
+Let's turn this into a learning opportunity! 💪
+"""
+            
+            # We use 'student_id' as the thread_id for simplicity in this 1:1 context
+            thread_id = f"chat_{student_id}" 
+            config = {"configurable": {"thread_id": thread_id}}
+            
+            # Inject directly using async graph
+            graph = await get_graph()
+            await graph.aupdate_state(config, {"messages": [AIMessage(content=msg_content)]})
+            
+            # IMPORTANT: Persist to Supabase as UNREAD message for the "Red Dot" notification
+            try:
+                import chat_history_service
+                chat_history_service.save_message(
+                    thread_id=thread_id,
+                    student_id=student_id,
+                    role="assistant",
+                    content=msg_content,
+                    is_read=False  # Mark as unread so it triggers notification
+                )
+                logging.info(f"🤖 Chatbot notification persisted (UNREAD) for {student_id}")
+            except Exception as hist_err:
+                logging.error(f"Failed to persist chatbot notification: {hist_err}")
+
+            logging.info(f"🤖 Chatbot notification sent for {student_id}")
+            
+        except Exception as chat_err:
+            logging.error(f"Failed to trigger chatbot notification: {chat_err}")
+            import traceback
+            logging.error(traceback.format_exc())
+            # Non-blocking error
         
         # Format criteria as list for Frontend
         criteria_list = [{"name": k, "score": v} for k, v in criteria_averages.items()]
@@ -1604,6 +1722,13 @@ Next Steps:
 
     
         logging.info(f"✅ Evaluation complete: {score_out_of_10:.1f}/10 - {result_status.upper()}")
+        
+        # Update student final scores for leaderboard (async, non-blocking)
+        if student_id_val:
+            try:
+                await update_student_final_scores(student_id_val)
+            except Exception as e:
+                logging.warning(f"Failed to update final scores (non-critical): {e}")
         
         return {
             "result_id": result_id,
@@ -1875,6 +2000,8 @@ class AIReviewRequest(BaseModel):
     student_answer: str
     level: str
     subject: Optional[str] = "physics"
+    question_id: Optional[str] = None  # Added for caching support
+
 
 @api_router.post("/ai-review")
 async def generate_ai_review(request: AIReviewRequest, current_user: Dict = Depends(get_current_user)):
@@ -1883,6 +2010,26 @@ async def generate_ai_review(request: AIReviewRequest, current_user: Dict = Depe
         logging.info(f"🔒 Authenticated AI review request from: {current_user['email']}")
         
         subject = request.subject.lower() if request.subject else "physics"
+        
+        # Check if a cached review exists for this question
+        print(f"🔍 AI Review request - question_id: {request.question_id}")
+        
+        if request.question_id:
+            try:
+                cached_review = supabase.table("ai_reviews").select("review_content").eq("question_id", request.question_id).execute()
+                print(f"🔍 Cache lookup result: {len(cached_review.data) if cached_review.data else 0} records found")
+                
+                if cached_review.data and len(cached_review.data) > 0:
+                    print(f"✅ Returning cached AI review for question {request.question_id}")
+                    return {
+                        "review": cached_review.data[0]["review_content"],
+                        "success": True,
+                        "cached": True
+                    }
+                else:
+                    print(f"📝 No cached review found, will generate new one")
+            except Exception as cache_error:
+                print(f"⚠️ Cache lookup failed: {cache_error}")
         
         # Initialize LLM
         from ai_service import get_llm
@@ -1929,11 +2076,48 @@ Provide a detailed, educational review (200-300 words) that helps the student le
         response = llm.invoke(review_prompt)
         review_text = response.content.strip()
         
+        # Cache the review if question_id is provided
+        if request.question_id:
+            try:
+                # Get student_id and result_id from the question
+                logging.info(f"🔍 Looking up question data for: {request.question_id}")
+                question_data = supabase.table("questions").select("result_id").eq("id", request.question_id).execute()
+                logging.info(f"🔍 Question lookup result: {len(question_data.data) if question_data.data else 0} records")
+                
+                if question_data.data and len(question_data.data) > 0:
+                    result_id = question_data.data[0]["result_id"]
+                    logging.info(f"🔍 Found result_id: {result_id}")
+                    
+                    # Get student_id from results table
+                    result_data = supabase.table("results").select("student_id").eq("id", result_id).execute()
+                    
+                    if result_data.data and len(result_data.data) > 0:
+                        student_id = result_data.data[0]["student_id"]
+                        logging.info(f"🔍 Found student_id: {student_id}")
+                        
+                        # Insert the cached review
+                        logging.info(f"📝 Inserting AI review into cache...")
+                        insert_result = supabase.table("ai_reviews").insert({
+                            "question_id": request.question_id,
+                            "result_id": result_id,
+                            "student_id": student_id,
+                            "subject": subject,
+                            "review_content": review_text
+                        }).execute()
+                        logging.info(f"✅ AI review cached for question {request.question_id}, insert result: {len(insert_result.data) if insert_result.data else 'unknown'} rows")
+                    else:
+                        logging.warning(f"⚠️ Could not find student_id for result: {result_id}")
+                else:
+                    logging.warning(f"⚠️ Could not find question with id: {request.question_id}")
+            except Exception as cache_error:
+                logging.warning(f"Failed to cache AI review: {cache_error}")
+        
         logging.info("✅ AI review generated successfully")
         
         return {
             "review": review_text,
-            "success": True
+            "success": True,
+            "cached": False
         }
         
     except Exception as e:
@@ -2095,15 +2279,54 @@ Respond in this JSON format:
                 response_text = response_text[4:]
             response_text = response_text.strip()
         
-        # Parse JSON
-        notes_data = json.loads(response_text)
+        # Parse JSON with fallback for invalid escape sequences (LaTeX like \frac, \pi, etc)
+        import re
+        
+        def fix_json_escapes(text):
+            """Fix invalid escape sequences in JSON by escaping backslashes properly"""
+            # First, temporarily protect valid JSON escapes
+            text = text.replace('\\n', '<<<NEWLINE>>>')
+            text = text.replace('\\t', '<<<TAB>>>')
+            text = text.replace('\\r', '<<<RETURN>>>')
+            text = text.replace('\\"', '<<<QUOTE>>>')
+            text = text.replace('\\\\', '<<<BACKSLASH>>>')
+            # Now escape any remaining backslashes
+            text = text.replace('\\', '\\\\')
+            # Restore valid escapes
+            text = text.replace('<<<NEWLINE>>>', '\\n')
+            text = text.replace('<<<TAB>>>', '\\t')
+            text = text.replace('<<<RETURN>>>', '\\r')
+            text = text.replace('<<<QUOTE>>>', '\\"')
+            text = text.replace('<<<BACKSLASH>>>', '\\\\')
+            return text
+        
+        try:
+            notes_data = json.loads(response_text)
+        except json.JSONDecodeError as e:
+            logging.warning(f"Initial JSON parse failed: {e}, attempting to fix escape sequences")
+            # Try to extract JSON object and fix escapes
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                fixed_text = fix_json_escapes(json_match.group(0))
+                try:
+                    notes_data = json.loads(fixed_text)
+                except json.JSONDecodeError as e2:
+                    logging.error(f"Could not parse AI notes even after fixing escapes: {e2}")
+                    notes_data = {"topic_notes": []}
+            else:
+                logging.error("No JSON object found in AI notes response")
+                notes_data = {"topic_notes": []}
+        
         topic_notes = notes_data.get("topic_notes", [])
+
+
         
         # Store in database for caching
         supabase.table("ai_notes").insert({
             "result_id": result_id,
             "student_id": student_id,
             "level": level,
+            "subject": actual_subject,  # Added for Student -> Subject -> Level relationship
             "topic_notes": topic_notes,
             "incorrect_count": len(incorrect_questions)
         }).execute()
@@ -2125,123 +2348,357 @@ Respond in this JSON format:
 
 
 # ===== LEADERBOARD =====
-@api_router.get("/leaderboard")
-async def get_leaderboard():
-    """Get leaderboard data for all students"""
-    try:
-        # Get all test results
-        all_results = supabase.table("results").select("*").order("created_at", desc=False).execute()
-        
-        if not all_results.data:
-            return {"hard_leaderboard": [], "medium_leaderboard": []}
-        
-        # Group results by student
-        student_results = {}
-        for result in all_results.data:
-            student_id = result['student_id']
-            if student_id not in student_results:
-                student_results[student_id] = {
-                    'easy': None,
-                    'medium': None,
-                    'hard': None
-                }
+
+def format_time_smart(seconds: int) -> dict:
+    """
+    Format time in smart units: minutes -> hours -> days
+    Returns dict with value and unit
+    """
+    if seconds is None or seconds <= 0:
+        return {"value": 0, "unit": "min", "display": "0m"}
+    
+    if seconds >= 86400:  # 24 hours = 86400 seconds
+        value = round(seconds / 86400, 1)
+        return {"value": value, "unit": "days", "display": f"{value}d"}
+    elif seconds >= 3600:  # 60 minutes = 3600 seconds
+        value = round(seconds / 3600, 1)
+        return {"value": value, "unit": "hours", "display": f"{value}h"}
+    else:
+        value = round(seconds / 60, 1)
+        return {"value": value, "unit": "min", "display": f"{value}m"}
+
+
+def calculate_composite_score(results: dict, include_hard: bool = True) -> dict:
+    """
+    Calculate composite leaderboard score using multiple factors:
+    - Difficulty-Weighted Score (50%): Harder levels weighted more
+    - Time Efficiency Score (25%): Faster completion = higher score
+    - Attempt Efficiency Score (25%): Fewer attempts = higher score
+    - Bonuses: Perfect run (+0.5), Hard completion (+0.3)
+    
+    Returns dict with composite_score and breakdown
+    """
+    # Difficulty weights for each level
+    DIFFICULTY_WEIGHTS = {'easy': 1.0, 'medium': 1.3, 'hard': 1.6}
+    
+    # Reference times in seconds (expected completion time)
+    REFERENCE_TIMES = {'easy': 600, 'medium': 900, 'hard': 1200}
+    
+    # Component weights
+    WEIGHT_DIFFICULTY = 0.50
+    WEIGHT_TIME = 0.25
+    WEIGHT_EFFICIENCY = 0.25
+    
+    levels_to_check = ['easy', 'medium', 'hard'] if include_hard else ['easy', 'medium']
+    
+    # === 1. Difficulty-Weighted Score ===
+    weighted_sum = 0
+    max_possible = 0
+    
+    for level in levels_to_check:
+        result = results.get(level)
+        if result and result.get('result') == 'pass':
+            score = result.get('score', 0)
+            weight = DIFFICULTY_WEIGHTS[level]
+            weighted_sum += score * weight
+            max_possible += 10 * weight
+    
+    # Normalize to 0-10 scale
+    difficulty_score = (weighted_sum / max_possible * 10) if max_possible > 0 else 0
+    
+    # === 2. Time Efficiency Score ===
+    time_scores = []
+    total_time = 0
+    
+    for level in levels_to_check:
+        result = results.get(level)
+        if result and result.get('result') == 'pass':
+            time_taken = result.get('time_taken', 0)
+            total_time += time_taken
             
-            level = result['level']
-            # Keep only the passed result or latest attempt
-            if student_results[student_id][level] is None or result['result'] == 'pass':
-                student_results[student_id][level] = result
+            if time_taken > 0:
+                reference = REFERENCE_TIMES[level]
+                time_ratio = reference / time_taken
+                level_time_score = min(10, time_ratio * 5)
+                time_scores.append(level_time_score)
+            else:
+                time_scores.append(5)
+    
+    time_score = sum(time_scores) / len(time_scores) if time_scores else 5
+    
+    # === 3. Attempt Efficiency Score ===
+    efficiency_scores = []
+    all_first_attempt = True
+    
+    for level in levels_to_check:
+        result = results.get(level)
+        if result and result.get('result') == 'pass':
+            attempts_key = f'attempts_{level}'
+            attempts = result.get(attempts_key, 1)
+            if attempts == 0:
+                attempts = 1
+            
+            level_efficiency = (1 / attempts) * 10
+            efficiency_scores.append(level_efficiency)
+            
+            if attempts > 1:
+                all_first_attempt = False
+    
+    efficiency_score = sum(efficiency_scores) / len(efficiency_scores) if efficiency_scores else 5
+    
+    # === 4. Bonuses ===
+    bonuses = 0
+    bonus_details = []
+    
+    if all_first_attempt and len(efficiency_scores) == len(levels_to_check):
+        bonuses += 0.5
+        bonus_details.append("Perfect Run +0.5")
+    
+    if include_hard and results.get('hard') and results['hard'].get('result') == 'pass':
+        bonuses += 0.3
+        bonus_details.append("Hard Completion +0.3")
+    
+    # === Calculate Composite Score ===
+    composite_score = (
+        (difficulty_score * WEIGHT_DIFFICULTY) +
+        (time_score * WEIGHT_TIME) +
+        (efficiency_score * WEIGHT_EFFICIENCY) +
+        bonuses
+    )
+    
+    return {
+        'composite_score': round(composite_score, 2),
+        'score_breakdown': {
+            'difficulty_weighted': round(difficulty_score, 2),
+            'time_efficiency': round(time_score, 2),
+            'attempt_efficiency': round(efficiency_score, 2),
+            'bonuses': round(bonuses, 2),
+            'bonus_details': bonus_details
+        },
+        'total_time_seconds': total_time
+    }
+
+
+async def update_student_final_scores(student_id: str):
+    """
+    Update the student_final_scores table with computed scores.
+    Called after each test completion to keep leaderboard data fresh.
+    """
+    try:
+        # Get all results for this student
+        results_response = supabase.table("results").select("*").eq("student_id", student_id).order("created_at", desc=False).execute()
+        
+        if not results_response.data:
+            return
+        
+        # Group by level, keeping best/passed result
+        student_results = {'easy': None, 'medium': None, 'hard': None}
+        total_time_all_attempts = 0
+        
+        for result in results_response.data:
+            level = result.get('level')
+            if level not in student_results:
+                continue
+            
+            # Accumulate ALL time spent (pass or fail)
+            time_taken = result.get('time_taken', 0) or 0
+            total_time_all_attempts += time_taken
+            
+            # Keep passed result or latest
+            if student_results[level] is None or result.get('result') == 'pass':
+                student_results[level] = result
+        
+        # Determine highest level passed
+        highest_level = None
+        levels_passed = 0
+        for level in ['hard', 'medium', 'easy']:
+            if student_results[level] and student_results[level].get('result') == 'pass':
+                if highest_level is None:
+                    highest_level = level
+                levels_passed += 1
+        
+        # Calculate composite score (always include all levels attempted)
+        include_hard = student_results['hard'] is not None
+        score_data = calculate_composite_score(student_results, include_hard=include_hard)
+        
+        # Determine if passed (at least medium level)
+        is_passed = student_results.get('medium') and student_results['medium'].get('result') == 'pass'
+        
+        # Get concession if any
+        concession = 0
+        for result in results_response.data:
+            if result.get('concession'):
+                concession = max(concession, result.get('concession', 0))
+        
+        # Upsert to student_final_scores
+        upsert_data = {
+            'student_id': student_id,
+            'total_time_seconds': total_time_all_attempts,
+            'composite_score': score_data['composite_score'],
+            'score_breakdown': score_data['score_breakdown'],
+            'levels_passed': levels_passed,
+            'highest_level': highest_level,
+            'concession': concession,
+            'is_passed': is_passed,
+            'last_updated': datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Check if exists and update, or insert
+        existing = supabase.table("student_final_scores").select("id").eq("student_id", student_id).execute()
+        
+        if existing.data and len(existing.data) > 0:
+            supabase.table("student_final_scores").update(upsert_data).eq("student_id", student_id).execute()
+        else:
+            supabase.table("student_final_scores").insert(upsert_data).execute()
+        
+        logging.info(f"✅ Updated final scores for student {student_id}: score={score_data['composite_score']}, time={total_time_all_attempts}s")
+        
+    except Exception as e:
+        logging.error(f"Error updating student final scores: {e}")
+        logging.error("Traceback: ", exc_info=True)
+
+
+@api_router.get("/leaderboard")
+async def get_leaderboard(time_period: str = Query("all", description="Filter by time: 'week', 'month', or 'all'")):
+    """Get unified leaderboard data for all students with composite scoring and time filtering"""
+    try:
+        # Calculate date filter based on time_period
+        from datetime import timedelta
+        
+        date_filter = None
+        now = datetime.now(timezone.utc)
+        
+        if time_period == "week":
+            date_filter = (now - timedelta(days=7)).isoformat()
+        elif time_period == "month":
+            date_filter = (now - timedelta(days=30)).isoformat()
+        # "all" means no date filter
+        
+        # Try to fetch from student_final_scores table first
+        query = supabase.table("student_final_scores").select("*")
+        
+        if date_filter:
+            query = query.gte("last_updated", date_filter)
+        
+        final_scores = query.order("composite_score", desc=True).execute()
         
         # Get student details
         students_response = supabase.table("students").select("id, first_name, last_name, email").execute()
         students_map = {s['id']: s for s in students_response.data}
         
-        hard_leaderboard = []
-        medium_leaderboard = []
+        leaderboard = []
         
-        for student_id, results in student_results.items():
-            if student_id not in students_map:
-                continue
-            
-            student_info = students_map[student_id]
-            student_name = f"{student_info['first_name']} {student_info['last_name']}"
-            
-            # Check if passed hard level
-            hard_result = results['hard']
-            if hard_result and hard_result['result'] == 'pass':
-                # Calculate total score and time for all levels
-                total_score = 0
-                total_time = 0
-                levels_completed = 0
+        if final_scores.data and len(final_scores.data) > 0:
+            # Use pre-computed scores from student_final_scores
+            for score_entry in final_scores.data:
+                student_id = score_entry['student_id']
+                if student_id not in students_map:
+                    continue
                 
-                for level in ['easy', 'medium', 'hard']:
-                    if results[level] and results[level]['result'] == 'pass':
-                        total_score += results[level].get('score', 0)
-                        # Time taken = timer duration - time remaining (if available)
-                        # For now, we'll use a simple calculation
-                        levels_completed += 1
+                # Only include students who have passed at least one level
+                if score_entry.get('levels_passed', 0) == 0:
+                    continue
                 
-                # Calculate total time from all level attempts
-                # Assuming each level stores time_taken or we calculate from created_at timestamps
-                easy_time = results['easy'].get('time_taken', 0) if results['easy'] else 0
-                medium_time = results['medium'].get('time_taken', 0) if results['medium'] else 0
-                hard_time = hard_result.get('time_taken', 0)
+                student_info = students_map[student_id]
+                student_name = f"{student_info['first_name']} {student_info['last_name']}"
                 
-                total_time = easy_time + medium_time + hard_time
-                avg_score = total_score / levels_completed if levels_completed > 0 else 0
+                time_formatted = format_time_smart(score_entry.get('total_time_seconds', 0))
                 
-                hard_leaderboard.append({
-                    'rank': 0,  # Will be set after sorting
-                    'student_name': student_name,
-                    'total_score': round(avg_score, 2),
-                    'total_time_minutes': round(total_time / 60, 1) if total_time > 0 else 0,
-                    'levels_passed': levels_completed,
-                    'email': student_info['email']
-                })
-            
-            # Check if passed medium but not hard
-            medium_result = results['medium']
-            if medium_result and medium_result['result'] == 'pass' and (not hard_result or hard_result['result'] != 'pass'):
-                # Calculate score and time for easy + medium
-                total_score = 0
-                total_time = 0
-                levels_completed = 0
-                
-                for level in ['easy', 'medium']:
-                    if results[level] and results[level]['result'] == 'pass':
-                        total_score += results[level].get('score', 0)
-                        levels_completed += 1
-                
-                easy_time = results['easy'].get('time_taken', 0) if results['easy'] else 0
-                medium_time = medium_result.get('time_taken', 0)
-                
-                total_time = easy_time + medium_time
-                avg_score = total_score / levels_completed if levels_completed > 0 else 0
-                
-                medium_leaderboard.append({
+                leaderboard.append({
                     'rank': 0,
                     'student_name': student_name,
-                    'total_score': round(avg_score, 2),
-                    'total_time_minutes': round(total_time / 60, 1) if total_time > 0 else 0,
-                    'levels_passed': levels_completed,
-                    'email': student_info['email']
+                    'email': student_info['email'],
+                    'composite_score': score_entry.get('composite_score', 0),
+                    'total_score': score_entry.get('composite_score', 0),  # Backward compatibility
+                    'score_breakdown': score_entry.get('score_breakdown', {}),
+                    'total_time': time_formatted,
+                    'total_time_seconds': score_entry.get('total_time_seconds', 0),
+                    'levels_passed': score_entry.get('levels_passed', 0),
+                    'highest_level': score_entry.get('highest_level'),
+                    'is_passed': score_entry.get('is_passed', False),
+                    'concession': score_entry.get('concession', 0),
+                    'last_updated': score_entry.get('last_updated')
                 })
+        else:
+            # Fallback: Calculate on-the-fly from results table
+            results_query = supabase.table("results").select("*")
+            
+            if date_filter:
+                results_query = results_query.gte("created_at", date_filter)
+            
+            all_results = results_query.order("created_at", desc=False).execute()
+            
+            if all_results.data:
+                student_results = {}
+                student_total_time = {}
+                
+                for result in all_results.data:
+                    student_id = result['student_id']
+                    if student_id not in student_results:
+                        student_results[student_id] = {'easy': None, 'medium': None, 'hard': None}
+                        student_total_time[student_id] = 0
+                    
+                    # Accumulate time
+                    student_total_time[student_id] += result.get('time_taken', 0) or 0
+                    
+                    level = result['level']
+                    if student_results[student_id][level] is None or result['result'] == 'pass':
+                        student_results[student_id][level] = result
+                
+                for student_id, results in student_results.items():
+                    if student_id not in students_map:
+                        continue
+                    
+                    # Calculate levels passed and highest
+                    levels_passed = 0
+                    highest_level = None
+                    for level in ['hard', 'medium', 'easy']:
+                        if results[level] and results[level].get('result') == 'pass':
+                            if highest_level is None:
+                                highest_level = level
+                            levels_passed += 1
+                    
+                    if levels_passed == 0:
+                        continue
+                    
+                    student_info = students_map[student_id]
+                    student_name = f"{student_info['first_name']} {student_info['last_name']}"
+                    
+                    include_hard = results['hard'] is not None
+                    score_data = calculate_composite_score(results, include_hard=include_hard)
+                    time_formatted = format_time_smart(student_total_time[student_id])
+                    
+                    is_passed = results.get('medium') and results['medium'].get('result') == 'pass'
+                    
+                    leaderboard.append({
+                        'rank': 0,
+                        'student_name': student_name,
+                        'email': student_info['email'],
+                        'composite_score': score_data['composite_score'],
+                        'total_score': score_data['composite_score'],
+                        'score_breakdown': score_data['score_breakdown'],
+                        'total_time': time_formatted,
+                        'total_time_seconds': student_total_time[student_id],
+                        'levels_passed': levels_passed,
+                        'highest_level': highest_level,
+                        'is_passed': is_passed,
+                        'concession': 0
+                    })
         
-        # Sort leaderboards: by score (desc), then by time (asc)
-        hard_leaderboard.sort(key=lambda x: (-x['total_score'], x['total_time_minutes']))
-        medium_leaderboard.sort(key=lambda x: (-x['total_score'], x['total_time_minutes']))
+        # Sort: by composite_score (desc), then by time (asc) as tiebreaker
+        leaderboard.sort(key=lambda x: (-x['composite_score'], x.get('total_time_seconds', 0)))
         
         # Assign ranks
-        for idx, entry in enumerate(hard_leaderboard):
+        for idx, entry in enumerate(leaderboard):
             entry['rank'] = idx + 1
         
-        for idx, entry in enumerate(medium_leaderboard):
-            entry['rank'] = idx + 1
-        
-        logging.info(f"✅ Leaderboard generated: {len(hard_leaderboard)} hard, {len(medium_leaderboard)} medium")
+        logging.info(f"✅ Unified leaderboard generated: {len(leaderboard)} entries")
         
         return {
-            "hard_leaderboard": hard_leaderboard,
-            "medium_leaderboard": medium_leaderboard
+            "leaderboard": leaderboard,
+            # Backward compatibility
+            "hard_leaderboard": [e for e in leaderboard if e.get('highest_level') == 'hard'],
+            "medium_leaderboard": [e for e in leaderboard if e.get('highest_level') == 'medium']
         }
         
     except Exception as e:

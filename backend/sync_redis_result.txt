@@ -1,0 +1,3 @@
+Connecting to redis://localhost:6379...
+Redis PING success!
+Keys found: 0

@@ -7,7 +7,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from supabase import create_client, Client
 from redis_client import get_redis, redis_manager
 from rag_supabase import extract_text_from_pdf
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from graph_service import GraphService
 import numpy as np
 
