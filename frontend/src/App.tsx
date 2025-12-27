@@ -21,6 +21,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Results from "./pages/Results";
 import Review from "./pages/Review";
 import Signup from "./pages/Signup";
+import TarsAI from "./pages/TarsAI";
 import Test from "./pages/Test";
 
 // Admin Imports
@@ -79,6 +80,7 @@ const App = () => (
             <Route path="/ai-notes/:level" element={<AINotesPage />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/contact-admin" element={<ContactAdmin />} />
+            <Route path="/tars-ai" element={<TarsAI />} />
           </Route>
 
           {/* Admin Routes */}

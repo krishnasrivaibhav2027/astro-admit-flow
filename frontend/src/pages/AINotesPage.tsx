@@ -1,6 +1,5 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft, BookOpen, Brain, Lightbulb, Sparkles } from "lucide-react";
@@ -172,160 +171,196 @@ const AINotesPage = () => {
   };
 
   const getLevelColor = () => {
-    const colors: { [key: string]: string } = {
-      easy: "from-green-500 to-emerald-500",
-      medium: "from-blue-500 to-cyan-500",
-      hard: "from-purple-500 to-pink-500"
+    const colors: { [key: string]: { bg: string, text: string, dot: string } } = {
+      easy: { bg: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-500" },
+      medium: { bg: "bg-blue-500", text: "text-blue-600 dark:text-blue-400", dot: "bg-blue-500" },
+      hard: { bg: "bg-purple-500", text: "text-purple-600 dark:text-purple-400", dot: "bg-purple-500" }
     };
-    return colors[level || 'easy'] || "from-gray-500 to-gray-600";
+    return colors[level || 'easy'] || { bg: "bg-gray-500", text: "text-gray-600 dark:text-gray-400", dot: "bg-gray-500" };
+  };
+
+  const getTimelineColors = () => {
+    return [
+      { dot: "bg-purple-500", label: "text-purple-600 dark:text-purple-400" },
+      { dot: "bg-blue-500", label: "text-blue-600 dark:text-blue-400" },
+      { dot: "bg-green-500", label: "text-green-600 dark:text-green-400" },
+      { dot: "bg-yellow-500", label: "text-yellow-600 dark:text-yellow-400" },
+      { dot: "bg-red-500", label: "text-red-600 dark:text-red-400" },
+      { dot: "bg-pink-500", label: "text-pink-600 dark:text-pink-400" },
+      { dot: "bg-indigo-500", label: "text-indigo-600 dark:text-indigo-400" },
+      { dot: "bg-cyan-500", label: "text-cyan-600 dark:text-cyan-400" },
+    ];
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
         <div className="text-center space-y-4">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-primary mx-auto"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-emerald-500 mx-auto"></div>
           <div className="space-y-2">
-            <p className="text-xl font-semibold flex items-center justify-center gap-2">
+            <p className="text-xl font-semibold flex items-center justify-center gap-2 text-gray-900 dark:text-white">
               <Brain className="w-6 h-6 animate-pulse" />
               AI is analyzing your weak areas...
             </p>
-            <p className="text-muted-foreground">Generating personalized study notes</p>
+            <p className="text-gray-500 dark:text-slate-400">Generating personalized study notes</p>
           </div>
         </div>
       </div>
     );
   }
 
+  const levelColors = getLevelColor();
+  const timelineColors = getTimelineColors();
+
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      <div className="relative z-10 container max-w-6xl mx-auto px-4 py-12">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-slate-900 dark:to-slate-800 text-gray-900 dark:text-white px-4 py-8 lg:px-12">
+      <div className="w-full max-w-screen-2xl mx-auto">
+        {/* Back Button */}
         <Button
           variant="ghost"
+          className="mb-8 text-gray-500 hover:text-gray-900 hover:bg-gray-200 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
           onClick={() => navigate(`/review/${level}`, { state: { studentId: sessionStorage.getItem('studentId'), subject: subject } })}
-          className="mb-6"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Review
         </Button>
 
-        {/* Header */}
-        <Card className="mb-8 border-2 border-purple-200 dark:border-purple-800">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-3xl flex items-center gap-3">
-                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${getLevelColor()} flex items-center justify-center`}>
-                    <Brain className="w-6 h-6 text-white" />
-                  </div>
-                  {getLevelTitle()} - AI Study Notes
-                </CardTitle>
-              </div>
-              <Badge variant="secondary" className="text-lg px-4 py-2">
-                <Sparkles className="w-4 h-4 mr-2" />
-                {incorrectCount} Topics to Review
-              </Badge>
+        {/* Timeline Header */}
+        <div className="flex items-center gap-6 mb-16">
+          <div className={`w-16 h-16 rounded-full ${levelColors.bg} flex items-center justify-center shadow-lg`}>
+            <Brain className="w-8 h-8 text-white" />
+          </div>
+          <div>
+            <div className="text-sm text-gray-500 dark:text-slate-400 mb-1 uppercase tracking-wider">
+              {getLevelTitle()} • AI STUDY NOTES
             </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">
-              AI has analyzed your incorrect answers and generated personalized notes to help you improve in your weak areas.
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* No incorrect answers */}
-        {
-          topicNotes.length === 0 && (
-            <Card className="border-2 border-green-200 dark:border-green-800">
-              <CardContent className="p-12 text-center">
-                <div className="space-y-4">
-                  <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900 mx-auto flex items-center justify-center">
-                    <Sparkles className="w-10 h-10 text-green-600" />
-                  </div>
-                  <h3 className="text-2xl font-bold">Perfect Performance! 🎉</h3>
-                  <p className="text-muted-foreground">
-                    You answered all questions correctly. No weak areas identified!
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        }
-
-        {/* Topic Notes */}
-        <div className="space-y-6">
-          {topicNotes.map((topicNote, index) => (
-            <Card key={index} className={`border-2 hover:shadow-xl transition-shadow ${topicNote.isTyping ? 'ring-2 ring-purple-500 ring-opacity-50' : ''}`}>
-              <CardHeader className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className={`w-10 h-10 rounded-lg bg-purple-500 flex items-center justify-center ${topicNote.isTyping ? 'animate-pulse' : ''}`}>
-                        <BookOpen className="w-5 h-5 text-white" />
-                      </div>
-                      <CardTitle className="text-2xl">{topicNote.topic}</CardTitle>
-                      {topicNote.isTyping && (
-                        <Badge variant="secondary" className="animate-pulse">
-                          <Sparkles className="w-3 h-3 mr-1" />
-                          AI is typing...
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {topicNote.related_questions.map((question, qIdx) => (
-                        <Badge key={qIdx} variant="outline" className="text-xs">
-                          {question}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <Badge variant="secondary" className="flex items-center gap-1">
-                    <Lightbulb className="w-3 h-3" />
-                    {topicNote.related_questions.length} Question{topicNote.related_questions.length > 1 ? 's' : ''}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6">
-                {topicNote.displayedNotes ? (
-                  <div className="prose prose-sm max-w-none dark:prose-invert">
-                    {topicNote.displayedNotes.split('\n\n').map((paragraph, pIdx) => (
-                      paragraph.trim() && (
-                        <p key={pIdx} className="mb-4 leading-relaxed text-foreground">
-                          {paragraph}
-                        </p>
-                      )
-                    ))}
-                    {topicNote.isTyping && (
-                      <span className="inline-block w-2 h-4 ml-1 bg-purple-600 animate-pulse"></span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center py-8 text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-500"></div>
-                      <span>Waiting to generate...</span>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+              {incorrectCount > 0 ? `${incorrectCount} Topics to Review` : 'Performance Summary'}
+            </h1>
+          </div>
         </div>
 
-        {/* Back Button */}
-        <div className="mt-8 flex justify-center">
+        {/* No incorrect answers - Perfect Performance */}
+        {topicNotes.length === 0 && (
+          <div className="relative pl-12">
+            <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gray-300 dark:bg-slate-700"></div>
+            <div className="relative">
+              <div className="absolute -left-12 w-4 h-4 rounded-full bg-green-500 border-4 border-gray-50 dark:border-slate-900"></div>
+              <div className="bg-white dark:bg-slate-800 rounded-lg p-8 border border-gray-200 dark:border-slate-700 text-center shadow-lg">
+                <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-500/20 mx-auto flex items-center justify-center mb-4">
+                  <Sparkles className="w-10 h-10 text-green-500 dark:text-green-400" />
+                </div>
+                <h3 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Perfect Performance! 🎉</h3>
+                <p className="text-gray-500 dark:text-slate-400">
+                  You answered all questions correctly. No weak areas identified!
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Timeline */}
+        {topicNotes.length > 0 && (
+          <div className="relative pl-12 space-y-12">
+            {/* Vertical Line */}
+            <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gray-300 dark:bg-slate-700"></div>
+
+            {topicNotes.map((topicNote, index) => {
+              const color = timelineColors[index % timelineColors.length];
+
+              return (
+                <div key={index} className="relative">
+                  {/* Timeline Dot */}
+                  <div className={`absolute -left-12 w-4 h-4 rounded-full ${color.dot} border-4 border-gray-50 dark:border-slate-900 ${topicNote.isTyping ? 'animate-pulse' : ''}`}></div>
+
+                  {/* Content Card */}
+                  <div className={`bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden shadow-lg ${topicNote.isTyping ? 'ring-2 ring-purple-500/50' : ''}`}>
+                    {/* Card Header */}
+                    <div className="p-6 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50">
+                      <div className={`text-xs ${color.label} mb-2 flex items-center gap-2 uppercase tracking-wider font-semibold`}>
+                        <BookOpen className="w-3 h-3" />
+                        TOPIC {index + 1}
+                        {topicNote.isTyping && (
+                          <Badge variant="secondary" className="ml-2 animate-pulse bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-300 border-purple-200 dark:border-purple-500/30">
+                            <Sparkles className="w-3 h-3 mr-1" />
+                            AI is typing...
+                          </Badge>
+                        )}
+                      </div>
+                      <h3 className="text-xl font-bold mb-3 text-gray-900 dark:text-white">{topicNote.topic}</h3>
+
+                      {/* Related Questions */}
+                      <div className="flex flex-wrap gap-2">
+                        {topicNote.related_questions.map((question, qIdx) => (
+                          <span
+                            key={qIdx}
+                            className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300"
+                          >
+                            {question}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Card Content - Notes */}
+                    <div className="p-6">
+                      {topicNote.displayedNotes ? (
+                        <div className="text-gray-600 dark:text-slate-300 leading-relaxed space-y-4">
+                          {topicNote.displayedNotes.split('\n\n').map((paragraph, pIdx) => (
+                            paragraph.trim() && (
+                              <p key={pIdx}>
+                                {paragraph}
+                              </p>
+                            )
+                          ))}
+                          {topicNote.isTyping && (
+                            <span className="inline-block w-2 h-4 ml-1 bg-purple-500 animate-pulse rounded"></span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center py-8 text-gray-400 dark:text-slate-500">
+                          <div className="flex items-center gap-2">
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-500"></div>
+                            <span>Waiting to generate...</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Summary Item at End */}
+            <div className="relative">
+              <div className="absolute -left-12 w-4 h-4 rounded-full bg-emerald-500 border-4 border-gray-50 dark:border-slate-900"></div>
+              <div className="bg-gradient-to-r from-emerald-50 to-white dark:from-emerald-900/50 dark:to-slate-800 rounded-lg p-6 border border-emerald-200 dark:border-emerald-700/50 shadow-lg">
+                <div className="text-xs text-emerald-600 dark:text-emerald-400 mb-2 flex items-center gap-2 uppercase tracking-wider font-semibold">
+                  <Lightbulb className="w-3 h-3" />
+                  SUMMARY
+                </div>
+                <p className="text-gray-600 dark:text-slate-300">
+                  Focus on understanding these {topicNotes.length} topic{topicNotes.length > 1 ? 's' : ''} to improve your performance.
+                  Review the concepts above and practice similar questions.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Back Button at Bottom */}
+        <div className="mt-12 flex justify-center">
           <Button
             size="lg"
             onClick={() => navigate(`/review/${level}`, { state: { studentId: sessionStorage.getItem('studentId'), subject: subject } })}
-            className="px-8"
+            className="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-white px-8"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Review
           </Button>
         </div>
-      </div >
-    </div >
+      </div>
+    </div>
   );
 };
 

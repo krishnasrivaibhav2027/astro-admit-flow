@@ -98,7 +98,6 @@ const StudentLayout = () => {
                 <Outlet />
             </div>
 
-            {/* Floating Contact Button - Hide on contact page */}
             {location.pathname !== '/contact-admin' && <ContactAdminModal />}
         </div>
     );

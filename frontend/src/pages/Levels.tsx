@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useAppSettings, useStudentProgress } from "@/hooks/useAppQueries";
 import { motion } from "framer-motion";
-import { Atom, Award, Calculator, CheckCircle, Crown, FlaskConical, Lock, Target, TrendingUp, Trophy, Zap } from "lucide-react";
+import { Atom, Award, Bot, Calculator, CheckCircle, Crown, FlaskConical, Lock, Sparkles, Target, TrendingUp, Trophy, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -398,6 +398,39 @@ export default function Levels() {
                             />
                         </motion.div>
                     </div>
+                </motion.div>
+
+                {/* T.A.R.S AI Button */}
+                <motion.div
+                    className="max-w-4xl mx-auto mb-8 flex justify-center"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.35 }}
+                >
+                    <button
+                        onClick={() => navigate('/tars-ai')}
+                        className="group relative px-6 py-3 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-semibold shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all duration-300 flex items-center gap-3 overflow-hidden"
+                    >
+                        {/* Animated shine effect */}
+                        <motion.div
+                            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full"
+                            animate={{ x: ['0%', '200%'] }}
+                            transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+                        />
+
+                        <div className="relative flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                                <Bot className="w-5 h-5" />
+                            </div>
+                            <span>T.A.R.S AI</span>
+                            <motion.div
+                                animate={{ scale: [1, 1.2, 1] }}
+                                transition={{ duration: 2, repeat: Infinity }}
+                            >
+                                <Sparkles className="w-4 h-4 opacity-80" />
+                            </motion.div>
+                        </div>
+                    </button>
                 </motion.div>
 
                 {/* Subject Tabs */}

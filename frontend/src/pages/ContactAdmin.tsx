@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAdmins } from "@/hooks/useAppQueries";
+import { motion } from "framer-motion";
 import { Headset, Search, UserCog } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -39,7 +40,17 @@ const ContactAdmin = () => {
     }, [searchQuery, adminsList]);
 
     return (
-        <div className="min-h-screen bg-white dark:bg-slate-950 transition-colors duration-300">
+        <motion.div
+            className="min-h-screen bg-white dark:bg-slate-950 transition-colors duration-300"
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 20,
+                duration: 0.4
+            }}
+        >
             {/* Background Gradient */}
             <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/10 to-transparent pointer-events-none h-[400px]" />
 
@@ -135,7 +146,7 @@ const ContactAdmin = () => {
                     </div>
                 </div>
             </div>
-        </div>
+        </motion.div>
     );
 };
 
