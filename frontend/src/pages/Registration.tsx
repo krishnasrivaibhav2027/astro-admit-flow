@@ -2,6 +2,7 @@ import { LandingHeader } from "@/components/landing/LandingHeader";
 import { PasswordMatch, PasswordStrength } from "@/components/PasswordStrength";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -235,12 +236,22 @@ const Registration = () => {
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="dob">Date of Birth *</Label>
-                      <Input
-                        id="dob"
-                        type="date"
-                        required
-                        value={formData.dob}
-                        onChange={(e) => handleDobChange(e.target.value)}
+                      <DatePicker
+                        date={formData.dob ? new Date(formData.dob) : undefined}
+                        setDate={(date) => {
+                          if (date) {
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            handleDobChange(`${year}-${month}-${day}`);
+                          } else {
+                            handleDobChange("");
+                          }
+                        }}
+                        className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors dark:bg-slate-900 dark:border-slate-700 w-full"
+                        captionLayout="dropdown-buttons"
+                        fromYear={1900}
+                        toYear={new Date().getFullYear()}
                       />
                     </div>
 

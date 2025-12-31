@@ -34,20 +34,28 @@ admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
 # --- Admin Middleware ---
 async def get_current_admin(current_user: Dict = Depends(get_current_user)) -> Dict:
     """
-    Verify Token AND check if user is in admins table.
+    Verify Token AND check if user is in admins or super_admins table.
     """
     try:
         email = current_user.get('email', '')
         
-        # Check admins table
+        # 1. Check admins table
         response = supabase.table("admins").select("*").eq("email", email).execute()
         
-        if not response.data:
-            raise HTTPException(status_code=403, detail="Access denied: Admin profile not found")
+        if response.data:
+            admin_data = response.data[0]
+            return {**current_user, "admin_id": admin_data['id'], "role": admin_data['role']}
             
-        admin_data = response.data[0]
-        return {**current_user, "admin_id": admin_data['id'], "role": admin_data['role']}
+        # 2. Check super_admins table
+        response_sa = supabase.table("super_admins").select("*").eq("email", email).execute()
         
+        if response_sa.data:
+            sa_data = response_sa.data[0]
+            # Map super_admin fields to expected structure
+            return {**current_user, "admin_id": sa_data['id'], "role": sa_data.get('role', 'super_admin')}
+
+        raise HTTPException(status_code=403, detail="Access denied: Admin profile not found")
+            
     except HTTPException as he:
         raise he
     except Exception as e:
@@ -349,7 +357,12 @@ async def register_admin(admin_data: AdminCreate, user: Dict = Depends(get_curre
 async def get_admin_profile(admin: Dict = Depends(get_current_admin)):
     """Get current admin profile"""
     try:
-        response = supabase.table("admins").select("*").eq("id", admin['admin_id']).execute()
+        table_name = "super_admins" if admin.get('role') == 'super_admin' else "admins"
+        response = supabase.table(table_name).select("*").eq("id", admin['admin_id']).execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Profile not found")
+            
         return response.data[0]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Authentication & Authorization Flow Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            background: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #1e293b;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        h2 {
+            color: #475569;
+            text-align: center;
+            font-weight: 400;
+            margin-bottom: 40px;
+        }
+
+        .diagram-container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+            padding: 40px;
+            margin-bottom: 40px;
+            max-width: 1400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .diagram-title {
+            color: #10b981;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #d1fae5;
+        }
+
+        .mermaid {
+            display: flex;
+            justify-content: center;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Astro Admit Flow</h1>
+    <h2>Authentication & Authorization System</h2>
+
+    <!-- Diagram 1: Login Page Relations -->
+    <div class="diagram-container">
+        <div class="diagram-title">1. Login Pages and Entry Points</div>
+        <div class="mermaid">
+            flowchart TB
+            subgraph LoginPage["Unified Login Page"]
+            RoleToggle["Role Toggle: Student or Admin"]
+            InstDropdown["Institution Dropdown"]
+            AuthMethods["Auth: Email/Password + Google"]
+            end
+
+            RoleToggle --> StudentFlow
+            RoleToggle --> AdminFlow
+
+            subgraph StudentFlow["Student Login"]
+            S1["Must Select Institution"]
+            S2["Validate Credentials"]
+            S3["Check institution membership"]
+            end
+
+            subgraph AdminFlow["Admin Login"]
+            A1["Institution Optional for Super Admin"]
+            A2["Validate Credentials"]
+            A3["Check admin tables"]
+            end
+
+            StudentFlow --> AuthCallback["Auth Callback"]
+            AdminFlow --> AuthCallback
+        </div>
+    </div>
+
+    <!-- Diagram 2: New User Registration Flow -->
+    <div class="diagram-container">
+        <div class="diagram-title">2. Registration and Application Flow</div>
+        <div class="mermaid">
+            flowchart TB
+            NewUser["New User"] --> RoleChoice{"Select Role"}
+
+            RoleChoice --> StudentApply
+            RoleChoice --> OrgRegister
+
+            subgraph StudentApply["Student Application"]
+            SA1["Select Institution"]
+            SA2["Fill Personal Details"]
+            SA3["Upload Scorecard"]
+            SA4["Submit Request"]
+            SA1 --> SA2 --> SA3 --> SA4
+            end
+
+            subgraph OrgRegister["Organization Registration"]
+            OR1["Fill Org Details"]
+            OR2["Fill Admin Info"]
+            OR3["Submit Registration"]
+            OR1 --> OR2 --> OR3
+            end
+
+            SA4 --> PendingStudent["Pending Review"]
+            OR3 --> PendingOrg["Pending Approval"]
+
+            PendingStudent --> StudentDecision{"Decision"}
+            PendingOrg --> OrgDecision{"Decision"}
+
+            StudentDecision --> StudentApproved["Magic Link Sent"]
+            StudentDecision --> StudentRejected["24hr Cooldown"]
+
+            OrgDecision --> OrgApproved["Institution Activated"]
+            OrgDecision --> OrgRejected["Rejection Email"]
+
+            StudentApproved --> CanLogin["Can Login"]
+            OrgApproved --> CanLogin
+        </div>
+    </div>
+
+    <!-- Diagram 3: Authentication & Authorization -->
+    <div class="diagram-container">
+        <div class="diagram-title">3. Authentication and Authorization Flow</div>
+        <div class="mermaid">
+            flowchart TB
+            Login["User Attempts Login"] --> AuthMethod{"Auth Method"}
+
+            AuthMethod --> SupabaseAuth["Email/Password Auth"]
+            AuthMethod --> GoogleOAuth["Google OAuth"]
+
+            SupabaseAuth --> Session["Session Created"]
+            GoogleOAuth --> Redirect["Auth Callback"]
+            Redirect --> Session
+
+            Session --> ValidateMember["Validate Member API"]
+
+            ValidateMember --> SuperAdminCheck{"Super Admin?"}
+
+            SuperAdminCheck --> SuperAdminAccess["Full Platform Access"]
+            SuperAdminCheck --> RoleCheck{"Check Role"}
+
+            RoleCheck --> AdminValidation["Validate Admin"]
+            RoleCheck --> StudentValidation["Validate Student"]
+
+            AdminValidation --> AdminResult{"Valid?"}
+            StudentValidation --> StudentResult{"Valid?"}
+
+            AdminResult --> AdminDashboard["Admin Dashboard"]
+            AdminResult --> AccessDenied["Access Denied"]
+
+            StudentResult --> ProfileCheck{"Profile Complete?"}
+            StudentResult --> AccessDenied
+
+            ProfileCheck --> LevelsPage["Levels Page"]
+            ProfileCheck --> ProfilePage["Profile Page"]
+
+            AccessDenied --> SignOut["Sign Out User"]
+            SignOut --> RevokeCheck{"New User?"}
+            RevokeCheck --> RevokeAuth["Delete Account"]
+            RevokeCheck --> KeepAccount["Keep Account"]
+            RevokeAuth --> BackToLogin["Back to Login"]
+            KeepAccount --> BackToLogin
+        </div>
+    </div>
+
+    <!-- Diagram 4: Role-Based Access Control -->
+    <div class="diagram-container">
+        <div class="diagram-title">4. Role-Based Access Control Summary</div>
+        <div class="mermaid">
+            flowchart LR
+            subgraph Roles["User Roles"]
+            SuperAdmin["Super Admin"]
+            InstAdmin["Institution Admin"]
+            Student["Student"]
+            end
+
+            subgraph SuperAdminPerms["Super Admin Permissions"]
+            SP1["View All Institutions"]
+            SP2["Approve/Reject Orgs"]
+            SP3["Suspend Institutions"]
+            SP4["Global Data Access"]
+            end
+
+            subgraph InstAdminPerms["Institution Admin Permissions"]
+            IP1["View Own Institution"]
+            IP2["Approve/Reject Students"]
+            IP3["Manage Students"]
+            IP4["View Analytics"]
+            end
+
+            subgraph StudentPerms["Student Permissions"]
+            StP1["Access Profile"]
+            StP2["Take Tests"]
+            StP3["View Results"]
+            StP4["Chat with AI"]
+            end
+
+            SuperAdmin --> SuperAdminPerms
+            InstAdmin --> InstAdminPerms
+            Student --> StudentPerms
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'base',
+            themeVariables: {
+                primaryColor: '#10b981',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#059669',
+                lineColor: '#6b7280',
+                secondaryColor: '#f0fdf4',
+                tertiaryColor: '#f8fafc',
+                fontSize: '14px'
+            },
+            flowchart: {
+                curve: 'basis',
+                padding: 20
+            }
+        });
+    </script>
+</body>
+
+</html>

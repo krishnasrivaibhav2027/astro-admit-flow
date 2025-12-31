@@ -227,16 +227,21 @@ async def startup_event():
     print("="*50 + "\n")
 
 # Include Admin Router
-from admin_routes import admin_router
-app.include_router(admin_router)
-
-# Include Chat Router
+from chatbot_routes import router as chatbot_router
 from chat_routes import router as chat_router
-app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
+from institution_routes import institution_router
+from admin_routes import admin_router
+from analytics_routes import analytics_router
 
-# Include LangGraph Chatbot Router
-from chatbot_routes import router as chatbot_graph_router
-app.include_router(chatbot_graph_router, prefix="/api/bot", tags=["bot"])
+app.include_router(chatbot_router, prefix="/api/bot", tags=["chatbot"])
+app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
+app.include_router(institution_router)
+app.include_router(admin_router)
+app.include_router(analytics_router)
+
+# Include Institution Access Control Router
+from institution_routes import institution_router
+app.include_router(institution_router)
 
 # CRITICAL: Include the main API router (Student, Auth, Health, etc.)
 # This was missing, causing 404s for /api/logout, /api/students, etc.

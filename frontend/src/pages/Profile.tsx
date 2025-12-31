@@ -1,5 +1,6 @@
 
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -395,15 +396,36 @@ const Profile = () => {
                   <div className="space-y-2">
                     <Label className="text-sm text-slate-500 dark:text-slate-400">Date of Birth</Label>
                     <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <Input
-                        type={editing ? "date" : "text"}
-                        required
-                        disabled={!editing}
-                        value={formData.dob}
-                        onChange={(e) => handleDobChange(e.target.value)}
-                        className={`pl-10 ${!editing ? "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800" : "bg-white dark:bg-slate-950 border-emerald-500 ring-1 ring-emerald-500"} transition-all`}
-                      />
+                      {editing ? (
+                        <DatePicker
+                          date={formData.dob ? new Date(formData.dob) : undefined}
+                          setDate={(date) => {
+                            if (date) {
+                              const year = date.getFullYear();
+                              const month = String(date.getMonth() + 1).padStart(2, '0');
+                              const day = String(date.getDate()).padStart(2, '0');
+                              handleDobChange(`${year}-${month}-${day}`);
+                            } else {
+                              handleDobChange("");
+                            }
+                          }}
+                          className="bg-white dark:bg-slate-950 border-emerald-500 ring-1 ring-emerald-500 text-slate-900 dark:text-white"
+                          captionLayout="dropdown-buttons"
+                          fromYear={1900}
+                          toYear={new Date().getFullYear()}
+                        />
+                      ) : (
+                        <div className="relative">
+                          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <Input
+                            type="text"
+                            required
+                            disabled
+                            value={formData.dob}
+                            className="pl-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 transition-all"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
 

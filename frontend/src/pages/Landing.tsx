@@ -97,9 +97,9 @@ const Landing = () => {
                 <Button
                   size="lg"
                   className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/20 h-12 px-8 text-base border-none dark:bg-none"
-                  onClick={() => navigate("/registration")}
+                  onClick={() => navigate("/apply")}
                 >
-                  Start Your Journey <ArrowRight className="w-4 h-4 ml-2" />
+                  Apply for Access <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
                 <Button
                   variant="outline"

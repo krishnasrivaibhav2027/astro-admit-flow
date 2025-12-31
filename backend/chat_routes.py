@@ -31,7 +31,14 @@ async def get_admins(current_user: Optional[Dict] = Depends(get_current_user_opt
     try:
         # 1. Fetch all admins
         admins_response = supabase.table("admins").select("id, first_name, last_name, email, role").execute()
-        admins = admins_response.data
+        admins = admins_response.data or []
+        
+        # 1b. Fetch Super Admins
+        super_admins_resp = supabase.table("super_admins").select("id, first_name, last_name, email, role").execute()
+        super_admins = super_admins_resp.data or []
+        
+        # Merge lists
+        admins.extend(super_admins)
         
         # 2. Identify the requesting student (if applicable)
         student_id = None
@@ -62,9 +69,10 @@ async def get_admins(current_user: Optional[Dict] = Depends(get_current_user_opt
             
             for msg in messages:
                 admin_id = None
-                if msg['sender_type'] == 'admin':
+                # Check for both 'admin' and 'super_admin' types just in case
+                if msg['sender_type'] in ['admin', 'super_admin']:
                     admin_id = msg['sender_id']
-                elif msg['receiver_type'] == 'admin':
+                elif msg['receiver_type'] in ['admin', 'super_admin']:
                     admin_id = msg['receiver_id']
                 
                 if not admin_id:
@@ -82,7 +90,8 @@ async def get_admins(current_user: Optional[Dict] = Depends(get_current_user_opt
                     admin_stats[admin_id]['last_message_at'] = msg_time
                 
                 # Update unread count (Messages FROM admin TO student)
-                if msg['sender_type'] == 'admin' and msg['receiver_id'] == student_id and not msg['is_read']:
+                # Count if sender is admin/super_admin AND receiver is student AND not read
+                if msg['sender_type'] in ['admin', 'super_admin'] and msg['receiver_id'] == student_id and not msg['is_read']:
                     admin_stats[admin_id]['unread_count'] += 1
             
             # Merge stats

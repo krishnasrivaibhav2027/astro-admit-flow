@@ -3,12 +3,22 @@ import { LandingHeader } from "@/components/landing/LandingHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, GraduationCap } from "lucide-react";
-import { useState } from "react";
+import { Building2, Eye, EyeOff, GraduationCap } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
+interface Institution {
+  id: string;
+  name: string;
+  type: string;
+  state?: string;
+}
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -16,17 +26,88 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<'student' | 'admin'>('student');
+  const [institutions, setInstitutions] = useState<Institution[]>([]);
+  const [selectedInstitution, setSelectedInstitution] = useState<string>('');
+  const [loadingInstitutions, setLoadingInstitutions] = useState(true);
   const [formData, setFormData] = useState({
     email: "",
     password: ""
   });
 
+  // Fetch institutions on mount
+  useEffect(() => {
+    fetchInstitutions();
+  }, []);
+
+  const fetchInstitutions = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/institutions`);
+      if (response.ok) {
+        const data = await response.json();
+        setInstitutions(data);
+      }
+    } catch (error) {
+      console.error("Error fetching institutions:", error);
+    } finally {
+      setLoadingInstitutions(false);
+    }
+  };
+
+  // Validate user belongs to institution
+  const validateInstitutionMember = async (email: string, institutionId: string, userRole: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/institutions/validate-member`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          institution_id: institutionId,
+          role: userRole
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Validation request failed");
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Validation error:", error);
+      throw error;
+    }
+  };
+
+  // Revoke unauthorized user
+  const revokeUnauthorizedUser = async (email: string) => {
+    try {
+      await fetch(`${API_BASE}/api/institutions/revoke-unauthorized?email=${encodeURIComponent(email)}`, {
+        method: 'POST'
+      });
+    } catch (error) {
+      console.error("Revoke error:", error);
+    }
+  };
+
   const handleGoogleLogin = async () => {
+    // For students, institution is required
+    // For admins, institution is optional (super admin check happens in AuthCallback)
+    if (role === 'student' && !selectedInstitution) {
+      toast({
+        title: "Institution Required",
+        description: "Please select your institution before signing in.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    localStorage.setItem('pending_institution_id', selectedInstitution || '');
+    localStorage.setItem('pending_role', role);
+
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/levels`,
+          redirectTo: `${window.location.origin}/auth-callback`,
         },
       });
       if (error) throw error;
@@ -53,51 +134,122 @@ const Login = () => {
       if (error) throw error;
 
       if (data.user) {
-        // Enforce Role Check
+        // For admin role: First check if user is a super admin (no institution needed)
         if (role === 'admin') {
-          // Check if user is in 'admins' table
-          const { data: adminData } = await supabase
-            .from('admins')
-            .select('id')
-            .eq('email', data.user.email)
-            .maybeSingle();
+          const validation = await validateInstitutionMember(
+            data.user.email!,
+            selectedInstitution || 'bypass', // Pass dummy value for super admin check
+            role
+          );
 
-          if (!adminData) {
-            await supabase.auth.signOut();
-            throw new Error("User not found in Admin records.");
+          if (validation.is_super_admin) {
+            // Super admin / Global admin
+            // If an institution was selected, save it as context for isolated view
+            if (selectedInstitution) {
+              localStorage.setItem('admin_institution_context', selectedInstitution);
+            } else {
+              localStorage.removeItem('admin_institution_context');
+            }
+
+            toast({
+              title: "Login Successful!",
+              description: "Welcome, Global Admin!",
+            });
+            navigate("/admin");
+            return;
           }
 
-          toast({
-            title: "Login Successful!",
-            description: "Welcome back, Admin!",
-          });
-          navigate("/admin");
-
-        } else {
-          // Check if user is in 'students' table
-          const { data: studentData } = await supabase
-            .from('students')
-            .select('role, first_name, last_name')
-            .eq('email', data.user.email)
-            .maybeSingle();
-
-          if (!studentData) {
+          // Not a super admin - check if institution is selected
+          if (!selectedInstitution) {
             await supabase.auth.signOut();
-            throw new Error("User not found in Student records.");
+            toast({
+              title: "Institution Required",
+              description: "Please select your institution to continue as admin.",
+              variant: "destructive"
+            });
+            setLoading(false);
+            return;
           }
 
-          toast({
-            title: "Login Successful!",
-            description: "Welcome back, Student!",
-          });
+          // Validate institution admin
+          if (validation.valid) {
+            // Save institution context for dashboard filtering
+            localStorage.setItem('admin_institution_context', selectedInstitution);
 
-          // Redirect to Profile if name is missing (First Time Login)
-          const student = studentData as any;
-          if (!student.first_name || !student.last_name) {
-            navigate("/profile");
+            toast({
+              title: "Login Successful!",
+              description: `Welcome to ${validation.institution_name}!`,
+            });
+            navigate("/admin");
+            return;
           } else {
-            navigate("/levels");
+            await supabase.auth.signOut();
+            toast({
+              title: "Access Denied",
+              description: validation.message || "You are not registered as an admin for this institution.",
+              variant: "destructive"
+            });
+            setLoading(false);
+            return;
           }
+        }
+
+        // Student role - institution is required
+        if (!selectedInstitution) {
+          await supabase.auth.signOut();
+          toast({
+            title: "Institution Required",
+            description: "Please select your institution.",
+            variant: "destructive"
+          });
+          setLoading(false);
+          return;
+        }
+
+        // Validate student institution membership
+        const validation = await validateInstitutionMember(
+          data.user.email!,
+          selectedInstitution,
+          role
+        );
+
+        if (!validation.valid) {
+          // Sign out and show error
+          await supabase.auth.signOut();
+
+          // Start 5-second countdown to revoke
+          toast({
+            title: "Access Denied",
+            description: validation.message || "You are not registered with this institution.",
+            variant: "destructive"
+          });
+
+          // Revoke after 5 seconds
+          setTimeout(() => {
+            revokeUnauthorizedUser(formData.email);
+          }, 5000);
+
+          setLoading(false);
+          return;
+        }
+
+        // Student is valid - proceed with login
+        const { data: studentData } = await supabase
+          .from('students')
+          .select('first_name, last_name')
+          .eq('email', data.user.email)
+          .maybeSingle();
+
+        toast({
+          title: "Login Successful!",
+          description: "Welcome back, Student!",
+        });
+
+        const student = studentData as any;
+        if (!student?.first_name || !student?.last_name) {
+          navigate("/profile");
+        } else {
+          navigate("/levels");
         }
       }
     } catch (error: any) {
@@ -236,6 +388,32 @@ const Login = () => {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-5">
+                {/* Institution Dropdown */}
+                <div>
+                  <Label htmlFor="institution" className="block text-gray-700 dark:text-gray-300 mb-2 text-sm font-medium">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4" />
+                      Select Institution
+                    </div>
+                  </Label>
+                  <Select
+                    value={selectedInstitution}
+                    onValueChange={setSelectedInstitution}
+                    disabled={loadingInstitutions}
+                  >
+                    <SelectTrigger className="w-full px-4 py-3 h-auto rounded-xl border-2 border-gray-200 dark:border-slate-700 focus:ring-emerald-500 dark:focus:ring-emerald-500 bg-white dark:bg-slate-950 text-gray-800 dark:text-white">
+                      <SelectValue placeholder={loadingInstitutions ? "Loading institutions..." : "-- Select your institution --"} />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white dark:bg-slate-950 border-gray-200 dark:border-slate-700">
+                      {institutions.map((inst) => (
+                        <SelectItem key={inst.id} value={inst.id} className="cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/30">
+                          {inst.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Email */}
                 <div>
                   <Label htmlFor="email" className="block text-gray-700 dark:text-gray-300 mb-2 text-sm font-medium">Email</Label>
@@ -289,7 +467,7 @@ const Login = () => {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || (role === 'student' && !selectedInstitution)}
                   className="w-full py-2.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-700 hover:to-teal-700 shadow-lg shadow-emerald-500/20 text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? "Logging in..." : "Login"}
@@ -306,21 +484,37 @@ const Login = () => {
                   type="button"
                   variant="outline"
                   onClick={handleGoogleLogin}
-                  className="w-full py-2.5 rounded-lg border-2 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 h-auto text-sm font-medium"
+                  disabled={role === 'student' && !selectedInstitution}
+                  className="w-full py-2.5 rounded-lg border-2 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 h-auto text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
                   Sign in with Google
                 </Button>
               </form>
 
+              {/* Role-specific registration links */}
               <p className="text-center text-gray-600 dark:text-gray-400 text-sm mt-6">
-                New user?{' '}
-                <button
-                  onClick={() => navigate("/signup")}
-                  className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-semibold hover:underline"
-                >
-                  Create account
-                </button>
+                {role === 'student' ? (
+                  <>
+                    New application?{' '}
+                    <button
+                      onClick={() => navigate("/apply")}
+                      className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-semibold hover:underline"
+                    >
+                      Apply now
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    Representing an org?{' '}
+                    <button
+                      onClick={() => navigate("/org-register")}
+                      className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-semibold hover:underline"
+                    >
+                      Register
+                    </button>
+                  </>
+                )}
               </p>
             </div>
           </motion.div>

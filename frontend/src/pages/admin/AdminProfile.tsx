@@ -2,6 +2,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAdmin } from "@/contexts/AdminContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
@@ -20,6 +21,7 @@ const adminProfileSchema = z.object({
 const AdminProfile = () => {
     const navigate = useNavigate();
     const { toast } = useToast();
+    const { refreshAdminInfo, updateAdminName } = useAdmin();
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [editing, setEditing] = useState(false);
@@ -34,6 +36,9 @@ const AdminProfile = () => {
         phone: "",
         email: ""
     });
+
+    // Track which table the admin is in
+    const [adminType, setAdminType] = useState<'super_admin' | 'institution_admin' | 'legacy_admin' | null>(null);
 
     useEffect(() => {
         checkAuthAndLoadProfile();
@@ -51,46 +56,100 @@ const AdminProfile = () => {
 
             const currentUser = session.user;
             setUser(currentUser);
-            setFormData(prev => ({ ...prev, email: currentUser.email || "" }));
+            const email = currentUser.email || "";
+            setFormData(prev => ({ ...prev, email }));
 
-            // Fetch admin data from admins table
-            const { data, error } = await supabase
-                .from("admins")
-                .select("*")
-                .eq("email", currentUser.email)
-                .maybeSingle();
+            // Use the API to check admin type
+            const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001';
+            const response = await fetch(
+                `${API_BASE}/api/institutions/check-admin-type?email=${encodeURIComponent(email)}`
+            );
 
-            if (error) {
-                console.error("Supabase Error:", error);
-                throw error;
+            if (!response.ok) {
+                throw new Error("Failed to check admin type");
             }
 
-            if (data) {
-                setAdminData(data);
-                // Pre-fill form
-                setFormData({
-                    firstName: data.first_name || "",
-                    lastName: data.last_name || "",
-                    phone: data.phone || "",
-                    email: data.email || currentUser.email || ""
-                });
+            const adminInfo = await response.json();
+            setAdminType(adminInfo.admin_type);
 
-                // Algorithm to check "completeness"
-                if (data.first_name === "Admin" && data.last_name === "User" || !data.phone) {
-                    setIsNewUser(true);
-                    setEditing(true); // Force edit mode
-                    toast({
-                        title: "Complete Your Profile",
-                        description: "Please update your details to access the dashboard",
+            // Load data based on admin type
+            if (adminInfo.admin_type === 'super_admin') {
+                // Super admins - use super_admins table
+                const { data } = await supabase
+                    .from("super_admins")
+                    .select("*")
+                    .eq("email", email)
+                    .maybeSingle();
+
+                if (data) {
+                    setAdminData(data);
+                    // Use first_name, last_name columns (same as admins table)
+                    setFormData({
+                        firstName: (data as any).first_name || "",
+                        lastName: (data as any).last_name || "",
+                        phone: (data as any).phone || "",
+                        email: data.email || email
                     });
+                    const hasName = (data as any).first_name && (data as any).first_name !== "Platform";
+                    setIsNewUser(!hasName);
+                    setEditing(!hasName);
                 } else {
-                    setIsNewUser(false);
-                    setEditing(false);
+                    // No data found - this shouldn't happen but handle it
+                    setIsNewUser(true);
+                    setEditing(true);
+                }
+            } else if (adminInfo.admin_type === 'institution_admin') {
+                // Institution admins - use admins table (unified table)
+                const { data } = await supabase
+                    .from("admins")
+                    .select("*")
+                    .eq("email", email)
+                    .maybeSingle();
+
+                if (data) {
+                    setAdminData(data);
+                    setFormData({
+                        firstName: (data as any).first_name || "",
+                        lastName: (data as any).last_name || "",
+                        phone: (data as any).phone || "",
+                        email: data.email || email
+                    });
+                    const hasName = (data as any).first_name && (data as any).first_name !== "";
+                    setIsNewUser(!hasName);
+                    setEditing(!hasName);
                 }
             } else {
-                // Should not happen if trigger worked, but if it did...
-                setIsNewUser(true);
-                setEditing(true);
+                // Legacy admins - use admins table
+                const { data } = await supabase
+                    .from("admins")
+                    .select("*")
+                    .eq("email", email)
+                    .maybeSingle();
+
+                if (data) {
+                    setAdminData(data);
+                    setFormData({
+                        firstName: data.first_name || "",
+                        lastName: data.last_name || "",
+                        phone: data.phone || "",
+                        email: data.email || email
+                    });
+
+                    if (data.first_name === "Admin" && data.last_name === "User" || !data.phone) {
+                        setIsNewUser(true);
+                        setEditing(true);
+                        toast({
+                            title: "Complete Your Profile",
+                            description: "Please update your details to access the dashboard",
+                        });
+                    } else {
+                        setIsNewUser(false);
+                        setEditing(false);
+                    }
+                } else {
+                    setIsNewUser(true);
+                    setEditing(true);
+                }
             }
 
         } catch (error: any) {
@@ -116,28 +175,31 @@ const AdminProfile = () => {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) throw new Error("No session");
 
-            // Update admins table directly
-            const { error } = await supabase
-                .from("admins")
-                .update({
+            const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+            const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001';
+
+            // Use backend endpoint to bypass RLS
+            const response = await fetch(`${API_BASE}/api/institutions/update-profile`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: formData.email,
                     first_name: formData.firstName,
                     last_name: formData.lastName,
                     phone: formData.phone
                 })
-                .eq("email", formData.email);
+            });
 
-            if (error) throw error;
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to update profile');
+            }
 
-            console.log("Updated Admin Profile");
+            const result = await response.json();
+            console.log("Updated profile via API:", result);
 
-            // Fetch updated data locally to update state
-            const { data: newData } = await supabase
-                .from("admins")
-                .select("*")
-                .eq("email", formData.email)
-                .single();
-
-            setAdminData(newData);
             setIsNewUser(false);
             setEditing(false);
 
@@ -145,6 +207,10 @@ const AdminProfile = () => {
                 title: isNewUser ? "Profile Completed!" : "Profile Updated!",
                 description: "Your details have been saved.",
             });
+
+            // Sync global admin state
+            updateAdminName(fullName);
+            await refreshAdminInfo();
 
             if (isNewUser) {
                 setTimeout(() => navigate("/admin"), 1000);

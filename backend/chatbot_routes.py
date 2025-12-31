@@ -34,10 +34,34 @@ async def stream_chat(request: ChatMessage, current_user: Dict = Depends(get_cur
     # if request.student_id != current_user.get('student_id') ... (skip for now, trust auth email)
     
     # Prepare Input
+    student_name = "Student"
+    try:
+        email = current_user.get('email')
+        if email:
+            import os
+            from supabase import create_client
+            
+            supabase_url = os.environ.get("SUPABASE_URL")
+            supabase_key = os.environ.get("SUPABASE_KEY")
+            
+            if supabase_url and supabase_key:
+                sb = create_client(supabase_url, supabase_key)
+                res = sb.table("students").select("first_name, last_name").eq("email", email).execute()
+                if res.data and len(res.data) > 0:
+                    data = res.data[0]
+                    f_name = data.get('first_name') or ""
+                    l_name = data.get('last_name') or ""
+                    full_name = f"{f_name} {l_name}".strip()
+                    if full_name:
+                        student_name = full_name
+                        logging.info(f"✅ Resolved Student Name: {student_name}")
+    except Exception as e:
+        logging.error(f"Failed to fetch student name: {e}")
+
     input_state = {
         "messages": [HumanMessage(content=request.message)],
         "student_id": request.student_id,
-        "student_name": f"{current_user.get('first_name', 'Student')} {current_user.get('last_name', '')}".strip()
+        "student_name": student_name
     }
     
     # Config for persistence

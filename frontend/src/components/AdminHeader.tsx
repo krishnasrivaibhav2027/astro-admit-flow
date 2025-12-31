@@ -7,6 +7,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import { useAdmin } from "@/contexts/AdminContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowRight, ChevronRight, KeyRound, LogOut, User } from "lucide-react";
@@ -17,10 +18,13 @@ import { WeatherIcon } from "./WeatherIcons";
 export const AdminHeader = () => {
     const navigate = useNavigate();
     const { toast } = useToast();
-    const [adminName, setAdminName] = useState<string>("");
-    const [adminEmail, setAdminEmail] = useState<string>("");
+    const { adminInfo } = useAdmin();
     const [greeting, setGreeting] = useState<string>("");
     const [weather, setWeather] = useState<{ type: 'sunny' | 'rainy' | 'cloudy' | 'windy' | 'clear-night'; temp?: number } | null>(null);
+
+    // Derive name and email from context
+    const adminName = adminInfo?.name || "Admin";
+    const adminEmail = adminInfo?.email || "";
 
     useEffect(() => {
         const updateGreeting = () => {
@@ -66,32 +70,6 @@ export const AdminHeader = () => {
                 }
             );
         }
-
-        const fetchAdminData = async () => {
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (!session?.user?.email) return;
-
-                const email = session.user.email;
-                setAdminEmail(email);
-
-                const { data: adminData } = await supabase
-                    .from("admins" as any)
-                    .select("first_name, last_name")
-                    .eq("email", email)
-                    .single();
-
-                if (adminData) {
-                    setAdminName(`${(adminData as any).first_name} ${(adminData as any).last_name}`);
-                } else {
-                    setAdminName("Admin");
-                }
-            } catch (error) {
-                console.error("Error fetching admin data:", error);
-            }
-        };
-
-        fetchAdminData();
     }, []);
 
     const handleLogout = async () => {
@@ -191,13 +169,31 @@ export const AdminHeader = () => {
                         Admit Flow
                     </h1>
                     <span className="text-[10px] font-medium text-muted-foreground tracking-wide">
-                        Admin Console
+                        {adminInfo?.adminType === 'super_admin' ? 'Super Admin' : 'Institution Admin'}
                     </span>
                 </div>
             </div>
 
             {/* Right: Actions */}
             <div className="flex items-center gap-3">
+                {/* Institution Name Display */}
+                {adminInfo?.institutionName && (
+                    adminInfo.institutionWebsite ? (
+                        <a
+                            href={adminInfo.institutionWebsite}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hidden md:inline-block text-base font-medium text-foreground hover:underline animate-in fade-in slide-in-from-right-4 duration-500"
+                        >
+                            {adminInfo.institutionName}
+                        </a>
+                    ) : (
+                        <span className="hidden md:inline-block text-base font-medium text-foreground animate-in fade-in slide-in-from-right-4 duration-500">
+                            {adminInfo.institutionName}
+                        </span>
+                    )
+                )}
+
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button

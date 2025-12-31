@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Entity Relations Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            background: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px;
+            font-family: Arial, sans-serif;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .mermaid {
+            background: white;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Access Control Hierarchy</h1>
+    <div class="mermaid">
+flowchart TD
+    subgraph Platform["Platform Level"]
+        SA["Super Admin (Platform Owner)"]
+    end
+    
+    subgraph Institution["Institution Level"]
+        INST["Institution"]
+        IA["Institution Admin"]
+    end
+    
+    subgraph Student["Student Level"]
+        STU["Student"]
+        AR["Access Request"]
+    end
+    
+    SA -->|Onboards and Approves| INST
+    INST -->|Employs| IA
+    
+    STU -->|Submits| AR
+    AR -->|Sent to| INST
+    IA -->|Reviews and Approves| AR
+    AR -->|Grants Access| STU
+    
+    IA -->|Manages| STU
+    </div>
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
+</body>
+</html>
