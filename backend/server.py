@@ -1,10 +1,15 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Query, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import os
 import logging
 from pathlib import Path
+
+# Initialize sanitized logging (Phase 4)
+from utils.log_sanitizer import setup_sanitized_logging
+setup_sanitized_logging(logging.INFO)
 
 # Log Suppression for Socket.IO
 class EndpointFilter(logging.Filter):
@@ -12,6 +17,7 @@ class EndpointFilter(logging.Filter):
         return record.getMessage().find("/socket.io") == -1
 
 logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
+
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 from datetime import datetime, timezone
@@ -69,92 +75,36 @@ import ai_service
 from utils_llm import safe_invoke
 
 
-# Create the main app
-app = FastAPI()
-app.mount("/socket.io", socket_manager.app)
-
-# Add temporary route to restore admin
-@app.get("/restore-admin")
-async def restore_admin_route(email: str = "vasudevguptha@gmail.com"):
-    # (Rest of admin logic unchanged)
-    # Use Service Role Key if available for admin actions
-    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not service_role_key:
-        return {"error": "SUPABASE_SERVICE_ROLE_KEY not found in env. Cannot perform admin text."}
-    
-    # Create a separate admin client with the service role key
-    # Note: Standard 'supabase' client uses anon key usually.
-    admin_supabase: Client = create_client(supabase_url, service_role_key)
-
-    try:
-        logging.info(f"Restoring/Fixing Admin: {email}")
-        
-        # 1. Check if user exists in Auth
-        response = admin_supabase.auth.admin.list_users()
-        users = response if isinstance(response, list) else response.users
-        target_user = next((u for u in users if u.email == email), None)
-        
-        if not target_user:
-             return {"error": f"User {email} not found in Auth. Please Signup first."}
-        
-        # 2. Force Confirm Email
-        if not target_user.email_confirmed_at:
-            logging.info(f"Confirming email for {target_user.id}")
-            admin_supabase.auth.admin.update_user_by_id(target_user.id, {"email_confirm": True})
-        
-        # 3. Ensure in public.admins table
-        admin_res = admin_supabase.table("admins").select("*").eq("id", target_user.id).execute()
-        if not admin_res.data:
-             logging.info("Inserting into public.admins table...")
-             first = "Admin"
-             last = "User"
-             if "vasudev" in email: 
-                 first = "Vasudev"
-                 last = "Guptha"
-             
-             admin_supabase.table("admins").insert({
-                 "id": target_user.id,
-                 "email": email,
-                 "first_name": first,
-                 "last_name": last,
-                 "role": "admin"
-             }).execute()
-             
-        return {"message": f"SUCCESS: User {email} is now CONFIRMED and linked in admins table. You can login."}
-
-    except Exception as e:
-        logging.error(f"Restore Admin Error: {e}")
-        return {"error": str(e)}
-
-# ... imports
-
-# ... imports
-
 # Custom Logging Dependency (Safe & Non-blocking)
 from fastapi import Request
 async def log_request_info(request: Request):
     # Print directly to console to bypass any logger config issues
     print(f"📥 REQUEST: {request.method} {request.url.path}")
 
-# Create the main app with global logging dependency
+# Create the main FastAPI app with global logging dependency
 app = FastAPI(dependencies=[Depends(log_request_info)])
+app.mount("/socket.io", socket_manager.app)
 
-# ... (rest of app setup)
+# Initialize Rate Limiting
+from rate_limiter import init_rate_limiter, limiter
+init_rate_limiter(app)
 
-# Add CORS Middleware
+# CORS Configuration - Environment-based allowed origins
+# For production: set CORS_ALLOWED_ORIGINS environment variable
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173", "http://127.0.0.1:5173",
+    "http://localhost:3000", "http://127.0.0.1:3000",
+    "http://localhost:3001", "http://127.0.0.1:3001",
+    "http://localhost:3002", "http://127.0.0.1:3002",
+    "http://localhost:3003", "http://localhost:3004", "http://localhost:3005"
+]
+
+CORS_ORIGINS_ENV = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+ALLOWED_ORIGINS = [o.strip() for o in CORS_ORIGINS_ENV.split(",") if o.strip()] if CORS_ORIGINS_ENV else DEFAULT_CORS_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex="https?://.*",  # Allow all origins (regex) to support credentials
-    allow_origins=[
-        "http://localhost:5173", "http://127.0.0.1:5173",
-        "http://localhost:3000", "http://127.0.0.1:3000",
-        "http://localhost:3001", "http://127.0.0.1:3001",
-        "http://localhost:3002", "http://127.0.0.1:3002",
-        "http://localhost:3003", 
-        "http://localhost:3004", 
-        "http://localhost:3005"
-    ], # Explicitly allow frontend ports
+    allow_origins=ALLOWED_ORIGINS,  # Explicit origins only - no regex!
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -205,16 +155,10 @@ async def startup_event():
     # REMOVED per user request: Ingestion is now lazy-loaded on "Generate Questions".
     pass
 
-    try:
-        settings = settings_manager.get_settings()
-        model_name = settings.get("model", "")
-        if "Local" in model_name or "Qwen" in model_name and "fireworks" not in model_name:
-            print(f"🚀 Pre-loading Local Model: {model_name}...")
-            # Import here to avoid circular dependency issues if any
-            from local_llm_engine import engine
-            engine.load_model()
-    except Exception as e:
-        print(f"⚠️ Failed to preload local model: {e}")
+
+    
+    # 5. Initialize Platform Owner (First Super Admin) - Phase 6
+    await initialize_platform_owner()
         
     print("\n✅ SERVER STARTUP COMPLETE. READY.\n")
     
@@ -226,22 +170,73 @@ async def startup_event():
             print(f"   {methods:<10} {route.path}")
     print("="*50 + "\n")
 
+
+async def initialize_platform_owner():
+    """
+    Create the first super admin from environment variables.
+    Only runs if no super admins exist AND env vars are set.
+    This is a one-time deployment initialization step.
+    """
+    owner_email = os.environ.get("PLATFORM_OWNER_EMAIL")
+    owner_name = os.environ.get("PLATFORM_OWNER_NAME")
+    
+    if not owner_email or not owner_name:
+        return  # No platform owner configured
+    
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not service_key:
+        print("⚠️ Cannot initialize platform owner: Missing SUPABASE_SERVICE_ROLE_KEY")
+        return
+    
+    try:
+        admin_client: Client = create_client(supabase_url, service_key)
+        
+        # Check if ANY super admin exists
+        existing = admin_client.table("super_admins").select("id").limit(1).execute()
+        
+        if existing.data:
+            print("✅ Super admin(s) already exist. Skipping platform owner initialization.")
+            return
+        
+        # Create first super admin
+        name_parts = owner_name.split(" ", 1)
+        result = admin_client.table("super_admins").insert({
+            "email": owner_email.lower(),
+            "name": owner_name,
+            "first_name": name_parts[0],
+            "last_name": name_parts[1] if len(name_parts) > 1 else "",
+            "role": "super_admin",
+            "status": "active",  # Platform owner is automatically active
+            "activated_at": datetime.now(timezone.utc).isoformat()
+        }).execute()
+        
+        if result.data:
+            print(f"🎉 PLATFORM OWNER CREATED: {owner_email}")
+            print(f"   This user can now login and invite other super admins.")
+            print(f"   ⚠️ IMPORTANT: Remove PLATFORM_OWNER_* env vars after first login!")
+        else:
+            print(f"❌ Failed to create platform owner: {owner_email}")
+    except Exception as e:
+        print(f"⚠️ Platform owner initialization error: {e}")
+
+
+
 # Include Admin Router
 from chatbot_routes import router as chatbot_router
 from chat_routes import router as chat_router
 from institution_routes import institution_router
 from admin_routes import admin_router
 from analytics_routes import analytics_router
+from admin_chatbot_routes import admin_chatbot_router  # MCP Admin Chatbot
 
 app.include_router(chatbot_router, prefix="/api/bot", tags=["chatbot"])
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(institution_router)
 app.include_router(admin_router)
 app.include_router(analytics_router)
+app.include_router(admin_chatbot_router)  # MCP Admin Chatbot Routes
 
-# Include Institution Access Control Router
-from institution_routes import institution_router
-app.include_router(institution_router)
+# Note: institution_router already included above (line 239)
 
 # CRITICAL: Include the main API router (Student, Auth, Health, etc.)
 # This was missing, causing 404s for /api/logout, /api/students, etc.
@@ -1557,7 +1552,7 @@ Let's turn this into a learning opportunity! 💪
             
             # Inject directly using async graph
             graph = await get_graph()
-            await graph.aupdate_state(config, {"messages": [AIMessage(content=msg_content)]})
+            await graph.aupdate_state(config, {"messages": [AIMessage(content=msg_content)]}, as_node="chatbot")
             
             # IMPORTANT: Persist to Supabase as UNREAD message for the "Red Dot" notification
             try:

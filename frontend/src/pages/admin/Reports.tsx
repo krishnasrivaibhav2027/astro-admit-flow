@@ -8,6 +8,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
+// New ECharts Analytics Components
+import { ActivityCalendar, LearningVelocityChart, RetentionFunnel, RetentionMetrics } from "@/components/analytics";
+
 interface ComprehensiveReport {
     performance_trends: { date: string; average_score: number }[];
     engagement_stats: {
@@ -133,6 +136,18 @@ const Reports = () => {
                         </p>
                     </CardContent>
                 </Card>
+            </div>
+
+            {/* NEW: Enhanced Analytics Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <LearningVelocityChart />
+                <RetentionFunnel />
+            </div>
+
+            {/* NEW: Activity Calendar and Retention Metrics */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ActivityCalendar days={90} />
+                <RetentionMetrics />
             </div>
 
             {/* Charts Row */}

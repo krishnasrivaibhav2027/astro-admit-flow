@@ -9,14 +9,27 @@ import { supabase } from "@/integrations/supabase/client";
 import { Activity, Clock, Loader2, RefreshCw, Search, User, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 
+interface LevelStatus {
+    easy: 'locked' | 'pending' | 'in_progress' | 'completed' | 'failed';
+    medium: 'locked' | 'pending' | 'in_progress' | 'completed' | 'failed';
+    hard: 'locked' | 'pending' | 'in_progress' | 'completed' | 'failed';
+}
+
 interface LiveSession {
     id: string;
     student_id: string;
-    levels_status: {
-        easy: 'locked' | 'pending' | 'in_progress' | 'completed' | 'failed';
-        medium: 'locked' | 'pending' | 'in_progress' | 'completed' | 'failed';
-        hard: 'locked' | 'pending' | 'in_progress' | 'completed' | 'failed';
+    subjects_status: {
+        math: LevelStatus;
+        physics: LevelStatus;
+        chemistry: LevelStatus;
     };
+    current_activity: string | null;
+    overall_progress: {
+        completed: number;
+        total: number;
+    };
+    // Legacy field for backward compatibility
+    levels_status: LevelStatus;
     status: 'active' | 'inactive';
     last_active_at: string | null;
     logout_time: string | null;
@@ -73,11 +86,9 @@ const LiveMonitoring = () => {
     // --- Stats Calculation ---
     const totalStudents = sessions.length || 1; // Avoid division by zero
     const activeSessions = sessions.filter(s => s.status === 'active').length;
-    const testsInProgress = sessions.filter(s =>
-        Object.values(s.levels_status).some(status => status === 'in_progress')
-    ).length;
+    const testsInProgress = sessions.filter(s => s.current_activity !== null).length;
     const completedTests = sessions.filter(s =>
-        Object.values(s.levels_status).every(status => status === 'completed' || status === 'failed')
+        s.overall_progress?.completed === s.overall_progress?.total
     ).length;
 
     // --- Filtering ---
@@ -232,24 +243,71 @@ const LiveMonitoring = () => {
                                 </Badge>
                             </div>
 
-                            {/* Level Status Rows */}
-                            <div className="space-y-3">
-                                {(['easy', 'medium', 'hard'] as const).map((level) => {
-                                    const status = session.levels_status?.[level] || 'locked';
+                            {/* Subject/Level Matrix */}
+                            <div className="space-y-2">
+                                {/* Header Row */}
+                                <div className="grid grid-cols-4 gap-1 text-xs font-medium text-muted-foreground">
+                                    <div></div>
+                                    <div className="text-center">Easy</div>
+                                    <div className="text-center">Med</div>
+                                    <div className="text-center">Hard</div>
+                                </div>
+
+                                {/* Subject Rows */}
+                                {(['math', 'physics', 'chemistry'] as const).map((subject) => {
+                                    const subjectStatus = session.subjects_status?.[subject] || { easy: 'locked', medium: 'locked', hard: 'locked' };
+                                    const subjectLabels = { math: 'Math', physics: 'Physics', chemistry: 'Chem' };
+
                                     return (
-                                        <div key={level} className="flex items-center justify-between">
-                                            <span className="text-xs font-medium uppercase text-muted-foreground w-16">{level}</span>
-                                            <div className={`flex-1 py-2 px-4 rounded-lg text-center text-sm font-medium border ${getStatusStyle(status)}`}>
-                                                {getStatusLabel(status)}
-                                            </div>
+                                        <div key={subject} className="grid grid-cols-4 gap-1 items-center">
+                                            <span className="text-xs font-medium text-muted-foreground">{subjectLabels[subject]}</span>
+                                            {(['easy', 'medium', 'hard'] as const).map((level) => {
+                                                const status = subjectStatus[level];
+                                                return (
+                                                    <div
+                                                        key={level}
+                                                        className={`py-1.5 px-1 rounded text-center text-xs font-medium border ${getStatusStyle(status)}`}
+                                                        title={`${subjectLabels[subject]} ${level}: ${getStatusLabel(status)}`}
+                                                    >
+                                                        {status === 'completed' && '✓'}
+                                                        {status === 'failed' && '✗'}
+                                                        {status === 'in_progress' && '▶'}
+                                                        {status === 'pending' && '○'}
+                                                        {status === 'locked' && '🔒'}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     );
                                 })}
                             </div>
 
-                            {/* Footer */}
+                            {/* Progress & Activity Footer */}
                             <div className="pt-4 border-t border-border/50 space-y-2">
-                                <div className="flex justify-between text-xs text-muted-foreground">
+                                {/* Progress Bar */}
+                                <div className="flex items-center justify-between text-xs">
+                                    <span className="text-muted-foreground">Progress:</span>
+                                    <span className="font-medium text-foreground">
+                                        {session.overall_progress?.completed || 0}/{session.overall_progress?.total || 9} levels
+                                    </span>
+                                </div>
+                                <Progress
+                                    value={((session.overall_progress?.completed || 0) / (session.overall_progress?.total || 9)) * 100}
+                                    className="h-1.5 bg-emerald-500/20"
+                                    indicatorClassName="bg-emerald-500"
+                                />
+
+                                {/* Current Activity */}
+                                {session.current_activity && (
+                                    <div className="flex items-center gap-2 text-xs mt-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                        <span className="text-muted-foreground">Active:</span>
+                                        <span className="font-medium text-blue-500">{session.current_activity}</span>
+                                    </div>
+                                )}
+
+                                {/* Last Activity Time */}
+                                <div className="flex justify-between text-xs text-muted-foreground mt-2">
                                     <div className="flex items-center gap-1.5">
                                         <Clock className="h-3.5 w-3.5" />
                                         <span>Last Activity:</span>
@@ -258,17 +316,6 @@ const LiveMonitoring = () => {
                                         {session.last_active_at ? new Date(session.last_active_at).toLocaleTimeString() : 'N/A'}
                                     </span>
                                 </div>
-                                {session.logout_time && (
-                                    <div className="flex justify-between text-xs text-muted-foreground">
-                                        <div className="flex items-center gap-1.5">
-                                            <Clock className="h-3.5 w-3.5" />
-                                            <span>Logged Out:</span>
-                                        </div>
-                                        <span className="font-medium text-foreground">
-                                            {new Date(session.logout_time).toLocaleTimeString()}
-                                        </span>
-                                    </div>
-                                )}
                             </div>
                         </CardContent>
                     </Card>

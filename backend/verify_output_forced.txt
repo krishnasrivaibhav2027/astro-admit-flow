@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "d:\GitRepos\astro-admit-flow\backend\verify_image_gen.py", line 4, in <module>
-    from image_generator import get_image_generator, diagnose_credentials
-ImportError: cannot import name 'diagnose_credentials' from 'image_generator' (d:\GitRepos\astro-admit-flow\backend\image_generator.py)

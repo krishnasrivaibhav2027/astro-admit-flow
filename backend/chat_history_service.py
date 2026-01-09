@@ -1,11 +1,19 @@
 """
 Chat History Service - Supabase-based persistence for chatbot conversations
+with Redis caching layer for improved performance.
 """
 import os
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from supabase import create_client, Client
+
+# Import Redis cache manager
+from redis_client import redis_manager
+
+# Cache TTL settings (in seconds)
+CACHE_TTL_MESSAGES = 300    # 5 minutes for thread messages
+CACHE_TTL_THREADS = 120      # 2 minutes for thread listings
 
 # Initialize Supabase client
 supabase_url = os.environ.get('SUPABASE_URL')
@@ -20,6 +28,35 @@ def get_supabase() -> Client:
             raise ValueError("Supabase credentials not configured")
         _supabase = create_client(supabase_url, supabase_key)
     return _supabase
+
+
+# ===== Cache Key Generators =====
+
+def _cache_key_messages(thread_id: str) -> str:
+    """Generate cache key for thread messages."""
+    return f"chat:messages:{thread_id}"
+
+def _cache_key_threads(student_id: str) -> str:
+    """Generate cache key for student's thread list."""
+    return f"chat:threads:{student_id}"
+
+
+# ===== Cache Invalidation Helpers =====
+
+def _invalidate_thread_cache(thread_id: str, student_id: str = None):
+    """Invalidate caches when a thread is modified."""
+    # Invalidate messages cache for this thread
+    redis_manager.cache_delete(_cache_key_messages(thread_id))
+    
+    # Invalidate student's thread list cache
+    if student_id:
+        redis_manager.cache_delete(_cache_key_threads(student_id))
+    else:
+        # If we don't know the student_id, invalidate all thread caches
+        # This is less efficient but ensures consistency
+        redis_manager.cache_delete_pattern("chat:threads:*")
+    
+    print(f"[CACHE INVALIDATE] thread={thread_id}, student={student_id}")
 
 
 def ensure_thread_exists(thread_id: str, student_id: str) -> bool:
@@ -45,6 +82,9 @@ def ensure_thread_exists(thread_id: str, student_id: str) -> bool:
             "updated_at": datetime.utcnow().isoformat()
         }).execute()
         
+        # Invalidate student's thread list cache since new thread was created
+        _invalidate_thread_cache(thread_id, student_id)
+        
         logging.info(f"Created new chat thread: {thread_id}")
         return True
         
@@ -57,6 +97,7 @@ def save_message(thread_id: str, student_id: str, role: str, content: str, is_re
     """
     Save a message to a chat thread.
     Creates the thread if it doesn't exist.
+    Invalidates relevant caches after save.
     """
     print(f"[SAVE_MSG] Saving {role} message to thread={thread_id}, student={student_id}, read={is_read}")
     try:
@@ -87,6 +128,9 @@ def save_message(thread_id: str, student_id: str, role: str, content: str, is_re
         
         sb.table("chat_threads").update(update_data).eq("thread_id", thread_id).execute()
         
+        # Invalidate caches - new message means stale cache
+        _invalidate_thread_cache(thread_id, student_id)
+        
         logging.info(f"Saved {role} message to thread {thread_id}")
         print(f"[SAVE_MSG] SUCCESS: Saved {role} message to {thread_id}")
         return result.data[0] if result.data else {}
@@ -100,7 +144,17 @@ def save_message(thread_id: str, student_id: str, role: str, content: str, is_re
 def get_thread_messages(thread_id: str) -> List[Dict[str, Any]]:
     """
     Get all messages for a thread, ordered by creation time.
+    Uses Redis cache for faster reads.
     """
+    cache_key = _cache_key_messages(thread_id)
+    
+    # Try cache first
+    cached = redis_manager.cache_get(cache_key)
+    if cached is not None:
+        print(f"[GET_MESSAGES] CACHE HIT for thread={thread_id}")
+        return cached
+    
+    # Cache miss - fetch from Supabase
     try:
         sb = get_supabase()
         
@@ -110,7 +164,13 @@ def get_thread_messages(thread_id: str) -> List[Dict[str, Any]]:
             .order("created_at", desc=False)\
             .execute()
         
-        return result.data or []
+        messages = result.data or []
+        
+        # Cache the result
+        redis_manager.cache_set(cache_key, messages, CACHE_TTL_MESSAGES)
+        print(f"[GET_MESSAGES] CACHE MISS for thread={thread_id}, cached {len(messages)} messages")
+        
+        return messages
         
     except Exception as e:
         logging.error(f"Error getting thread messages: {e}")
@@ -120,8 +180,18 @@ def get_thread_messages(thread_id: str) -> List[Dict[str, Any]]:
 def list_student_threads(student_id: str) -> List[Dict[str, Any]]:
     """
     List all chat threads for a student, ordered by most recent.
+    Uses Redis cache for faster reads.
     """
-    print(f"[LIST_THREADS] Listing threads for student={student_id}")
+    cache_key = _cache_key_threads(student_id)
+    
+    # Try cache first
+    cached = redis_manager.cache_get(cache_key)
+    if cached is not None:
+        print(f"[LIST_THREADS] CACHE HIT for student={student_id}")
+        return cached
+    
+    # Cache miss - fetch from Supabase
+    print(f"[LIST_THREADS] CACHE MISS for student={student_id}, fetching from DB...")
     try:
         sb = get_supabase()
         
@@ -150,7 +220,10 @@ def list_student_threads(student_id: str) -> List[Dict[str, Any]]:
             else:
                 thread["preview"] = "No messages"
         
-        print(f"[LIST_THREADS] Found {len(threads)} threads for student={student_id}")
+        # Cache the result
+        redis_manager.cache_set(cache_key, threads, CACHE_TTL_THREADS)
+        print(f"[LIST_THREADS] Cached {len(threads)} threads for student={student_id}")
+        
         return threads
         
     except Exception as e:
@@ -159,15 +232,25 @@ def list_student_threads(student_id: str) -> List[Dict[str, Any]]:
         return []
 
 
-def delete_thread(thread_id: str) -> bool:
+def delete_thread(thread_id: str, student_id: str = None) -> bool:
     """
     Delete a chat thread and all its messages.
+    Invalidates relevant caches.
     """
     try:
         sb = get_supabase()
         
+        # Get student_id if not provided (for cache invalidation)
+        if not student_id:
+            thread_data = sb.table("chat_threads").select("student_id").eq("thread_id", thread_id).execute()
+            if thread_data.data and len(thread_data.data) > 0:
+                student_id = thread_data.data[0].get("student_id")
+        
         # Messages are deleted via CASCADE
         sb.table("chat_threads").delete().eq("thread_id", thread_id).execute()
+        
+        # Invalidate caches
+        _invalidate_thread_cache(thread_id, student_id)
         
         logging.info(f"Deleted thread: {thread_id}")
         return True

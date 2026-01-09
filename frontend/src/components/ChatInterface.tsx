@@ -27,6 +27,7 @@ interface ChatInterfaceProps {
     onClose?: () => void;
     onExpand?: () => void;
     isExpanded?: boolean;
+    embedded?: boolean; // When true, renders without card wrapper
 }
 
 export function ChatInterface({
@@ -37,7 +38,8 @@ export function ChatInterface({
     targetUserName,
     onClose,
     onExpand,
-    isExpanded = false
+    isExpanded = false,
+    embedded = false
 }: ChatInterfaceProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState("");
@@ -246,6 +248,97 @@ export function ChatInterface({
         }
     };
 
+    // Shared content - extracted so we don't duplicate
+    const chatHeader = (
+        <div className={`border-b p-4 ${embedded ? 'bg-slate-50 dark:bg-slate-800/50' : 'bg-muted/50'} flex flex-row items-center justify-between`}>
+            <div className="flex items-center gap-2 text-base font-semibold">
+                <div className="p-2 rounded-full bg-emerald-500/10 dark:bg-emerald-900/30">
+                    <User className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                {targetUserName}
+            </div>
+            <div className="flex items-center gap-2">
+                {onExpand && (
+                    <Button variant="ghost" size="icon" onClick={onExpand} className="h-8 w-8">
+                        {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                    </Button>
+                )}
+            </div>
+        </div>
+    );
+
+    const chatMessages = (
+        <ScrollArea className="h-full p-4">
+            <div className="space-y-4">
+                {loading ? (
+                    <div className="text-center text-muted-foreground text-sm py-8">Loading...</div>
+                ) : messages.length === 0 ? (
+                    <div className="text-center text-muted-foreground text-sm py-8">
+                        No messages yet. Start the conversation!
+                    </div>
+                ) : (
+                    messages.map((msg) => {
+                        const isMe = msg.sender_id === currentUserId;
+                        return (
+                            <div
+                                key={msg.id}
+                                className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+                            >
+                                <div
+                                    className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${isMe
+                                        ? "bg-emerald-600 text-white rounded-br-none shadow-md shadow-emerald-500/20"
+                                        : "bg-muted text-foreground rounded-bl-none"
+                                        }`}
+                                >
+                                    {msg.content}
+                                    <span className="text-[10px] opacity-70 mt-1 block">
+                                        {new Date(msg.created_at).toLocaleTimeString("en-IN", {
+                                            timeZone: "Asia/Kolkata",
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                        })}
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
+                <div ref={scrollRef} />
+            </div>
+        </ScrollArea>
+    );
+
+    const chatInput = (
+        <div className={`p-4 border-t ${embedded ? 'bg-white dark:bg-slate-900' : 'bg-background'}`}>
+            <div className="flex w-full gap-2">
+                <Input
+                    placeholder="Type a message..."
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                    className="flex-1"
+                />
+                <Button size="icon" onClick={handleSend} disabled={!newMessage.trim()} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <Send className="w-4 h-4" />
+                </Button>
+            </div>
+        </div>
+    );
+
+    // Embedded mode - no Card wrapper, fits into parent container
+    if (embedded) {
+        return (
+            <div className="flex flex-col h-full">
+                {chatHeader}
+                <div className="flex-1 overflow-hidden">
+                    {chatMessages}
+                </div>
+                {chatInput}
+            </div>
+        );
+    }
+
+    // Default mode - with Card wrapper
     return (
         <Card className={`flex flex-col shadow-xl border-2 transition-all duration-300 rounded-2xl overflow-hidden ${isExpanded ? 'w-full h-full' : 'w-full max-w-md h-[600px]'}`}>
             <CardHeader className="border-b p-4 bg-muted/50 flex flex-row items-center justify-between space-y-0">
@@ -264,44 +357,7 @@ export function ChatInterface({
                 </div>
             </CardHeader>
             <CardContent className="flex-1 p-0 overflow-hidden">
-                <ScrollArea className="h-full p-4">
-                    <div className="space-y-4">
-                        {loading ? (
-                            <div className="text-center text-muted-foreground text-sm py-8">Loading...</div>
-                        ) : messages.length === 0 ? (
-                            <div className="text-center text-muted-foreground text-sm py-8">
-                                No messages yet. Start the conversation!
-                            </div>
-                        ) : (
-                            messages.map((msg) => {
-                                const isMe = msg.sender_id === currentUserId;
-                                return (
-                                    <div
-                                        key={msg.id}
-                                        className={`flex ${isMe ? "justify-end" : "justify-start"}`}
-                                    >
-                                        <div
-                                            className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${isMe
-                                                ? "bg-emerald-600 text-white rounded-br-none shadow-md shadow-emerald-500/20"
-                                                : "bg-muted text-foreground rounded-bl-none"
-                                                }`}
-                                        >
-                                            {msg.content}
-                                            <span className="text-[10px] opacity-70 mt-1 block">
-                                                {new Date(msg.created_at).toLocaleTimeString("en-IN", {
-                                                    timeZone: "Asia/Kolkata",
-                                                    hour: '2-digit',
-                                                    minute: '2-digit'
-                                                })}
-                                            </span>
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        )}
-                        <div ref={scrollRef} />
-                    </div>
-                </ScrollArea>
+                {chatMessages}
             </CardContent>
             <CardFooter className="p-4 border-t bg-background">
                 <div className="flex w-full gap-2">

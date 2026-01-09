@@ -2,6 +2,7 @@ import { ChatInterface } from "@/components/ChatInterface";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { Headset, Search, UserCog } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -14,7 +15,7 @@ interface AdminContact {
     role: string;
     last_message_at?: string;
     unread_count?: number;
-    institution_name?: string; // Optional if we can fetch it
+    institution_name?: string;
     type: 'admin' | 'super_admin';
 }
 
@@ -24,10 +25,16 @@ const SuperAdminContactAdmin = () => {
     const [selectedAdmin, setSelectedAdmin] = useState<AdminContact | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
+    const [currentAdminEmail, setCurrentAdminEmail] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState("recents");
 
     useEffect(() => {
-        fetchCurrentAdmin();
-        fetchAdmins();
+        // Fetch admin info first, then fetch admins
+        const init = async () => {
+            await fetchCurrentAdmin();
+            fetchAdmins();
+        };
+        init();
 
         // Poll for updates every 30 seconds
         const interval = setInterval(fetchAdmins, 30000);
@@ -36,13 +43,18 @@ const SuperAdminContactAdmin = () => {
 
     useEffect(() => {
         filterAdmins();
-    }, [searchQuery, admins]);
+    }, [searchQuery, admins, activeTab]);
 
     const fetchCurrentAdmin = async () => {
         try {
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
             if (!token) return;
+
+            // Store email from session for filtering
+            if (session?.user?.email) {
+                setCurrentAdminEmail(session.user.email);
+            }
 
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
             const response = await fetch(`${backendUrl}/api/admin/me`, {
@@ -52,6 +64,9 @@ const SuperAdminContactAdmin = () => {
             if (response.ok) {
                 const data = await response.json();
                 setCurrentAdminId(data.id);
+                if (data.email) {
+                    setCurrentAdminEmail(data.email);
+                }
             }
         } catch (error) {
             console.error("Failed to fetch admin info", error);
@@ -72,7 +87,14 @@ const SuperAdminContactAdmin = () => {
 
             // Filter out self and other super admins - we only want Institution Admins here
             const formattedAdmins = adminsData
-                .filter((a: any) => a.id !== currentAdminId && a.role !== 'super_admin')
+                .filter((a: any) => {
+                    // Exclude self by ID or email
+                    if (currentAdminId && a.id === currentAdminId) return false;
+                    if (currentAdminEmail && a.email === currentAdminEmail) return false;
+                    // Exclude super admins - only show institution admins
+                    if (a.role === 'super_admin') return false;
+                    return true;
+                })
                 .map((a: any) => ({
                     ...a,
                     type: 'admin'
@@ -88,6 +110,14 @@ const SuperAdminContactAdmin = () => {
     const filterAdmins = () => {
         let result = [...admins];
 
+        // Tab Filter
+        if (activeTab === 'recents') {
+            // Only show admins who have had conversations (have a last_message_at)
+            result = result.filter(a => a.last_message_at);
+        }
+        // 'admins' tab shows all admins
+
+        // Search Filter
         if (searchQuery.trim() !== "") {
             const query = searchQuery.toLowerCase();
             result = result.filter(a =>
@@ -111,11 +141,19 @@ const SuperAdminContactAdmin = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
                 {/* Admin List */}
                 <Card className="col-span-1 flex flex-col h-full">
-                    <CardHeader className="p-4 border-b">
-                        <CardTitle className="text-lg mb-4 flex items-center gap-2">
-                            <UserCog className="w-5 h-5" />
-                            Institution Admins
-                        </CardTitle>
+                    <CardHeader className="p-4 border-b space-y-4">
+                        <div className="flex items-center justify-between">
+                            <CardTitle className="text-lg flex items-center gap-2">
+                                <UserCog className="w-5 h-5" />
+                                Messages
+                            </CardTitle>
+                            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-auto">
+                                <TabsList className="grid w-full grid-cols-2 h-8">
+                                    <TabsTrigger value="recents" className="text-xs px-3">Recents</TabsTrigger>
+                                    <TabsTrigger value="admins" className="text-xs px-3">Admins</TabsTrigger>
+                                </TabsList>
+                            </Tabs>
+                        </div>
                         <div className="relative">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
@@ -162,7 +200,7 @@ const SuperAdminContactAdmin = () => {
                                 ))}
                                 {filteredAdmins.length === 0 && (
                                     <div className="p-8 text-center text-muted-foreground">
-                                        No admins found.
+                                        {activeTab === 'recents' ? 'No recent conversations.' : 'No admins found.'}
                                     </div>
                                 )}
                             </div>
@@ -176,7 +214,7 @@ const SuperAdminContactAdmin = () => {
                         <div className="h-full">
                             <ChatInterface
                                 currentUserId={currentAdminId}
-                                currentUserType="admin" // Super admin is technically an 'admin' type in chat
+                                currentUserType="admin"
                                 targetUserId={selectedAdmin.id}
                                 targetUserType="admin"
                                 targetUserName={`${selectedAdmin.first_name} ${selectedAdmin.last_name}`}

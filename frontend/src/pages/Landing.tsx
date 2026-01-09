@@ -56,12 +56,12 @@ const Landing = () => {
       <LandingHeader />
 
       {/* Hero Section */}
-      <section className="relative pt-12 pb-20 lg:pt-20 lg:pb-28 overflow-hidden">
+      <section className="relative pt-12 pb-20 lg:pt-20 lg:pb-28 2xl:pt-24 2xl:pb-32 3xl:pt-32 3xl:pb-40 4xl:pt-40 4xl:pb-48 overflow-hidden">
         <div className="absolute inset-0 bg-mesh-matrix opacity-100 pointer-events-none" />
         <div className="absolute inset-0 bg-gradient-to-b from-background via-transparent to-background pointer-events-none" />
 
-        <div className="container mx-auto px-4 relative z-10">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
+        <div className="container mx-auto px-4 relative z-10 2xl:max-w-[1400px] 3xl:max-w-[1800px] 4xl:max-w-[2400px]">
+          <div className="grid lg:grid-cols-2 gap-12 2xl:gap-16 3xl:gap-20 4xl:gap-28 items-center">
             {/* Left Content */}
             <div className="space-y-8 text-center lg:text-left">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
@@ -69,12 +69,12 @@ const Landing = () => {
                 AI-Powered Admission Test
               </div>
 
-              <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-foreground leading-[1.1]">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl 2xl:text-7xl 3xl:text-7xl 4xl:text-8xl font-bold tracking-tight text-foreground leading-[1.1]">
                 Welcome to <br />
                 <span className="text-emerald-500">AdmitFlow</span>
               </h1>
 
-              <p className="text-lg text-muted-foreground max-w-xl mx-auto lg:mx-0 leading-relaxed">
+              <p className="text-lg 2xl:text-xl 3xl:text-xl 4xl:text-2xl text-muted-foreground max-w-xl 2xl:max-w-2xl 3xl:max-w-2xl 4xl:max-w-3xl mx-auto lg:mx-0 leading-relaxed">
                 Experience the future of academic assessment with our intelligent, adaptive testing system designed for institutions worldwide.
               </p>
 
@@ -112,9 +112,9 @@ const Landing = () => {
             </div>
 
             {/* Right Content - Stats Card */}
-            <div className="relative lg:pl-10">
+            <div className="relative lg:pl-10 2xl:pl-12 3xl:pl-16 4xl:pl-24">
               {/* Main Card */}
-              <div className="bg-card border border-border rounded-3xl p-8 shadow-2xl shadow-emerald-900/5 relative z-10">
+              <div className="bg-card border border-border rounded-3xl p-8 2xl:p-9 3xl:p-10 4xl:p-12 shadow-2xl shadow-emerald-900/5 relative z-10">
                 <div className="flex items-center gap-1 mb-6">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <Star key={star} className="w-5 h-5 text-amber-400 fill-amber-400" />
@@ -122,22 +122,22 @@ const Landing = () => {
                   <span className="ml-2 text-sm font-medium text-muted-foreground">4.9/5 Rating</span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-8 mb-8">
+                <div className="grid grid-cols-2 gap-8 2xl:gap-9 3xl:gap-10 4xl:gap-12 mb-8">
                   <div>
-                    <div className="text-3xl font-bold text-emerald-500 mb-1">10K+</div>
-                    <div className="text-sm text-muted-foreground">Active Students</div>
+                    <div className="text-3xl 2xl:text-4xl 3xl:text-4xl 4xl:text-5xl font-bold text-emerald-500 mb-1">10K+</div>
+                    <div className="text-sm 2xl:text-base 3xl:text-base text-muted-foreground">Active Students</div>
                   </div>
                   <div>
-                    <div className="text-3xl font-bold text-emerald-500 mb-1">500+</div>
-                    <div className="text-sm text-muted-foreground">Institutions</div>
+                    <div className="text-3xl 2xl:text-4xl 3xl:text-4xl 4xl:text-5xl font-bold text-emerald-500 mb-1">500+</div>
+                    <div className="text-sm 2xl:text-base 3xl:text-base text-muted-foreground">Institutions</div>
                   </div>
                   <div>
-                    <div className="text-3xl font-bold text-emerald-500 mb-1">95%</div>
-                    <div className="text-sm text-muted-foreground">Success Rate</div>
+                    <div className="text-3xl 2xl:text-4xl 3xl:text-4xl 4xl:text-5xl font-bold text-emerald-500 mb-1">95%</div>
+                    <div className="text-sm 2xl:text-base 3xl:text-base text-muted-foreground">Success Rate</div>
                   </div>
                   <div>
-                    <div className="text-3xl font-bold text-emerald-500 mb-1">24/7</div>
-                    <div className="text-sm text-muted-foreground">AI Support</div>
+                    <div className="text-3xl 2xl:text-4xl 3xl:text-4xl 4xl:text-5xl font-bold text-emerald-500 mb-1">24/7</div>
+                    <div className="text-sm 2xl:text-base 3xl:text-base text-muted-foreground">AI Support</div>
                   </div>
                 </div>
               </div>
@@ -163,11 +163,11 @@ const Landing = () => {
       </section>
 
       {/* Core Features */}
-      <section id="features" className="py-20 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Core Features</h2>
-            <p className="text-muted-foreground">Everything you need for modern admission testing</p>
+      <section id="features" className="py-20 2xl:py-24 3xl:py-32 4xl:py-40 bg-muted/30">
+        <div className="container mx-auto px-4 2xl:max-w-[1400px] 3xl:max-w-[1800px] 4xl:max-w-[2400px]">
+          <div className="text-center max-w-2xl 2xl:max-w-3xl 3xl:max-w-3xl 4xl:max-w-4xl mx-auto mb-16 2xl:mb-20 3xl:mb-24 4xl:mb-32">
+            <h2 className="text-3xl md:text-4xl 2xl:text-5xl 3xl:text-5xl 4xl:text-6xl font-bold mb-4 2xl:mb-5 3xl:mb-6 4xl:mb-8">Core Features</h2>
+            <p className="text-muted-foreground 2xl:text-lg 3xl:text-lg 4xl:text-xl">Everything you need for modern admission testing</p>
           </div>
 
           <div className="mt-8">

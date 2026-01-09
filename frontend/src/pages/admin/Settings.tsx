@@ -28,7 +28,6 @@ const Settings = () => {
         { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
         { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
         { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro (High Reasoning)" },
-        { id: "Qwen/Qwen2.5-0.5B-Instruct", name: "Qwen 2.5 0.5B (Local Microservice)" },
     ];
 
     useEffect(() => {
@@ -124,7 +123,7 @@ const Settings = () => {
                 <Button
                     onClick={handleSave}
                     disabled={saving}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 dark:bg-emerald-600 dark:hover:bg-emerald-700 dark:text-white dark:bg-none border-none"
                 >
                     <Save className="w-4 h-4" />
                     {saving ? "Saving..." : "Save Changes"}
@@ -176,7 +175,7 @@ const Settings = () => {
                                 max={1}
                                 step={0.1}
                                 onValueChange={(value) => setSettings({ ...settings, temperature: value[0] })}
-                                className="py-4"
+                                className="py-4 [&_.bg-primary]:bg-emerald-600 dark:[&_.bg-primary]:bg-emerald-500 [&_.border-primary]:border-emerald-600 dark:[&_.border-primary]:border-emerald-500"
                             />
                             <div className="flex justify-between text-xs text-muted-foreground">
                                 <span>Precise (0.0)</span>
@@ -209,7 +208,7 @@ const Settings = () => {
                                 max={100}
                                 step={5}
                                 onValueChange={(value) => setSettings({ ...settings, passing_score: value[0] })}
-                                className="py-4"
+                                className="py-4 [&_.bg-primary]:bg-emerald-600 dark:[&_.bg-primary]:bg-emerald-500 [&_.border-primary]:border-emerald-600 dark:[&_.border-primary]:border-emerald-500"
                             />
                             <p className="text-xs text-muted-foreground">
                                 Minimum score required to pass a level.
@@ -255,7 +254,7 @@ const Settings = () => {
                                 max={10}
                                 step={1}
                                 onValueChange={(value) => setSettings({ ...settings, rag_k: value[0] })}
-                                className="py-4"
+                                className="py-4 [&_.bg-primary]:bg-emerald-600 dark:[&_.bg-primary]:bg-emerald-500 [&_.border-primary]:border-emerald-600 dark:[&_.border-primary]:border-emerald-500"
                             />
                             <p className="text-xs text-muted-foreground">
                                 Number of relevant documents to retrieve for context generation. Higher values provide more context but may increase latency.
@@ -286,6 +285,7 @@ const Settings = () => {
                             <Switch
                                 checked={settings.email_notifications}
                                 onCheckedChange={(checked) => setSettings({ ...settings, email_notifications: checked })}
+                                className="data-[state=checked]:bg-emerald-600 dark:data-[state=checked]:bg-emerald-500"
                             />
                         </div>
 

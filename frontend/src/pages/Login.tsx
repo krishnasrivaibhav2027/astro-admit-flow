@@ -320,8 +320,8 @@ const Login = () => {
         </div>
       </motion.div>
 
-      <div className="relative min-h-screen flex items-center justify-center p-8 pt-24">
-        <div className="flex w-full max-w-6xl gap-12 items-center">
+      <div className="relative min-h-screen flex items-center justify-center 2xl:justify-start 3xl:justify-start p-8 pt-24 2xl:pl-24 3xl:pl-32 4xl:pl-48">
+        <div className="flex w-full max-w-6xl 2xl:max-w-[1400px] 3xl:max-w-[1600px] 4xl:max-w-[2000px] gap-12 2xl:gap-20 3xl:gap-24 4xl:gap-32 items-center">
           {/* Left Side - Branding */}
           <motion.div
             initial={{ opacity: 0, x: -50 }}
@@ -330,25 +330,25 @@ const Login = () => {
             className="hidden lg:block flex-1 text-white z-10"
           >
             <div className="flex items-center gap-3 mb-6">
-              <GraduationCap className="w-12 h-12" />
-              <span className="text-2xl font-bold">Admit Flow</span>
+              <GraduationCap className="w-12 h-12 2xl:w-14 2xl:h-14 3xl:w-16 3xl:h-16 4xl:w-20 4xl:h-20" />
+              <span className="text-2xl 2xl:text-3xl 3xl:text-3xl 4xl:text-4xl font-bold">Admit Flow</span>
             </div>
-            <h1 className="mb-4 text-4xl font-extrabold leading-tight">Smart Admissions Start Here</h1>
-            <p className="text-white/90 text-lg mb-8 max-w-lg">
+            <h1 className="mb-4 2xl:mb-5 3xl:mb-6 4xl:mb-8 text-4xl 2xl:text-5xl 3xl:text-5xl 4xl:text-6xl font-extrabold leading-tight">Smart Admissions Start Here</h1>
+            <p className="text-white/90 text-lg 2xl:text-xl 3xl:text-xl 4xl:text-2xl mb-8 2xl:mb-9 3xl:mb-10 4xl:mb-12 max-w-lg 2xl:max-w-xl 3xl:max-w-xl 4xl:max-w-2xl">
               Unlock your potential with our AI-powered assessment platform. Join the future of education with a fair, fast, and transparent process.
             </p>
-            <div className="space-y-4">
+            <div className="space-y-4 2xl:space-y-5 3xl:space-y-5 4xl:space-y-6">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-bold">✓</div>
-                <span className="font-medium">AI-Powered Assessment</span>
+                <div className="w-8 h-8 2xl:w-9 2xl:h-9 3xl:w-10 3xl:h-10 4xl:w-12 4xl:h-12 rounded-full bg-white/20 flex items-center justify-center font-bold 2xl:text-lg 3xl:text-lg 4xl:text-xl">✓</div>
+                <span className="font-medium 2xl:text-lg 3xl:text-lg 4xl:text-xl">AI-Powered Assessment</span>
               </div>
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-bold">✓</div>
-                <span className="font-medium">Instant Results & Feedback</span>
+                <div className="w-8 h-8 2xl:w-9 2xl:h-9 3xl:w-10 3xl:h-10 4xl:w-12 4xl:h-12 rounded-full bg-white/20 flex items-center justify-center font-bold 2xl:text-lg 3xl:text-lg 4xl:text-xl">✓</div>
+                <span className="font-medium 2xl:text-lg 3xl:text-lg 4xl:text-xl">Instant Results & Feedback</span>
               </div>
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-bold">✓</div>
-                <span className="font-medium">Seamless Onboarding</span>
+                <div className="w-8 h-8 2xl:w-9 2xl:h-9 3xl:w-10 3xl:h-10 4xl:w-12 4xl:h-12 rounded-full bg-white/20 flex items-center justify-center font-bold 2xl:text-lg 3xl:text-lg 4xl:text-xl">✓</div>
+                <span className="font-medium 2xl:text-lg 3xl:text-lg 4xl:text-xl">Seamless Onboarding</span>
               </div>
             </div>
           </motion.div>
@@ -358,7 +358,7 @@ const Login = () => {
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="flex-1 max-w-md w-full"
+            className="flex-1 max-w-md 2xl:max-w-lg 3xl:max-w-lg 4xl:max-w-xl w-full"
           >
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-8 border border-slate-100 dark:border-slate-800">
               <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-6">Login</h2>

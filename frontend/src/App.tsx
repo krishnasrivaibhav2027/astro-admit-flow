@@ -36,6 +36,7 @@ import AdminIndexRouter from "./pages/admin/AdminIndexRouter";
 import AdminProfile from "./pages/admin/AdminProfile";
 import Announcements from "./pages/admin/Announcements";
 // import ContactStudent from "./pages/admin/ContactStudent"; // Replaced by ContactUsers
+import AdminChatbot from "./pages/admin/AdminChatbot";
 import ContactUsers from "./pages/admin/ContactUsers";
 import DetailedReport from "./pages/admin/DetailedReport";
 import GlobalMonitoring from "./pages/admin/GlobalMonitoring";
@@ -50,6 +51,7 @@ import Settings from "./pages/admin/Settings";
 import StudentManagement from "./pages/admin/StudentManagement";
 import StudentQuestions from "./pages/admin/StudentQuestions";
 import StudentReviewDashboard from "./pages/admin/StudentReviewDashboard";
+import SuperAdminActivate from "./pages/admin/SuperAdminActivate";
 import SuperAdminContactAdmin from "./pages/admin/SuperAdminContactAdmin";
 import SuperAdminDashboard from "./pages/admin/SuperAdminDashboard";
 import SuperAdminOverview from "./pages/admin/SuperAdminOverview";
@@ -81,6 +83,9 @@ const App = () => (
           <Route path="/apply" element={<ApplyForAccess />} />
           <Route path="/org-register" element={<OrgRegister />} />
           <Route path="/auth-callback" element={<AuthCallback />} />
+
+          {/* Super Admin Activation (outside protected routes) */}
+          <Route path="/admin/activate" element={<SuperAdminActivate />} />
 
           {/* Student Routes */}
           <Route element={<StudentLayout />}>
@@ -124,6 +129,7 @@ const App = () => (
             <Route path="platform-reports" element={<PlatformReports />} />
             <Route path="platform-settings" element={<PlatformSettings />} />
             <Route path="contact-admin" element={<SuperAdminContactAdmin />} />
+            <Route path="chatbot" element={<AdminChatbot />} />
           </Route>
 
 

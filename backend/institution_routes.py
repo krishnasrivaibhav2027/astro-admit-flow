@@ -9,10 +9,16 @@ import logging
 import os
 import uuid
 import base64
+import smtplib
+import ssl
 from email.mime.text import MIMEText
 
 from supabase import create_client, Client
 from auth_dependencies import get_current_user
+
+# Redis Cache for instant loading
+from redis_client import redis_manager
+CACHE_TTL_SECONDS = 60  # 60 second cache - pages auto-refresh every 5 seconds
 
 # Initialize Supabase
 supabase_url = os.environ.get('SUPABASE_URL')
@@ -21,6 +27,17 @@ supabase: Client = create_client(supabase_url, supabase_key)
 
 # Service role client for admin operations
 service_role_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+
+# ============================================
+# FILE UPLOAD VALIDATION CONSTANTS
+# ============================================
+MAX_FILE_SIZE_MB = 10
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024  # 10 MB
+ALLOWED_FILE_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp'}
+ALLOWED_MIME_TYPES = {
+    'application/pdf',
+    'image/png', 'image/jpeg', 'image/gif', 'image/webp'
+}
 
 institution_router = APIRouter(prefix="/api/institutions", tags=["institutions"])
 
@@ -64,6 +81,33 @@ class OrgRegistrationRequest(BaseModel):
 # EMAIL HELPER FUNCTIONS
 # ============================================
 
+def _send_smtp_email(to_email: str, subject: str, body: str) -> bool:
+    """Helper to send email using SMTP (Gmail)"""
+    try:
+        sender_email = os.environ.get('EMAIL_USER') or os.environ.get('GMAIL_USER')
+        # Support multiple naming conventions for convenience
+        password = os.environ.get('EMAIL_PASSWORD') or os.environ.get('GMAIL_APP_PASSWORD') or os.environ.get('GMAIL_PASSWORD')
+        
+        if not sender_email or not password:
+            logging.warning("📧 SMTP credentials (EMAIL_USER/EMAIL_PASSWORD) not found.")
+            return False
+
+        message = MIMEText(body, 'plain', 'utf-8')
+        message['Subject'] = subject
+        message['From'] = sender_email
+        message['To'] = to_email
+
+        # Connect to Gmail SMTP (SSL)
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(sender_email, password)
+            server.send_message(message)
+            
+        return True
+    except Exception as e:
+        logging.error(f"❌ SMTP Send Error: {e}")
+        return False
+
 async def send_application_submitted_email(
     to_email: str,
     student_name: str, 
@@ -71,34 +115,9 @@ async def send_application_submitted_email(
 ) -> bool:
     """
     Send confirmation email when student application is submitted.
-    Uses Gmail API with OAuth credentials.
+    Uses SMTP (Gmail).
     """
-    try:
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request
-        from googleapiclient.discovery import build
-        
-        client_id = os.environ.get('GMAIL_CLIENT_ID')
-        client_secret = os.environ.get('GMAIL_CLIENT_SECRET')
-        refresh_token = os.environ.get('GMAIL_REFRESH_TOKEN')
-        
-        if not all([client_id, client_secret, refresh_token]):
-            logging.warning("📧 Gmail credentials not configured - skipping email")
-            return False
-        
-        creds = Credentials(
-            None,
-            refresh_token=refresh_token,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=client_id,
-            client_secret=client_secret,
-            scopes=['https://www.googleapis.com/auth/gmail.send']
-        )
-        
-        creds.refresh(Request())
-        service = build('gmail', 'v1', credentials=creds)
-        
-        message = MIMEText(f"""
+    body = f"""
 Dear {student_name},
 
 Thank you for applying to {institution_name}!
@@ -116,20 +135,11 @@ If you have any questions, please contact the institution directly.
 
 Best regards,
 AdmitAI Team
-        """)
-        message['to'] = to_email
-        message['from'] = os.environ.get('GMAIL_FROM_EMAIL', 'noreply@admitai.com')
-        message['subject'] = f"Application Received - {institution_name}"
-        
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        service.users().messages().send(userId="me", body={'raw': raw}).execute()
-        
+"""
+    success = _send_smtp_email(to_email, f"Application Received - {institution_name}", body)
+    if success:
         logging.info(f"📧 Application submitted email sent to {to_email}")
-        return True
-        
-    except Exception as e:
-        logging.error(f"❌ Failed to send application email: {e}")
-        return False
+    return success
 
 
 def send_approval_email(
@@ -140,34 +150,9 @@ def send_approval_email(
 ) -> bool:
     """
     Send approval email with magic link when student application is approved.
-    Uses Gmail API with OAuth credentials.
+    Uses SMTP.
     """
-    try:
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request
-        from googleapiclient.discovery import build
-        
-        client_id = os.environ.get('GMAIL_CLIENT_ID')
-        client_secret = os.environ.get('GMAIL_CLIENT_SECRET')
-        refresh_token = os.environ.get('GMAIL_REFRESH_TOKEN')
-        
-        if not all([client_id, client_secret, refresh_token]):
-            logging.warning("📧 Gmail credentials not configured - skipping email")
-            return False
-        
-        creds = Credentials(
-            None,
-            refresh_token=refresh_token,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=client_id,
-            client_secret=client_secret,
-            scopes=['https://www.googleapis.com/auth/gmail.send']
-        )
-        
-        creds.refresh(Request())
-        service = build('gmail', 'v1', credentials=creds)
-        
-        message = MIMEText(f"""
+    body = f"""
 Dear {student_name},
 
 🎉 Congratulations! Your application to {institution_name} has been APPROVED!
@@ -187,20 +172,11 @@ If you have any questions, please contact the institution directly.
 
 Welcome aboard!
 AdmitAI Team
-        """)
-        message['to'] = to_email
-        message['from'] = os.environ.get('GMAIL_FROM_EMAIL', 'noreply@admitai.com')
-        message['subject'] = f"🎉 Application Approved - {institution_name}"
-        
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        service.users().messages().send(userId="me", body={'raw': raw}).execute()
-        
+"""
+    success = _send_smtp_email(to_email, f"🎉 Application Approved - {institution_name}", body)
+    if success:
         logging.info(f"📧 Approval email sent to {to_email}")
-        return True
-        
-    except Exception as e:
-        logging.error(f"❌ Failed to send approval email: {e}")
-        return False
+    return success
 
 
 def send_institution_approval_email(
@@ -211,32 +187,7 @@ def send_institution_approval_email(
     """
     Send approval email to institution admin when their institution is approved.
     """
-    try:
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request
-        from googleapiclient.discovery import build
-        
-        client_id = os.environ.get('GMAIL_CLIENT_ID')
-        client_secret = os.environ.get('GMAIL_CLIENT_SECRET')
-        refresh_token = os.environ.get('GMAIL_REFRESH_TOKEN')
-        
-        if not all([client_id, client_secret, refresh_token]):
-            logging.warning("📧 Gmail credentials not configured - skipping email")
-            return False
-        
-        creds = Credentials(
-            None,
-            refresh_token=refresh_token,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=client_id,
-            client_secret=client_secret,
-            scopes=['https://www.googleapis.com/auth/gmail.send']
-        )
-        
-        creds.refresh(Request())
-        service = build('gmail', 'v1', credentials=creds)
-        
-        message = MIMEText(f"""
+    body = f"""
 Dear {admin_name},
 
 🎉 Congratulations! Your institution "{institution_name}" has been APPROVED on AdmitAI!
@@ -254,20 +205,11 @@ If you have any questions, please contact our support team.
 
 Welcome to AdmitAI!
 The AdmitAI Team
-        """)
-        message['to'] = to_email
-        message['from'] = os.environ.get('GMAIL_FROM_EMAIL', 'noreply@admitai.com')
-        message['subject'] = f"✅ Institution Approved - {institution_name}"
-        
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        service.users().messages().send(userId="me", body={'raw': raw}).execute()
-        
+"""
+    success = _send_smtp_email(to_email, f"✅ Institution Approved - {institution_name}", body)
+    if success:
         logging.info(f"📧 Institution approval email sent to {to_email}")
-        return True
-        
-    except Exception as e:
-        logging.error(f"❌ Failed to send institution approval email: {e}")
-        return False
+    return success
 
 
 def send_institution_rejection_email(
@@ -279,32 +221,7 @@ def send_institution_rejection_email(
     """
     Send rejection email to institution admin when their institution is rejected.
     """
-    try:
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request
-        from googleapiclient.discovery import build
-        
-        client_id = os.environ.get('GMAIL_CLIENT_ID')
-        client_secret = os.environ.get('GMAIL_CLIENT_SECRET')
-        refresh_token = os.environ.get('GMAIL_REFRESH_TOKEN')
-        
-        if not all([client_id, client_secret, refresh_token]):
-            logging.warning("📧 Gmail credentials not configured - skipping email")
-            return False
-        
-        creds = Credentials(
-            None,
-            refresh_token=refresh_token,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=client_id,
-            client_secret=client_secret,
-            scopes=['https://www.googleapis.com/auth/gmail.send']
-        )
-        
-        creds.refresh(Request())
-        service = build('gmail', 'v1', credentials=creds)
-        
-        message = MIMEText(f"""
+    body = f"""
 Dear {admin_name},
 
 Thank you for your interest in AdmitAI.
@@ -318,20 +235,11 @@ If you believe this is an error or would like to provide additional information,
 
 Best regards,
 The AdmitAI Team
-        """)
-        message['to'] = to_email
-        message['from'] = os.environ.get('GMAIL_FROM_EMAIL', 'noreply@admitai.com')
-        message['subject'] = f"Update on your AdmitAI Registration - {institution_name}"
-        
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        service.users().messages().send(userId="me", body={'raw': raw}).execute()
-        
+"""
+    success = _send_smtp_email(to_email, f"Update on your AdmitAI Registration - {institution_name}", body)
+    if success:
         logging.info(f"📧 Institution rejection email sent to {to_email}")
-        return True
-        
-    except Exception as e:
-        logging.error(f"❌ Failed to send institution rejection email: {e}")
-        return False
+    return success
 
 
 def send_student_rejection_email(
@@ -343,32 +251,7 @@ def send_student_rejection_email(
     """
     Send rejection email to student when their access request is rejected.
     """
-    try:
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request
-        from googleapiclient.discovery import build
-        
-        client_id = os.environ.get('GMAIL_CLIENT_ID')
-        client_secret = os.environ.get('GMAIL_CLIENT_SECRET')
-        refresh_token = os.environ.get('GMAIL_REFRESH_TOKEN')
-        
-        if not all([client_id, client_secret, refresh_token]):
-            logging.warning("📧 Gmail credentials not configured - skipping email")
-            return False
-        
-        creds = Credentials(
-            None,
-            refresh_token=refresh_token,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=client_id,
-            client_secret=client_secret,
-            scopes=['https://www.googleapis.com/auth/gmail.send']
-        )
-        
-        creds.refresh(Request())
-        service = build('gmail', 'v1', credentials=creds)
-        
-        message = MIMEText(f"""
+    body = f"""
 Dear {student_name},
 
 Thank you for your interest in joining {institution_name}.
@@ -384,20 +267,11 @@ If you have questions, please contact the institution directly.
 
 Best regards,
 AdmitAI Team
-        """)
-        message['to'] = to_email
-        message['from'] = os.environ.get('GMAIL_FROM_EMAIL', 'noreply@admitai.com')
-        message['subject'] = f"Update on your application to {institution_name}"
-        
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        service.users().messages().send(userId="me", body={'raw': raw}).execute()
-        
+"""
+    success = _send_smtp_email(to_email, f"Update on your application to {institution_name}", body)
+    if success:
         logging.info(f"📧 Student rejection email sent to {to_email}")
-        return True
-        
-    except Exception as e:
-        logging.error(f"❌ Failed to send student rejection email: {e}")
-        return False
+    return success
 
 
 # ============================================
@@ -469,6 +343,15 @@ async def validate_institution_member(request: ValidateMemberRequest):
         
         # 2. Check based on role
         if request.role == 'student':
+            # Students MUST have a valid institution_id
+            if request.institution_id == "bypass":
+                 return {
+                    "valid": False,
+                    "is_super_admin": False,
+                    "institution_name": None,
+                    "message": "Institution selection is required for students."
+                }
+
             # Check if student exists with this institution
             student_res = supabase.table("students") \
                 .select("id, institution_id") \
@@ -539,11 +422,17 @@ async def validate_institution_member(request: ValidateMemberRequest):
                     }
             
             # 2. Fallback: Check admins table
-            admin_res = admin_client.table("admins") \
-                .select("id, institution_id, role") \
-                .eq("email", email) \
-                .eq("institution_id", request.institution_id) \
-                .execute()
+            # Only check if institution_id is a valid UUID (not "bypass")
+            if request.institution_id and request.institution_id != "bypass":
+                admin_res = admin_client.table("admins") \
+                    .select("id, institution_id, role") \
+                    .eq("email", email) \
+                    .eq("institution_id", request.institution_id) \
+                    .execute()
+            else:
+                # If bypass and not super admin (checked above) -> Invalid
+                admin_res = type('obj', (object,), {'data': []})
+
             
             if admin_res.data:
                 # Get institution name
@@ -772,9 +661,31 @@ async def submit_student_access_request_form(
         # Check if file was uploaded
         if scorecard and scorecard.filename:
             try:
+                # PHASE 5: File upload validation
+                # Check file extension
+                file_ext = '.' + scorecard.filename.split('.')[-1].lower() if '.' in scorecard.filename else ''
+                if file_ext not in ALLOWED_FILE_EXTENSIONS:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"File type not allowed. Accepted: PDF, PNG, JPG, GIF, WEBP"
+                    )
+                
+                # Check MIME type
+                if scorecard.content_type and scorecard.content_type not in ALLOWED_MIME_TYPES:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid file type: {scorecard.content_type}. Accepted: PDF and images."
+                    )
+                
+                # Read file and check size
                 file_content = await scorecard.read()
-                file_ext = scorecard.filename.split('.')[-1] if '.' in scorecard.filename else 'pdf'
-                unique_filename = f"scorecards/{email.replace('@', '_at_')}_{uuid.uuid4().hex[:8]}.{file_ext}"
+                if len(file_content) > MAX_FILE_SIZE_BYTES:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"File too large. Maximum size: {MAX_FILE_SIZE_MB}MB"
+                    )
+                
+                unique_filename = f"scorecards/{email.replace('@', '_at_')}_{uuid.uuid4().hex[:8]}{file_ext}"
                 
                 # Upload to storage
                 storage_response = admin_client.storage.from_("documents").upload(
@@ -1135,8 +1046,15 @@ async def reject_institution(institution_id: str, request: RejectionRequest):
 
 @institution_router.get("/student-requests/{institution_id}")
 async def get_student_requests(institution_id: str):
-    """Get all student access requests for an institution."""
+    """Get all student access requests for an institution. CACHED."""
     try:
+        cache_key = f"admin:student_requests:{institution_id}"
+        
+        # Try cache first for instant loading
+        cached = redis_manager.cache_get(cache_key)
+        if cached:
+            return cached
+        
         admin_client = create_client(supabase_url, service_role_key) if service_role_key else supabase
         
         response = admin_client.table("student_access_requests") \
@@ -1145,10 +1063,16 @@ async def get_student_requests(institution_id: str):
             .order("created_at", desc=True) \
             .execute()
         
-        return response.data or []
+        result = response.data or []
+        
+        # Cache the result
+        redis_manager.cache_set(cache_key, result, CACHE_TTL_SECONDS)
+        
+        return result
     except Exception as e:
         logging.error(f"Error fetching student requests: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @institution_router.post("/student-access/approve/{request_id}")
@@ -1368,14 +1292,25 @@ async def check_admin_type(email: str):
     Used by frontend AdminLayout for proper access control.
     """
     try:
+        print(f"🦸 Checking admin status for: {email}", flush=True)
+        
+        if not service_role_key:
+            print("❌ SERVICE_ROLE_KEY missing! RLS bypass will fail.", flush=True)
+        else:
+            print("✅ Service role key is present.", flush=True)
+        
         admin_client = create_client(supabase_url, service_role_key) if service_role_key else supabase
-        email = email.lower()
+        email = email.lower().strip()
         
         # 1. Check super admin first
         super_check = admin_client.table("super_admins") \
             .select("id, name, first_name, last_name") \
             .eq("email", email) \
             .execute()
+            
+        print(f"   ↳ Super admin query result: {len(super_check.data or [])} rows found", flush=True)
+        if super_check.data:
+            print(f"   ↳ Found super admin: {super_check.data[0]}", flush=True)
         
         if super_check.data:
             admin = super_check.data[0]
@@ -1716,3 +1651,308 @@ async def google_form_webhook(request: GoogleFormWebhookRequest):
     except Exception as e:
         logging.error(f"Form webhook error: {e}")
         return {"success": False, "error": str(e)}
+
+
+# ============================================
+# SUPER ADMIN INVITATION ENDPOINTS (Phase 6)
+# ============================================
+
+class SuperAdminInviteRequest(BaseModel):
+    email: EmailStr
+    name: str
+    invited_by_email: str
+
+class SuperAdminActivateRequest(BaseModel):
+    token: str
+    password: str
+
+import secrets
+
+async def send_super_admin_invitation_email(
+    to_email: str,
+    admin_name: str,
+    invited_by: str,
+    magic_link: str
+):
+    """Send invitation email to new super admin."""
+    subject = "🎉 You've been invited as a Platform Super Admin"
+    
+    body = f"""
+Hello {admin_name},
+
+You have been invited by {invited_by} to become a Super Admin on the AdmitFlow Platform.
+
+As a Super Admin, you will be able to:
+• Approve and manage institutions
+• Review student access requests globally
+• Manage platform settings
+• Invite other super admins
+
+Click the link below to activate your account:
+👉 {magic_link}
+
+This link expires in 7 days.
+
+If you did not expect this invitation, please ignore this email.
+
+Best regards,
+AdmitFlow Platform
+    """
+    
+    _send_smtp_email(to_email, subject, body.strip())
+
+
+@institution_router.post("/super-admin/invite")
+async def invite_super_admin(request: SuperAdminInviteRequest):
+    """
+    Invite a new super admin. Only active super admins can invite.
+    Sends magic link email for activation.
+    """
+    try:
+        admin_client = create_client(supabase_url, service_role_key) if service_role_key else supabase
+        
+        # 1. Verify inviter is an active super admin
+        inviter = admin_client.table("super_admins") \
+            .select("id, name") \
+            .eq("email", request.invited_by_email.lower()) \
+            .eq("status", "active") \
+            .execute()
+        
+        if not inviter.data:
+            raise HTTPException(status_code=403, detail="Only active super admins can invite new admins")
+        
+        inviter_id = inviter.data[0]["id"]
+        inviter_name = inviter.data[0].get("name", "Platform Admin")
+        
+        # 2. Check if email already exists as super admin
+        existing = admin_client.table("super_admins") \
+            .select("id, status") \
+            .eq("email", request.email.lower()) \
+            .execute()
+        
+        if existing.data:
+            status = existing.data[0].get("status", "unknown")
+            if status == "active":
+                raise HTTPException(status_code=400, detail="This email is already an active super admin")
+            elif status == "pending":
+                raise HTTPException(status_code=400, detail="This email already has a pending invitation")
+        
+        # 3. Check for existing pending invitation - revoke if exists
+        pending_invite = admin_client.table("super_admin_invitations") \
+            .select("id") \
+            .eq("email", request.email.lower()) \
+            .eq("status", "pending") \
+            .execute()
+        
+        if pending_invite.data:
+            admin_client.table("super_admin_invitations") \
+                .update({"status": "revoked"}) \
+                .eq("email", request.email.lower()) \
+                .eq("status", "pending") \
+                .execute()
+        
+        # 4. Generate magic link token
+        magic_token = secrets.token_urlsafe(32)
+        magic_expires = datetime.now(timezone.utc) + timedelta(days=7)
+        
+        # 5. Create invitation record
+        admin_client.table("super_admin_invitations").insert({
+            "email": request.email.lower(),
+            "name": request.name,
+            "invited_by": inviter_id,
+            "magic_link_token": magic_token,
+            "magic_link_expires": magic_expires.isoformat(),
+            "status": "pending"
+        }).execute()
+        
+        # 6. Create pending super_admin record
+        name_parts = request.name.split(" ", 1)
+        admin_client.table("super_admins").insert({
+            "email": request.email.lower(),
+            "name": request.name,
+            "first_name": name_parts[0],
+            "last_name": name_parts[1] if len(name_parts) > 1 else "",
+            "role": "super_admin",
+            "status": "pending",
+            "invited_by": inviter_id,
+            "magic_link_token": magic_token,
+            "magic_link_expires": magic_expires.isoformat()
+        }).execute()
+        
+        # 7. Send invitation email
+        frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+        magic_link = f"{frontend_url}/admin/activate?token={magic_token}&email={request.email}"
+        
+        await send_super_admin_invitation_email(
+            to_email=request.email,
+            admin_name=request.name,
+            invited_by=inviter_name,
+            magic_link=magic_link
+        )
+        
+        logging.info(f"📧 Super admin invitation sent to {request.email} by {request.invited_by_email}")
+        
+        return {
+            "success": True,
+            "message": f"Invitation sent to {request.email}",
+            "expires_in_days": 7
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error inviting super admin: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@institution_router.post("/super-admin/activate")
+async def activate_super_admin(request: SuperAdminActivateRequest):
+    """
+    Activate a super admin account using magic link token.
+    Creates auth user and marks admin as active.
+    """
+    try:
+        admin_client = create_client(supabase_url, service_role_key) if service_role_key else supabase
+        
+        # 1. Find pending super admin with this token
+        pending = admin_client.table("super_admins") \
+            .select("*") \
+            .eq("magic_link_token", request.token) \
+            .eq("status", "pending") \
+            .execute()
+        
+        if not pending.data:
+            raise HTTPException(status_code=400, detail="Invalid or expired activation link")
+        
+        admin_record = pending.data[0]
+        
+        # 2. Check expiration
+        expires_str = admin_record.get("magic_link_expires", "")
+        if expires_str:
+            expires = datetime.fromisoformat(expires_str.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > expires:
+                raise HTTPException(status_code=400, detail="Activation link has expired. Please request a new invitation.")
+        
+        # 3. Create Supabase Auth user
+        try:
+            auth_response = admin_client.auth.admin.create_user({
+                "email": admin_record["email"],
+                "password": request.password,
+                "email_confirm": True
+            })
+            
+            if not auth_response.user:
+                raise Exception("Failed to create auth user")
+                
+        except Exception as auth_err:
+            if "already registered" in str(auth_err).lower():
+                logging.info(f"Auth user already exists for {admin_record['email']}, activating super admin record")
+            else:
+                raise HTTPException(status_code=500, detail=f"Failed to create account: {str(auth_err)}")
+        
+        # 4. Activate super admin record
+        admin_client.table("super_admins").update({
+            "status": "active",
+            "activated_at": datetime.now(timezone.utc).isoformat(),
+            "magic_link_token": None,
+            "magic_link_expires": None
+        }).eq("id", admin_record["id"]).execute()
+        
+        # 5. Update invitation record
+        admin_client.table("super_admin_invitations").update({
+            "status": "accepted",
+            "accepted_at": datetime.now(timezone.utc).isoformat()
+        }).eq("magic_link_token", request.token).execute()
+        
+        logging.info(f"✅ Super admin activated: {admin_record['email']}")
+        
+        return {
+            "success": True,
+            "message": "Account activated successfully! You can now login.",
+            "email": admin_record["email"]
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error activating super admin: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@institution_router.get("/super-admin/invitations")
+async def list_super_admin_invitations(requesting_email: str):
+    """List all super admin invitations (for Super Admin dashboard)."""
+    try:
+        admin_client = create_client(supabase_url, service_role_key) if service_role_key else supabase
+        
+        # Verify requester is active super admin
+        requester = admin_client.table("super_admins") \
+            .select("id") \
+            .eq("email", requesting_email.lower()) \
+            .eq("status", "active") \
+            .execute()
+        
+        if not requester.data:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        # Get all invitations
+        invitations = admin_client.table("super_admin_invitations") \
+            .select("*") \
+            .order("created_at", desc=True) \
+            .execute()
+        
+        return invitations.data or []
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error listing invitations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@institution_router.delete("/super-admin/revoke/{invitation_id}")
+async def revoke_super_admin_invitation(invitation_id: str, requesting_email: str):
+    """Revoke a pending super admin invitation."""
+    try:
+        admin_client = create_client(supabase_url, service_role_key) if service_role_key else supabase
+        
+        # Verify requester is active super admin
+        requester = admin_client.table("super_admins") \
+            .select("id") \
+            .eq("email", requesting_email.lower()) \
+            .eq("status", "active") \
+            .execute()
+        
+        if not requester.data:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        # Get invitation email
+        invitation = admin_client.table("super_admin_invitations") \
+            .select("email") \
+            .eq("id", invitation_id) \
+            .eq("status", "pending") \
+            .execute()
+        
+        if not invitation.data:
+            raise HTTPException(status_code=404, detail="Invitation not found or already processed")
+        
+        email = invitation.data[0]["email"]
+        
+        # Revoke invitation
+        admin_client.table("super_admin_invitations").update({
+            "status": "revoked"
+        }).eq("id", invitation_id).execute()
+        
+        # Delete pending super_admin record
+        admin_client.table("super_admins").delete().eq("email", email).eq("status", "pending").execute()
+        
+        logging.info(f"🚫 Super admin invitation revoked for {email}")
+        
+        return {"success": True, "message": "Invitation revoked"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error revoking invitation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

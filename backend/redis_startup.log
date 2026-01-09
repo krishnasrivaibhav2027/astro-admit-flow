@@ -1,8 +1,0 @@
-Stopping old redis...
-redis
-Error response from daemon: No such container: redis-stack
-Starting Redis Stack...
-3d5095daec2c533ccb66fdcc9f8f4f0fc10bf98c2976d2c504c711a0166bebb5
-Done.
-CONTAINER ID   IMAGE                      COMMAND            CREATED        STATUS                  PORTS                                                                                      NAMES
-3d5095daec2c   redis/redis-stack:latest   "/entrypoint.sh"   1 second ago   Up Less than a second   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp, 0.0.0.0:8001->8001/tcp, [::]:8001->8001/tcp   redis-stack

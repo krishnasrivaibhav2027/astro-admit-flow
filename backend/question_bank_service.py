@@ -181,17 +181,17 @@ class QuestionBankService:
             subjects = ["physics", "math", "chemistry"]
             levels = ["easy", "medium", "hard"]
             
-            # Fetch all from question_bank to aggregation in memory (faster than 18+ DB calls for small datasets)
-            # If dataset grows large, convert to SQL count queries.
-            # Current scale: < 1000 questions likely.
-            
-            qb_response = supabase.table("question_bank").select("id, subject, level, is_used").execute()
+            # Fetch only ACTIVE questions from question_bank
+            # IMPORTANT: Supabase defaults to 1000 rows - we need ALL questions
+            qb_response = supabase.table("question_bank").select("id, subject, level, is_used").eq("status", "ACTIVE").limit(10000).execute()
             data = qb_response.data or []
+            
+            logging.info(f"📊 Question Bank Stats: Fetched {len(data)} ACTIVE questions from DB")
             
             # 1. Base Stats (Used vs Available)
             for item in data:
-                sub = item['subject']
-                lvl = item['level']
+                sub = item['subject'].lower() if item.get('subject') else 'unknown'
+                lvl = item['level'].lower() if item.get('level') else 'unknown'
                 if sub not in stats: stats[sub] = {}
                 if lvl not in stats[sub]: stats[sub][lvl] = {"unused": 0, "used": 0, "attempted": 0}
                 
@@ -202,22 +202,20 @@ class QuestionBankService:
                     
             # 2. Attempted Stats
             # To find attempted, we need: question_bank -> questions (via bank_id) -> student_answers (via question_id)
-            # Efficient query: Get all distinct bank_ids from 'questions' where 'id' exists in 'student_answers'
-            # But Supabase REST is limited on joins.
-            # Step A: Get all question_ids from student_answers
             answers_resp = supabase.table("student_answers").select("question_id").execute()
             answered_q_ids = set(a['question_id'] for a in answers_resp.data or [])
             
             if answered_q_ids:
                 # Step B: Get bank_ids for these answered questions
-                questions_resp = supabase.table("questions").select("bank_id").in_("id", list(answered_q_ids)).not_.is_("bank_id", "null").execute()
+                # Limit to 500 to avoid query limit issues
+                questions_resp = supabase.table("questions").select("bank_id").in_("id", list(answered_q_ids)[:500]).not_.is_("bank_id", "null").execute()
                 attempted_bank_ids = set(q['bank_id'] for q in questions_resp.data or [])
                 
                 # Step C: Aggregate
                 for item in data:
                     if item['id'] in attempted_bank_ids:
-                        sub = item['subject']
-                        lvl = item['level']
+                        sub = item['subject'].lower() if item.get('subject') else 'unknown'
+                        lvl = item['level'].lower() if item.get('level') else 'unknown'
                         if sub in stats and lvl in stats[sub]:
                             stats[sub][lvl]["attempted"] += 1
 
@@ -227,11 +225,19 @@ class QuestionBankService:
                 for lvl in levels:
                     if lvl not in stats[sub]:
                         stats[sub][lvl] = {"unused": 0, "used": 0, "attempted": 0}
+            
+            # Log final stats for debugging
+            for sub in subjects:
+                total_unused = sum(stats[sub][lvl]["unused"] for lvl in levels)
+                logging.info(f"📈 {sub.upper()}: {total_unused} available (unused)")
 
             return stats
         except Exception as e:
             logging.error(f"Error getting bank stats: {e}")
+            import traceback
+            traceback.print_exc()
             return {}
+
 
     @staticmethod
     async def get_all_topics(subject: str) -> List[str]:

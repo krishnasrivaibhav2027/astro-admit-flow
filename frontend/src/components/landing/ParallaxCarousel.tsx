@@ -35,8 +35,8 @@ export function ParallaxCarousel() {
     };
 
     return (
-        <div className="w-full max-w-7xl mx-auto px-4">
-            <div className="relative h-[450px] flex items-center justify-center overflow-hidden">
+        <div className="w-full max-w-7xl 3xl:max-w-[1600px] 4xl:max-w-[2200px] mx-auto px-4 3xl:px-8 4xl:px-12">
+            <div className="relative h-[450px] 3xl:h-[550px] 4xl:h-[650px] flex items-center justify-center overflow-hidden">
                 <button
                     onClick={handlePrev}
                     className="absolute left-0 md:left-4 z-20 size-12 rounded-full bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 flex items-center justify-center hover:bg-white dark:hover:bg-slate-800 transition-all duration-300 hover:scale-110 text-slate-900 dark:text-white shadow-lg"
@@ -71,7 +71,7 @@ export function ParallaxCarousel() {
                                     duration: 0.7,
                                     ease: [0.43, 0.13, 0.23, 0.96],
                                 }}
-                                className="absolute w-[320px] md:w-[350px]"
+                                className="absolute w-[320px] md:w-[350px] 3xl:w-[420px] 4xl:w-[500px]"
                             >
                                 <FeatureCardContent feature={feature} isActive={position === 0} />
                             </motion.div>

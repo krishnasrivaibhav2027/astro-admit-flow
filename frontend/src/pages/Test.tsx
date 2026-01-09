@@ -376,8 +376,11 @@ const Test = () => {
 
       // Create ID-based map for robust saving
       const answersMap: { [key: string]: string } = {};
-      questions.forEach((q, idx) => {
-        answersMap[q.id] = answers[idx] || "";
+      questions.forEach((_, idx) => {
+        // CRITICAL FIX: Use questionIds (DB IDs) not q.id (undefined)
+        if (questionIds[idx]) {
+          answersMap[questionIds[idx]] = answers[idx] || "";
+        }
       });
 
       const response = await fetch(`${backendUrl}/api/submit-test`, {

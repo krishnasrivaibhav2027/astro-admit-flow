@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
     Activity,
     BarChart3,
+    Bot,
     Building2,
     Database,
     FileText,
@@ -86,11 +87,11 @@ const AdminLayout = () => {
                     navigate("/admin/profile");
                 }
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("Admin check failed:", error);
             toast({
                 title: "Access Denied",
-                description: "You do not have admin privileges.",
+                description: error.message || "You do not have admin privileges.",
                 variant: "destructive",
             });
             navigate("/");
@@ -127,6 +128,7 @@ const AdminLayout = () => {
     // ============================================
     const institutionAdminNavItems = [
         { icon: LayoutDashboard, label: "Overview", path: "/admin" },
+        { icon: Bot, label: "MCP Assistant", path: "/admin/chatbot" },
         { icon: UserCheck, label: "Student Requests", path: "/admin/student-requests" },
         { icon: Database, label: "Question Bank", path: "/admin/question-bank" },
         { icon: BarChart3, label: "Question Analytics", path: "/admin/questions" },

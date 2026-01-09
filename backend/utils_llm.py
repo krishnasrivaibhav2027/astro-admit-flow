@@ -1,4 +1,3 @@
-
 import os
 import logging
 from typing import List, Optional
@@ -15,68 +14,6 @@ except ImportError:
         ChatOpenAI = None
         logging.warning("⚠️ ChatOpenAI not available. HuggingFace models will fail.")
 
-# Custom Local LLM Wrapper (Internal)
-try:
-    from local_llm_engine import engine
-except ImportError:
-    # It's okay if not found, we just won't support local Qwen
-    pass
-
-class LocalQwenLLM:
-    def __init__(self, temperature=0.7):
-        self.temperature = temperature
-
-    def invoke(self, prompt):
-        # Convert LangChain prompt to string
-        if isinstance(prompt, list):
-             text = "\n".join([m.content for m in prompt])
-        elif hasattr(prompt, "to_string"):
-             text = prompt.to_string()
-        else:
-             text = str(prompt)
-        
-        try:
-            logging.info("🧠 Invoking Local Qwen Engine (Internal)...")
-            content = engine.generate(text, temperature=self.temperature)
-        except Exception as e:
-            logging.error(f"❌ Local LLM Internal Error: {e}")
-            content = ""
-
-        # Return compatible object
-        class Result:
-            pass
-        r = Result()
-        r.content = content
-        return r
-
-    def batch(self, prompts):
-        """Batch generation for multiple prompts"""
-        texts = []
-        for p in prompts:
-            if isinstance(p, list): # Message list
-                 texts.append("\n".join([m.content for m in p]))
-            elif hasattr(p, "to_string"):
-                 texts.append(p.to_string())
-            else:
-                 texts.append(str(p))
-                 
-        try:
-            logging.info(f"🧠 Invoking Local Qwen Engine (Batch {len(texts)})...")
-            contents = engine.generate(texts, temperature=self.temperature) 
-        except Exception as e:
-            logging.error(f"❌ Local LLM Batch Error: {e}")
-            contents = [""] * len(texts)
-
-        results = []
-        class Result:
-            pass
-             
-        for c in contents:
-            r = Result()
-            r.content = c
-            results.append(r)
-            
-        return results
 
 def get_llm(override_model=None, override_temperature=None):
     """Get or initialize LLM client with current settings or overrides"""
@@ -86,15 +23,10 @@ def get_llm(override_model=None, override_temperature=None):
     model_name = override_model or default_model
     temperature = override_temperature if override_temperature is not None else settings.get("temperature", 0.3)
     
-    # 1. Local Qwen Service
-    if "Local" in model_name or "Qwen" in model_name and "fireworks" not in model_name:
-        logging.info(f"💻 Using Local Qwen Service: {model_name} (Temp: {temperature})")
-        return LocalQwenLLM(temperature=temperature)
-
-    # 2. HuggingFace / Fireworks
+    # HuggingFace / Fireworks
     if "fireworks" in model_name:
         if not ChatOpenAI:
-             logging.error("❌ Cannot load Qwen model: langchain-openai package missing.")
+             logging.error("❌ Cannot load model: langchain-openai package missing.")
              return ChatGoogleGenerativeAI(
                 model=default_model, 
                 temperature=temperature, 
@@ -110,7 +42,7 @@ def get_llm(override_model=None, override_temperature=None):
             temperature=temperature
         )
 
-    # 3. Google Gemini (Default)
+    # Google Gemini (Default)
     return ChatGoogleGenerativeAI(
         model=model_name,
         temperature=temperature,

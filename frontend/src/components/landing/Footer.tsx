@@ -23,9 +23,9 @@ export const Footer = () => {
     };
 
     return (
-        <footer className="bg-slate-900 pt-20 pb-10 px-6 lg:px-8 border-t border-slate-800">
-            <div className="max-w-7xl mx-auto">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
+        <footer className="bg-slate-900 pt-20 3xl:pt-28 4xl:pt-36 pb-10 3xl:pb-14 4xl:pb-16 px-6 lg:px-8 3xl:px-16 4xl:px-24 border-t border-slate-800">
+            <div className="max-w-7xl 3xl:max-w-[1600px] 4xl:max-w-[2200px] mx-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 3xl:gap-16 4xl:gap-20 mb-16 3xl:mb-20 4xl:mb-24">
                     {/* Brand */}
                     <div className="space-y-6">
                         <div className="flex items-center gap-3">
@@ -37,7 +37,7 @@ export const Footer = () => {
                                 <span className="text-[10px] text-slate-400 uppercase tracking-wider">Admission Automation</span>
                             </div>
                         </div>
-                        <p className="text-sm text-slate-400 leading-relaxed">
+                        <p className="text-sm 3xl:text-base 4xl:text-lg text-slate-400 leading-relaxed">
                             Revolutionizing admission processes with AI-powered testing and evaluation. Making education accessible and fair for everyone.
                         </p>
                         <div className="flex gap-4">
@@ -61,7 +61,7 @@ export const Footer = () => {
 
                     <div id="about-footer">
                         <h4 className="text-white font-bold mb-6">Quick Links</h4>
-                        <ul className="space-y-3 text-sm text-slate-400">
+                        <ul className="space-y-3 3xl:space-y-4 text-sm 3xl:text-base text-slate-400">
                             <li onClick={() => navigate("/about")} className="hover:text-emerald-500 cursor-pointer">About Us</li>
                             <li className="hover:text-emerald-500 cursor-pointer">Our Team</li>
                             <li className="hover:text-emerald-500 cursor-pointer">Careers</li>
@@ -72,7 +72,7 @@ export const Footer = () => {
 
                     <div id="resources-footer">
                         <h4 className="text-white font-bold mb-6">Resources</h4>
-                        <ul className="space-y-3 text-sm text-slate-400">
+                        <ul className="space-y-3 3xl:space-y-4 text-sm 3xl:text-base text-slate-400">
                             <li className="hover:text-emerald-500 cursor-pointer">Help Center</li>
                             <li className="hover:text-emerald-500 cursor-pointer">FAQs</li>
                             <li className="hover:text-emerald-500 cursor-pointer">Documentation</li>
@@ -83,7 +83,7 @@ export const Footer = () => {
 
                     <div id="contact-footer">
                         <h4 className="text-white font-bold mb-6">Contact</h4>
-                        <ul className="space-y-4 text-sm text-slate-400">
+                        <ul className="space-y-4 text-sm 3xl:text-base text-slate-400">
                             <li className="flex items-center gap-3">
                                 <Mail className="w-4 h-4 text-emerald-500" />
                                 support@admitflow.com

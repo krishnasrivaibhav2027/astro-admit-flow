@@ -13,11 +13,16 @@ supabase_url = os.environ.get('SUPABASE_URL')
 supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY') or os.environ.get('SUPABASE_KEY')
 supabase: Client = create_client(supabase_url, supabase_key)
 
+# Redis Cache for instant loading
+from redis_client import redis_manager
+CACHE_TTL_SECONDS = 60  # 60 second cache - pages refresh every 5 seconds anyway
+
 # Import models
 from models import GenerateQuestionsRequest, GenerateQuestionsRequest
 from question_bank_service import QuestionBankService
 import ai_service
 from rag_supabase import get_context
+
 
 
 
@@ -35,24 +40,38 @@ admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
 async def get_current_admin(current_user: Dict = Depends(get_current_user)) -> Dict:
     """
     Verify Token AND check if user is in admins or super_admins table.
+    Returns admin info including institution_id for data isolation.
     """
     try:
         email = current_user.get('email', '')
         
-        # 1. Check admins table
+        # 1. Check admins table (institutional admins)
         response = supabase.table("admins").select("*").eq("email", email).execute()
         
         if response.data:
             admin_data = response.data[0]
-            return {**current_user, "admin_id": admin_data['id'], "role": admin_data['role']}
+            # Include institution_id for data filtering
+            return {
+                **current_user, 
+                "admin_id": admin_data['id'], 
+                "role": admin_data.get('role', 'admin'),
+                "institution_id": admin_data.get('institution_id'),  # Can be None for global admins
+                "is_super_admin": False
+            }
             
         # 2. Check super_admins table
         response_sa = supabase.table("super_admins").select("*").eq("email", email).execute()
         
         if response_sa.data:
             sa_data = response_sa.data[0]
-            # Map super_admin fields to expected structure
-            return {**current_user, "admin_id": sa_data['id'], "role": sa_data.get('role', 'super_admin')}
+            # Super admins have access to ALL institutions (institution_id = None)
+            return {
+                **current_user, 
+                "admin_id": sa_data['id'], 
+                "role": sa_data.get('role', 'super_admin'),
+                "institution_id": None,  # None means access to all
+                "is_super_admin": True
+            }
 
         raise HTTPException(status_code=403, detail="Access denied: Admin profile not found")
             
@@ -60,6 +79,35 @@ async def get_current_admin(current_user: Dict = Depends(get_current_user)) -> D
         raise he
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+
+# Helper function to get students filtered by institution
+def get_students_query(admin: Dict):
+    """Build a query for students filtered by admin's institution."""
+    query = supabase.table("students").select("*")
+    if admin.get("institution_id"):
+        query = query.eq("institution_id", admin["institution_id"])
+    return query
+
+
+def get_results_for_admin(admin: Dict):
+    """Get results filtered by admin's institution through students."""
+    institution_id = admin.get("institution_id")
+    
+    if not institution_id:
+        # Super admin - return all results
+        return supabase.table("results").select("*").execute().data or []
+    
+    # Get student IDs for this institution
+    students_resp = supabase.table("students").select("id").eq("institution_id", institution_id).execute()
+    student_ids = [s["id"] for s in (students_resp.data or [])]
+    
+    if not student_ids:
+        return []
+    
+    # Get results for these students
+    results_resp = supabase.table("results").select("*").in_("student_id", student_ids).execute()
+    return results_resp.data or []
 
 # --- Models ---
 class AnnouncementCreate(BaseModel):
@@ -109,12 +157,100 @@ async def extract_topics(admin: Dict = Depends(get_current_admin)):
 
 @admin_router.get("/question-bank/stats")
 async def get_question_bank_stats(admin: Dict = Depends(get_current_admin)):
-    """Get detailed stats for Question Bank cards"""
+    """Get detailed stats for Question Bank cards - DIRECT DB QUERY"""
     try:
-        stats = await QuestionBankService.get_stats()
+        print("=" * 50, flush=True)
+        print("[STATS] Starting fresh database query...", flush=True)
+        
+        stats = {}
+        subjects = ["physics", "math", "chemistry"]
+        levels = ["easy", "medium", "hard"]
+        
+        # Direct fresh query - NO CACHING
+        # PAGINATION: Supabase has a hard 1000 row limit - we need to paginate
+        all_data = []
+        batch_size = 1000
+        offset = 0
+        
+        print(f"[STATS] Fetching ALL questions with pagination...", flush=True)
+        
+        while True:
+            qb_response = supabase.table("question_bank")\
+                .select("id, subject, level, is_used, status")\
+                .eq("status", "ACTIVE")\
+                .range(offset, offset + batch_size - 1)\
+                .execute()
+            
+            batch_data = qb_response.data or []
+            all_data.extend(batch_data)
+            
+            print(f"[STATS] Batch {offset//batch_size + 1}: fetched {len(batch_data)} rows (total so far: {len(all_data)})", flush=True)
+            
+            if len(batch_data) < batch_size:
+                # No more data to fetch
+                break
+            
+            offset += batch_size
+        
+        print(f"[STATS] Total ACTIVE questions fetched: {len(all_data)}", flush=True)
+        
+        # Debug: Print actual counts from raw data
+        raw_counts = {}
+        for item in all_data:
+            sub = (item.get('subject') or 'unknown').lower()
+            lvl = (item.get('level') or 'unknown').lower()
+            is_used = item.get('is_used', False)
+            
+            key = f"{sub}:{lvl}"
+            if key not in raw_counts:
+                raw_counts[key] = {"total": 0, "unused": 0, "used": 0}
+            raw_counts[key]["total"] += 1
+            if is_used:
+                raw_counts[key]["used"] += 1
+            else:
+                raw_counts[key]["unused"] += 1
+        
+        print(f"[STATS] Raw counts from DB: {raw_counts}", flush=True)
+        
+        # Build stats structure
+        for item in all_data:
+            sub = (item.get('subject') or 'unknown').lower()
+            lvl = (item.get('level') or 'unknown').lower()
+            
+            if sub not in stats:
+                stats[sub] = {}
+            if lvl not in stats[sub]:
+                stats[sub][lvl] = {"unused": 0, "used": 0, "attempted": 0}
+            
+            if item.get('is_used'):
+                stats[sub][lvl]["used"] += 1
+            else:
+                stats[sub][lvl]["unused"] += 1
+        
+        # Fill zeros for missing keys
+        for sub in subjects:
+            if sub not in stats:
+                stats[sub] = {}
+            for lvl in levels:
+                if lvl not in stats[sub]:
+                    stats[sub][lvl] = {"unused": 0, "used": 0, "attempted": 0}
+        
+        # Print final stats
+        for sub in subjects:
+            total_avail = sum(stats[sub][lvl]["unused"] for lvl in levels)
+            print(f"[STATS] {sub.upper()}: {total_avail} available", flush=True)
+            for lvl in levels:
+                print(f"  - {lvl}: unused={stats[sub][lvl]['unused']}, used={stats[sub][lvl]['used']}", flush=True)
+        
+        print("=" * 50, flush=True)
         return stats
+        
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[STATS ERROR] {e}", flush=True)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @admin_router.get("/question-bank/questions")
 async def list_questions(subject: str, level: str, admin: Dict = Depends(get_current_admin)):
@@ -217,48 +353,75 @@ async def get_student_questions(student_id: str, admin: Dict = Depends(get_curre
         raise HTTPException(status_code=500, detail=str(e))
 
 @admin_router.get("/stats/overview")
-
 async def get_dashboard_stats(admin: Dict = Depends(get_current_admin)):
-    """Get high-level dashboard stats"""
+    """Get high-level dashboard stats - filtered by institution. CACHED."""
     try:
-        # 1. Total Students
-        students_count = supabase.table("students").select("id", count="exact").execute().count
+        institution_id = admin.get("institution_id") or "global"
+        cache_key = f"admin:overview:{institution_id}"
         
-        # 2. Active Tests (simulated by looking at results updated in last 24h)
-        # In a real app, you might have a 'status' field in results
-        active_tests_count = supabase.table("results").select("id", count="exact").execute().count
+        # Try cache first for instant loading
+        cached = redis_manager.cache_get(cache_key)
+        if cached:
+            return cached
         
-        # 3. Questions in Bank
-        # 3. Questions in Bank (using QuestionBankService)
-        # We can implement a fast count in QB service
-        # For now just use table count directly
+        # Fetch fresh data
+        inst_id = admin.get("institution_id")
+        
+        # 1. Total Students (filtered by institution)
+        if inst_id:
+            students_count = supabase.table("students").select("id", count="exact").eq("institution_id", inst_id).execute().count
+        else:
+            students_count = supabase.table("students").select("id", count="exact").execute().count
+        
+        # 2. Active Tests (results for institution's students)
+        if inst_id:
+            # Get student IDs for this institution
+            students_resp = supabase.table("students").select("id").eq("institution_id", inst_id).execute()
+            student_ids = [s["id"] for s in (students_resp.data or [])]
+            if student_ids:
+                active_tests_count = supabase.table("results").select("id", count="exact").in_("student_id", student_ids).execute().count
+            else:
+                active_tests_count = 0
+        else:
+            active_tests_count = supabase.table("results").select("id", count="exact").execute().count
+        
+        # 3. Questions in Bank (global - not institution specific)
         questions_count = supabase.table("question_bank").select("id", count="exact").execute().count
-
         
         # 4. Flagged Issues (placeholder for now)
         flagged_issues_count = 0
         
-        return {
-            "total_students": students_count,
-            "active_tests": active_tests_count, 
-            "questions_in_bank": questions_count,
+        result = {
+            "total_students": students_count or 0,
+            "active_tests": active_tests_count or 0, 
+            "questions_in_bank": questions_count or 0,
             "flagged_issues": flagged_issues_count
         }
+        
+        # Cache the result
+        redis_manager.cache_set(cache_key, result, CACHE_TTL_SECONDS)
+        
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @admin_router.get("/activity")
 async def get_recent_activity(admin: Dict = Depends(get_current_admin)):
-    """Get recent activity feed (registrations, messages) - Last 24 hours only"""
+    """Get recent activity feed (registrations, messages) - Last 24 hours only, filtered by institution"""
     try:
         activities = []
+        institution_id = admin.get("institution_id")
         
         # Calculate 24 hours ago
         from datetime import timedelta
         cutoff_time = (datetime.now() - timedelta(hours=24)).isoformat()
         
-        # 1. New Registrations (last 24h)
-        students = supabase.table("students").select("first_name, last_name, created_at").gt("created_at", cutoff_time).order("created_at", desc=True).limit(5).execute().data
+        # 1. New Registrations (last 24h) - filtered by institution
+        students_query = supabase.table("students").select("first_name, last_name, created_at").gt("created_at", cutoff_time).order("created_at", desc=True).limit(5)
+        if institution_id:
+            students_query = students_query.eq("institution_id", institution_id)
+        students = students_query.execute().data or []
+        
         for s in students:
             activities.append({
                 "type": "registration",
@@ -266,18 +429,24 @@ async def get_recent_activity(admin: Dict = Depends(get_current_admin)):
                 "created_at": s['created_at']
             })
             
-        # 2. New Messages (last 24h)
-        # We want messages sent by students
-        messages = supabase.table("messages").select("sender_id, content, created_at, sender_type").eq("sender_type", "student").gt("created_at", cutoff_time).order("created_at", desc=True).limit(5).execute().data
+        # 2. New Messages (last 24h) - filtered by institution's students
+        messages_data = []
+        if institution_id:
+            # Get student IDs for this institution
+            students_resp = supabase.table("students").select("id").eq("institution_id", institution_id).execute()
+            student_ids = [s["id"] for s in (students_resp.data or [])]
+            if student_ids:
+                messages_data = supabase.table("messages").select("sender_id, content, created_at, sender_type").eq("sender_type", "student").in_("sender_id", student_ids).gt("created_at", cutoff_time).order("created_at", desc=True).limit(5).execute().data or []
+        else:
+            messages_data = supabase.table("messages").select("sender_id, content, created_at, sender_type").eq("sender_type", "student").gt("created_at", cutoff_time).order("created_at", desc=True).limit(5).execute().data or []
         
-        # We need student names for messages. 
-        # Optimization: Fetch unique student IDs from messages and query students table once.
-        student_ids = list(set([m['sender_id'] for m in messages]))
+        # We need student names for messages.
+        student_ids = list(set([m['sender_id'] for m in messages_data if m.get('sender_id')]))
         if student_ids:
             students_map_response = supabase.table("students").select("id, first_name, last_name").in_("id", student_ids).execute()
             students_map = {s['id']: f"{s['first_name']} {s['last_name']}" for s in students_map_response.data}
             
-            for m in messages:
+            for m in messages_data:
                 student_name = students_map.get(m['sender_id'], "Unknown Student")
                 activities.append({
                     "type": "message",
@@ -285,28 +454,15 @@ async def get_recent_activity(admin: Dict = Depends(get_current_admin)):
                     "created_at": m['created_at']
                 })
         
-        # 3. Settings Updates (from admin_settings)
+        # 3. Settings Updates (from admin_settings) - keep as is (global)
         try:
             settings_logs_resp = supabase.table("admin_settings").select("value").eq("key", "activity_log").execute()
             if settings_logs_resp.data:
                 settings_logs = json.loads(settings_logs_resp.data[0]['value'])
-                # Filter for last 24h
-                # Ensure cutoff_time is comparable (naive vs aware)
-                # Simple string comparison works for ISO format if both are UTC
                 for log in settings_logs:
-                    # If log has no created_at, skip
                     if not log.get('created_at'):
                         continue
-                        
-                    # Relaxed check: just check if it's recent enough or just show it (it's only 50 items max)
-                    # For now, let's just show them all since we limit to 50 in storage anyway
-                    # But we should respect the 24h window if possible.
-                    # Let's try to parse if needed, or just rely on string comparison if formats match.
-                    # Since we switched to utcnow().isoformat(), it's naive UTC.
-                    # cutoff_time is also naive local (which might be UTC).
-                    
-                    # if log.get('created_at') > cutoff_time:
-                    if True: # Show all settings logs for now to debug persistence
+                    if True:  # Show all settings logs
                         activities.append({
                             "type": "settings",
                             "message": "Settings changed",
@@ -317,9 +473,9 @@ async def get_recent_activity(admin: Dict = Depends(get_current_admin)):
 
         
         # Sort combined list by created_at desc
-        activities.sort(key=lambda x: x['created_at'], reverse=True)
+        activities.sort(key=lambda x: x['created_at'] or '', reverse=True)
         
-        return activities[:10] # Return top 10
+        return activities[:10]  # Return top 10
     except Exception as e:
         print(f"Error fetching activity: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -369,28 +525,56 @@ async def get_admin_profile(admin: Dict = Depends(get_current_admin)):
 
 @admin_router.get("/stats/questions")
 async def get_question_stats(admin: Dict = Depends(get_current_admin)):
-    """Get aggregate question performance stats grouped by level"""
+    """Get aggregate question performance stats grouped by level - filtered by institution. CACHED."""
     try:
-        # 1. Fetch all results to map result_id -> level
-        results_response = supabase.table("results").select("id, level").execute()
-        result_level_map = {r['id']: r['level'] for r in results_response.data}
+        institution_id = admin.get("institution_id") or "global"
+        cache_key = f"admin:question_stats:{institution_id}"
         
-        # 2. Fetch all questions with correct answers
-        questions_response = supabase.table("questions").select("id, question_text, correct_answer, result_id").execute()
-        questions = questions_response.data
+        # Try cache first
+        cached = redis_manager.cache_get(cache_key)
+        if cached:
+            return cached
         
-        # 3. Fetch all student answers
-        answers_response = supabase.table("student_answers").select("question_id, student_answer").execute()
-        answers = answers_response.data
+        inst_id = admin.get("institution_id")
+        
+        # Get student IDs for this institution (for filtering)
+        student_ids = None
+        if inst_id:
+            students_resp = supabase.table("students").select("id").eq("institution_id", inst_id).execute()
+            student_ids = [s["id"] for s in (students_resp.data or [])]
+            if not student_ids:
+                return []  # No students in this institution
+        
+        # 1. Fetch results filtered by student IDs
+        if student_ids:
+            results_response = supabase.table("results").select("id, level, student_id").in_("student_id", student_ids).execute()
+        else:
+            results_response = supabase.table("results").select("id, level, student_id").execute()
+        
+        result_level_map = {r['id']: r['level'] for r in (results_response.data or [])}
+        result_ids = list(result_level_map.keys())
+        
+        if not result_ids:
+            return []
+        
+        # 2. Fetch questions for these results
+        questions_response = supabase.table("questions").select("id, question_text, correct_answer, result_id").in_("result_id", result_ids).execute()
+        questions = questions_response.data or []
+        
+        if not questions:
+            return []
+        
+        question_ids = [q['id'] for q in questions]
+        
+        # 3. Fetch student answers for these questions
+        answers_response = supabase.table("student_answers").select("question_id, student_answer").in_("question_id", question_ids).execute()
+        answers = answers_response.data or []
         
         # 4. Aggregate stats
         stats_map = {}
         
-        # Initialize map
         for q in questions:
-            # Determine level from result_id, default to 'Unknown'
             level = result_level_map.get(q['result_id'], 'Unknown')
-            
             stats_map[q['id']] = {
                 "question_id": q['id'],
                 "question_text": q['question_text'],
@@ -400,29 +584,25 @@ async def get_question_stats(admin: Dict = Depends(get_current_admin)):
                 "correct_percentage": 0.0
             }
             
-        # Process answers
         for ans in answers:
             q_id = ans['question_id']
             if q_id in stats_map:
                 stats_map[q_id]['attempt_count'] += 1
-                
-                # Find correct answer for this question
                 correct_answer = next((q['correct_answer'] for q in questions if q['id'] == q_id), None)
-                
                 if correct_answer:
-                    # Robust comparison: strip whitespace and ignore case
                     student_ans_norm = str(ans['student_answer']).strip().lower()
                     correct_ans_norm = str(correct_answer).strip().lower()
-                    
                     if student_ans_norm == correct_ans_norm:
                         stats_map[q_id]['correct_count'] += 1
         
-        # Calculate percentages and format for frontend
         results = []
         for q_id, stat in stats_map.items():
             if stat['attempt_count'] > 0:
                 stat['correct_percentage'] = (stat['correct_count'] / stat['attempt_count']) * 100
             results.append(stat)
+        
+        # Cache result
+        redis_manager.cache_set(cache_key, results, CACHE_TTL_SECONDS)
             
         return results
     except Exception as e:
@@ -431,24 +611,32 @@ async def get_question_stats(admin: Dict = Depends(get_current_admin)):
 
 @admin_router.get("/stats/levels")
 async def get_level_stats(admin: Dict = Depends(get_current_admin)):
-    """Get average score stats grouped by level based on student results"""
+    """Get average score stats grouped by level - filtered by institution"""
     try:
-        # Fetch all completed results with scores
-        response = supabase.table("results").select("level, score").not_.is_("score", "null").execute()
-        results = response.data
+        institution_id = admin.get("institution_id")
+        
+        # Fetch results filtered by institution's students
+        if institution_id:
+            students_resp = supabase.table("students").select("id").eq("institution_id", institution_id).execute()
+            student_ids = [s["id"] for s in (students_resp.data or [])]
+            if not student_ids:
+                return []
+            results_resp = supabase.table("results").select("level, score").in_("student_id", student_ids).not_.is_("score", "null").execute()
+        else:
+            results_resp = supabase.table("results").select("level, score").not_.is_("score", "null").execute()
+        
+        results = results_resp.data or []
         
         # Aggregate stats
         level_stats = {}
         
         for r in results:
-            # Normalize level
             raw_level = str(r.get('level', 'Unknown'))
-            level = raw_level.strip().title() # e.g. "Easy"
+            level = raw_level.strip().title()
             
             if level not in level_stats:
                 level_stats[level] = {"total_score": 0, "count": 0}
             
-            # Ensure score is a number
             try:
                 score = float(r['score'])
                 level_stats[level]["total_score"] += score
@@ -456,7 +644,6 @@ async def get_level_stats(admin: Dict = Depends(get_current_admin)):
             except (ValueError, TypeError):
                 continue
         
-        # Calculate averages
         final_stats = []
         for level, data in level_stats.items():
             avg_score = (data["total_score"] / data["count"]) if data["count"] > 0 else 0
@@ -472,12 +659,28 @@ async def get_level_stats(admin: Dict = Depends(get_current_admin)):
 
 @admin_router.get("/monitoring/live")
 async def get_live_monitoring(admin: Dict = Depends(get_current_admin)):
-    """Get active test sessions"""
+    """Get active test sessions with multi-subject progress - filtered by institution. CACHED."""
     try:
-        # Fetch all students who have been active recently (e.g., last 24 hours) or are currently logged in
-        # We'll fetch the top 50 most recently active students
-        response = supabase.table("students").select("id, first_name, last_name, email, last_active_at, logout_time").order("last_active_at", desc=True).limit(50).execute()
-        students = response.data
+        inst_id = admin.get("institution_id") or "global"
+        cache_key = f"admin:live_monitoring:{inst_id}"
+        
+        # Try cache first
+        cached = redis_manager.cache_get(cache_key)
+        if cached:
+            return cached
+        
+        institution_id = admin.get("institution_id")
+        
+        # Define all subjects
+        SUBJECTS = ['math', 'physics', 'chemistry']
+        LEVELS = ['easy', 'medium', 'hard']
+        
+        # Fetch students filtered by institution
+        query = supabase.table("students").select("id, first_name, last_name, email, last_active_at, logout_time").order("last_active_at", desc=True).limit(50)
+        if institution_id:
+            query = query.eq("institution_id", institution_id)
+        response = query.execute()
+        students = response.data or []
         
         monitoring_data = []
         seen_emails = set()
@@ -488,51 +691,92 @@ async def get_live_monitoring(admin: Dict = Depends(get_current_admin)):
                 continue
             seen_emails.add(email)
             
-            # Determine status
+            # Determine online status
             last_active = datetime.fromisoformat(student['last_active_at'].replace('Z', '+00:00')) if student['last_active_at'] else None
             logout_time = datetime.fromisoformat(student['logout_time'].replace('Z', '+00:00')) if student['logout_time'] else None
             
             is_active = False
             if last_active:
-                # If logout_time is after last_active, they are inactive
                 if logout_time and logout_time > last_active:
                     is_active = False
                 else:
-                    # Check if last activity was within 5 minutes
                     time_diff = (datetime.now(last_active.tzinfo) - last_active).total_seconds()
-                    if time_diff < 300: # 5 minutes
+                    if time_diff < 300:  # 5 minutes
                         is_active = True
             
-            # Fetch all results for this student to determine status for each level
-            results_response = supabase.table("results").select("level, result, score").eq("student_id", student['id']).execute()
-            student_results = results_response.data
+            # Fetch all results for this student (include subject field)
+            results_response = supabase.table("results").select("subject, level, result, score, created_at").eq("student_id", student['id']).order("created_at", desc=True).execute()
+            student_results = results_response.data or []
             
-            levels_status = {
-                "easy": "locked",
-                "medium": "locked",
-                "hard": "locked"
-            }
+            # Build per-subject status matrix
+            subjects_status = {}
+            for subj in SUBJECTS:
+                subjects_status[subj] = {
+                    "easy": "locked",
+                    "medium": "locked",
+                    "hard": "locked"
+                }
+                # Default: Easy is always unlocked (pending) for first subject
+                if subj == 'math':
+                    subjects_status[subj]["easy"] = "pending"
             
-            # Default to unlocked if no results (or based on logic) - actually first level is always unlocked
-            levels_status["easy"] = "pending" 
+            # Track current activity (most recent in_progress/pending result)
+            current_activity = None
+            completed_count = 0
             
+            # Process results to update status
             for res in student_results:
+                subj = (res.get('subject') or 'physics').lower()
+                if subj not in SUBJECTS:
+                    subj = 'physics'  # Default fallback
                 lvl = res['level'].lower()
-                status = res['result'] # pass, fail, pending
+                status = res['result']  # pass, fail, pending, in_progress
                 
                 if status == 'pass':
-                    levels_status[lvl] = 'completed'
+                    subjects_status[subj][lvl] = 'completed'
+                    completed_count += 1
                 elif status == 'fail':
-                    levels_status[lvl] = 'failed'
-                else:
-                    levels_status[lvl] = 'in_progress'
+                    subjects_status[subj][lvl] = 'failed'
+                elif status in ['pending', 'in_progress']:
+                    subjects_status[subj][lvl] = 'in_progress'
+                    if not current_activity:
+                        current_activity = f"{subj.title()} - {lvl.title()} Level"
             
-            # Unlock logic (simplified for monitoring view)
-            if levels_status['easy'] == 'completed':
-                if levels_status['medium'] == 'locked': levels_status['medium'] = 'pending'
+            # Apply unlock logic for each subject
+            for subj in SUBJECTS:
+                # Unlock medium if easy is passed
+                if subjects_status[subj]['easy'] == 'completed':
+                    if subjects_status[subj]['medium'] == 'locked':
+                        subjects_status[subj]['medium'] = 'pending'
+                
+                # Unlock hard if medium is passed
+                if subjects_status[subj]['medium'] == 'completed':
+                    if subjects_status[subj]['hard'] == 'locked':
+                        subjects_status[subj]['hard'] = 'pending'
             
-            if levels_status['medium'] == 'completed':
-                if levels_status['hard'] == 'locked': levels_status['hard'] = 'pending'
+            # Apply subject unlock logic (physics unlocks after math, chemistry after physics)
+            def check_subject_completion(subj_name):
+                """Check if subject is effectively done (medium passed + hard attempted/passed)"""
+                s = subjects_status[subj_name]
+                medium_passed = s['medium'] == 'completed'
+                hard_done = s['hard'] in ['completed', 'failed']
+                return medium_passed and hard_done
+            
+            # Unlock Physics if Math is completed
+            if check_subject_completion('math'):
+                if subjects_status['physics']['easy'] == 'locked':
+                    subjects_status['physics']['easy'] = 'pending'
+            
+            # Unlock Chemistry if Physics is completed  
+            if check_subject_completion('physics'):
+                if subjects_status['chemistry']['easy'] == 'locked':
+                    subjects_status['chemistry']['easy'] = 'pending'
+            
+            # Calculate overall progress
+            overall_progress = {
+                "completed": completed_count,
+                "total": 9  # 3 subjects * 3 levels
+            }
 
             monitoring_data.append({
                 "id": student['id'],
@@ -542,11 +786,18 @@ async def get_live_monitoring(admin: Dict = Depends(get_current_admin)):
                     "last_name": student['last_name'],
                     "email": student['email']
                 },
-                "levels_status": levels_status,
+                "subjects_status": subjects_status,
+                "current_activity": current_activity,
+                "overall_progress": overall_progress,
+                # Keep legacy field for backward compatibility
+                "levels_status": subjects_status.get('math', {}),
                 "status": "active" if is_active else "inactive",
                 "last_active_at": student['last_active_at'],
                 "logout_time": student['logout_time']
             })
+        
+        # Cache result
+        redis_manager.cache_set(cache_key, monitoring_data, CACHE_TTL_SECONDS)
             
         return monitoring_data
     except Exception as e:
@@ -554,10 +805,27 @@ async def get_live_monitoring(admin: Dict = Depends(get_current_admin)):
 
 @admin_router.get("/users")
 async def list_users(admin: Dict = Depends(get_current_admin)):
-    """List all users"""
+    """List all users - filtered by institution. CACHED."""
     try:
-        response = supabase.table("students").select("*").order("created_at", desc=True).execute()
-        return response.data
+        inst_id = admin.get("institution_id") or "global"
+        cache_key = f"admin:students:{inst_id}"
+        
+        # Try cache first
+        cached = redis_manager.cache_get(cache_key)
+        if cached:
+            return cached
+        
+        institution_id = admin.get("institution_id")
+        query = supabase.table("students").select("*").order("created_at", desc=True)
+        if institution_id:
+            query = query.eq("institution_id", institution_id)
+        response = query.execute()
+        result = response.data or []
+        
+        # Cache result
+        redis_manager.cache_set(cache_key, result, CACHE_TTL_SECONDS)
+        
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -595,52 +863,73 @@ async def create_announcement(announcement: AnnouncementCreate, admin: Dict = De
 
 @admin_router.get("/reports/comprehensive")
 async def get_comprehensive_reports(admin: Dict = Depends(get_current_admin)):
-    """Get comprehensive report data for the dashboard"""
+    """Get comprehensive report data for the dashboard - filtered by institution. CACHED."""
     try:
+        inst_id = admin.get("institution_id") or "global"
+        cache_key = f"admin:reports:{inst_id}"
+        
+        # Try cache first
+        cached = redis_manager.cache_get(cache_key)
+        if cached:
+            return cached
+        
+        institution_id = admin.get("institution_id")
+        
+        # Get student IDs for this institution (for filtering)
+        student_ids = None
+        all_students_map = {}
+        if institution_id:
+            students_resp = supabase.table("students").select("id, first_name, last_name, email, last_active_at, created_at").eq("institution_id", institution_id).execute()
+            students_data = students_resp.data or []
+            student_ids = [s["id"] for s in students_data]
+            all_students_map = {s['id']: s for s in students_data}
+        else:
+            students_resp = supabase.table("students").select("id, first_name, last_name, email, last_active_at, created_at").execute()
+            students_data = students_resp.data or []
+            all_students_map = {s['id']: s for s in students_data}
+        
         # 1. Performance Trends (Daily Average Scores)
         performance_trends = []
         try:
-            # Fetch results with scores and created_at
-            results_resp = supabase.table("results").select("score, created_at").not_.is_("score", "null").order("created_at").execute()
-            results = results_resp.data or []
+            if student_ids is not None:
+                if not student_ids:
+                    results = []
+                else:
+                    results_resp = supabase.table("results").select("score, created_at, student_id").in_("student_id", student_ids).not_.is_("score", "null").order("created_at").execute()
+                    results = results_resp.data or []
+            else:
+                results_resp = supabase.table("results").select("score, created_at").not_.is_("score", "null").order("created_at").execute()
+                results = results_resp.data or []
             
             daily_scores = {}
             for r in results:
                 if not r.get('created_at'):
                     continue
-                    
                 try:
                     date_str = r['created_at'].split('T')[0]
                     if date_str not in daily_scores:
                         daily_scores[date_str] = {"total": 0, "count": 0}
-                
                     daily_scores[date_str]["total"] += float(r['score'])
                     daily_scores[date_str]["count"] += 1
-                except Exception as e:
-                    print(f"Skipping result row: {e}")
+                except Exception:
                     continue
                     
             performance_trends = [
                 {"date": date, "average_score": round(data["total"] / data["count"], 1)}
                 for date, data in daily_scores.items()
             ]
-            performance_trends.sort(key=lambda x: x['date']) # Ensure chronological order
+            performance_trends.sort(key=lambda x: x['date'])
         except Exception as e:
             print(f"Error calculating performance trends: {e}")
 
-        # 2. Student Engagement (Active vs Total)
+        # 2. Student Engagement (Active vs Total) - filtered by institution
         engagement_stats = {"total_students": 0, "active_last_7_days": 0, "inactive_count": 0}
         try:
-            # We'll approximate this by looking at last_active_at
-            students_resp = supabase.table("students").select("last_active_at, created_at").execute()
-            students = students_resp.data or []
-            
-            total_students = len(students)
-            
-            # Active in last 7 days
             from datetime import timedelta
             seven_days_ago = (datetime.now() - timedelta(days=7)).isoformat()
             
+            students = students_data  # Use already fetched data
+            total_students = len(students)
             active_count = sum(1 for s in students if s.get('last_active_at') and s['last_active_at'] > seven_days_ago)
             
             engagement_stats = {
@@ -651,15 +940,34 @@ async def get_comprehensive_reports(admin: Dict = Depends(get_current_admin)):
         except Exception as e:
             print(f"Error calculating engagement stats: {e}")
 
-        # 3. Question Difficulty (High Failure Rate)
+        # 3. Question Difficulty (High Failure Rate) - filtered by institution's students
         difficult_questions = []
         try:
-            # Fetch all student answers and join with questions (simulated join)
-            answers_resp = supabase.table("student_answers").select("question_id, student_answer").execute()
-            questions_resp = supabase.table("questions").select("id, question_text, correct_answer").execute()
-            
-            answers_data = answers_resp.data or []
-            questions_data = questions_resp.data or []
+            # Get result IDs for this institution's students
+            if student_ids is not None:
+                if not student_ids:
+                    answers_data = []
+                    questions_data = []
+                else:
+                    results_resp = supabase.table("results").select("id").in_("student_id", student_ids).execute()
+                    result_ids = [r["id"] for r in (results_resp.data or [])]
+                    if result_ids:
+                        questions_resp = supabase.table("questions").select("id, question_text, correct_answer, result_id").in_("result_id", result_ids).execute()
+                        questions_data = questions_resp.data or []
+                        question_ids = [q['id'] for q in questions_data]
+                        if question_ids:
+                            answers_resp = supabase.table("student_answers").select("question_id, student_answer").in_("question_id", question_ids).execute()
+                            answers_data = answers_resp.data or []
+                        else:
+                            answers_data = []
+                    else:
+                        answers_data = []
+                        questions_data = []
+            else:
+                answers_resp = supabase.table("student_answers").select("question_id, student_answer").execute()
+                questions_resp = supabase.table("questions").select("id, question_text, correct_answer").execute()
+                answers_data = answers_resp.data or []
+                questions_data = questions_resp.data or []
             
             questions_map = {q['id']: q for q in questions_data}
             question_stats = {}
@@ -668,18 +976,13 @@ async def get_comprehensive_reports(admin: Dict = Depends(get_current_admin)):
                 q_id = ans.get('question_id')
                 if not q_id or q_id not in questions_map:
                     continue
-                    
                 if q_id not in question_stats:
                     question_stats[q_id] = {"attempts": 0, "correct": 0, "text": questions_map[q_id]['question_text']}
-                
                 question_stats[q_id]["attempts"] += 1
-                
-                # Check correctness
                 correct_answer = questions_map[q_id]['correct_answer']
                 if str(ans.get('student_answer', '')).strip().lower() == str(correct_answer).strip().lower():
                     question_stats[q_id]["correct"] += 1
             
-            # Filter for difficult questions (correct rate < 40% and attempts > 2)
             for q_id, stats in question_stats.items():
                 if stats['attempts'] > 2:
                     correct_rate = (stats['correct'] / stats['attempts']) * 100
@@ -689,19 +992,23 @@ async def get_comprehensive_reports(admin: Dict = Depends(get_current_admin)):
                             "correct_rate": round(correct_rate, 1),
                             "attempts": stats['attempts']
                         })
-            
-            difficult_questions.sort(key=lambda x: x['correct_rate']) # Lowest score first
+            difficult_questions.sort(key=lambda x: x['correct_rate'])
         except Exception as e:
             print(f"Error calculating difficult questions: {e}")
 
-        # 4. Stuck Students (3+ Consecutive Failures on Same Level)
+        # 4. Stuck Students - filtered by institution
         stuck_students = []
         try:
-            # Fetch all results ordered by time desc
-            all_results_resp = supabase.table("results").select("student_id, level, result, created_at").order("created_at", desc=True).execute()
-            all_results = all_results_resp.data or []
+            if student_ids is not None:
+                if not student_ids:
+                    all_results = []
+                else:
+                    all_results_resp = supabase.table("results").select("student_id, level, result, created_at").in_("student_id", student_ids).order("created_at", desc=True).execute()
+                    all_results = all_results_resp.data or []
+            else:
+                all_results_resp = supabase.table("results").select("student_id, level, result, created_at").order("created_at", desc=True).execute()
+                all_results = all_results_resp.data or []
             
-            # Group by student
             student_results_map = {}
             for r in all_results:
                 s_id = r.get('student_id')
@@ -709,27 +1016,17 @@ async def get_comprehensive_reports(admin: Dict = Depends(get_current_admin)):
                 if s_id not in student_results_map:
                     student_results_map[s_id] = []
                 student_results_map[s_id].append(r)
-                
-            # Analyze for stuck patterns
-            # Fetch student names
-            all_students_resp = supabase.table("students").select("id, first_name, last_name, email").execute()
-            all_students_map = {s['id']: s for s in all_students_resp.data or []}
             
             for s_id, results in student_results_map.items():
                 if not results: continue
-                
-                # Check the most recent results
-                # We look for a sequence of 'fail' on the same level at the start of the list (most recent)
                 current_level = results[0].get('level')
                 if not current_level: continue
                 
                 fail_count = 0
-                
                 for r in results:
                     if r.get('level') == current_level and r.get('result') == 'fail':
                         fail_count += 1
                     else:
-                        # Break if we switch levels or find a pass
                         break
                 
                 if fail_count > 1:
@@ -743,14 +1040,18 @@ async def get_comprehensive_reports(admin: Dict = Depends(get_current_admin)):
                         })
         except Exception as e:
             print(f"Error calculating stuck students: {e}")
-            # Continue without stuck students data rather than failing the whole request
 
-        return {
+        result = {
             "performance_trends": performance_trends,
             "engagement_stats": engagement_stats,
             "difficult_questions": difficult_questions[:5],
-            "stuck_students": stuck_students[:10] # Top 10 stuck students
+            "stuck_students": stuck_students[:10]
         }
+        
+        # Cache result
+        redis_manager.cache_set(cache_key, result, CACHE_TTL_SECONDS)
+        
+        return result
 
     except Exception as e:
         print(f"Error generating reports: {e}")

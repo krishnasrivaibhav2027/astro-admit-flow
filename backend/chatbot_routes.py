@@ -10,6 +10,9 @@ from auth_dependencies import get_current_user
 from chatbot_graph import get_graph
 from langchain_core.messages import HumanMessage, AIMessage
 
+# Import rate limiter
+from rate_limiter import limiter, RATE_LIMITS
+
 router = APIRouter()
 
 class ChatMessage(BaseModel):
@@ -23,15 +26,16 @@ class NotificationTrigger(BaseModel):
     thread_id: str
 
 @router.post("/stream")
-async def stream_chat(request: ChatMessage, current_user: Dict = Depends(get_current_user)):
+@limiter.limit(RATE_LIMITS["chat"])  # 30/minute for chat messages
+async def stream_chat(request: Request, message: ChatMessage, current_user: Dict = Depends(get_current_user)):
     """
     Streams the chatbot response. 
     Uses thread_id for persistence.
     """
-    logging.info(f"💬 Chat Stream Request: {request.message} (Thread: {request.thread_id})")
+    logging.info(f"💬 Chat Stream Request: {message.message} (Thread: {message.thread_id})")
     
     # Verify ownership
-    # if request.student_id != current_user.get('student_id') ... (skip for now, trust auth email)
+    # if message.student_id != current_user.get('student_id') ... (skip for now, trust auth email)
     
     # Prepare Input
     student_name = "Student"
@@ -59,13 +63,13 @@ async def stream_chat(request: ChatMessage, current_user: Dict = Depends(get_cur
         logging.error(f"Failed to fetch student name: {e}")
 
     input_state = {
-        "messages": [HumanMessage(content=request.message)],
-        "student_id": request.student_id,
+        "messages": [HumanMessage(content=message.message)],
+        "student_id": message.student_id,
         "student_name": student_name
     }
     
     # Config for persistence
-    config = {"configurable": {"thread_id": request.thread_id}}
+    config = {"configurable": {"thread_id": message.thread_id}}
     
     async def event_generator():
         full_response = ""  # Accumulate full response for saving
@@ -75,10 +79,10 @@ async def stream_chat(request: ChatMessage, current_user: Dict = Depends(get_cur
             
             # Save user message to Supabase immediately
             chat_history_service.save_message(
-                thread_id=request.thread_id,
-                student_id=request.student_id,
+                thread_id=message.thread_id,
+                student_id=message.student_id,
                 role="user",
-                content=request.message
+                content=message.message
             )
             
             # Stream events from the graph
@@ -109,11 +113,12 @@ async def stream_chat(request: ChatMessage, current_user: Dict = Depends(get_cur
             # Save AI response to Supabase after streaming completes
             if full_response.strip():
                 chat_history_service.save_message(
-                    thread_id=request.thread_id,
-                    student_id=request.student_id,
+                    thread_id=message.thread_id,
+                    student_id=message.student_id,
                     role="assistant",
                     content=full_response
                 )
+
                     
         except Exception as e:
             import traceback
